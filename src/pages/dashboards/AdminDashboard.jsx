@@ -11,8 +11,12 @@ import {
   UsersRound,
   XCircle,
 } from "lucide-react";
-
-const USERS_KEY = "educonnect.registeredUsers";
+import {
+  notifyAdminDataChanged,
+  ADMIN_USERS_KEY,
+  getAdminCourses,
+  readAdminArray,
+} from "../../components/admin/adminData";
 
 const styles = {
   panel: {
@@ -47,47 +51,21 @@ const styles = {
   },
 };
 
-function readArray(key) {
-  try {
-    const value = JSON.parse(
-      window.localStorage.getItem(key) || "[]"
-    );
-
-    return Array.isArray(value) ? value : [];
-  } catch {
-    return [];
-  }
-}
-
-function getAllCourses(users) {
-  return users
-    .filter((user) => user.role === "Teacher")
-    .flatMap((teacher) => {
-      const key =
-        `educonnect.teacher.${teacher.email}.courses`;
-
-      return readArray(key).map((course) => ({
-        ...course,
-        teacherEmail: teacher.email,
-      }));
-    });
-}
-
-function AdminDashboard() {
+function AdminDashboard({ initialTab = "teachers", onSectionChange }) {
   const [users, setUsers] = useState(() =>
-    readArray(USERS_KEY)
+    readAdminArray(ADMIN_USERS_KEY)
   );
 
   const [courses, setCourses] = useState(() =>
-    getAllCourses(readArray(USERS_KEY))
+    getAdminCourses(readAdminArray(ADMIN_USERS_KEY))
   );
 
-  const [tab, setTab] = useState("overview");
+  const [tab, setTab] = useState(initialTab);
 
   function refreshData() {
-    const latestUsers = readArray(USERS_KEY);
+    const latestUsers = readAdminArray(ADMIN_USERS_KEY);
     setUsers(latestUsers);
-    setCourses(getAllCourses(latestUsers));
+    setCourses(getAdminCourses(latestUsers));
   }
 
   useEffect(() => {
@@ -112,10 +90,11 @@ function AdminDashboard() {
     );
 
     window.localStorage.setItem(
-      USERS_KEY,
+      ADMIN_USERS_KEY,
       JSON.stringify(updatedUsers)
     );
 
+    notifyAdminDataChanged();
     setUsers(updatedUsers);
   }
 
@@ -127,7 +106,7 @@ function AdminDashboard() {
     const key =
       `educonnect.teacher.${teacherEmail}.courses`;
 
-    const updated = readArray(key).map((course) =>
+    const updated = readAdminArray(key).map((course) =>
       course.id === courseId
         ? { ...course, status }
         : course
@@ -138,6 +117,7 @@ function AdminDashboard() {
       JSON.stringify(updated)
     );
 
+    notifyAdminDataChanged();
     refreshData();
   }
 
@@ -153,7 +133,7 @@ function AdminDashboard() {
     const key =
       `educonnect.teacher.${teacherEmail}.courses`;
 
-    const updated = readArray(key).filter(
+    const updated = readAdminArray(key).filter(
       (course) => course.id !== courseId
     );
 
@@ -162,6 +142,7 @@ function AdminDashboard() {
       JSON.stringify(updated)
     );
 
+    notifyAdminDataChanged();
     refreshData();
   }
 
@@ -187,7 +168,6 @@ function AdminDashboard() {
   );
 
   const tabs = [
-    ["overview", "Overview"],
     ["teachers", "Teacher Approvals"],
     ["approvals", "Course Approvals"],
     ["users", "Users"],
@@ -197,13 +177,10 @@ function AdminDashboard() {
 
   return (
     <section className="dashboard-section">
-      <div className="dashboard-section-heading">
+      <div className="edc-admin-tools-header">
         <div>
-          <span className="auth-eyebrow">
-            ADMIN CONTROL CENTER
-          </span>
-
-          <h2>Platform Administration</h2>
+          <h3>Existing administration tools</h3>
+          <p>These demo workflows use records stored in this browser.</p>
         </div>
 
         <button
@@ -282,44 +259,15 @@ function AdminDashboard() {
                 ? styles.primary
                 : styles.secondary
             }
-            onClick={() => setTab(id)}
+            onClick={() => {
+              setTab(id);
+              onSectionChange?.(id);
+            }}
           >
             {label}
           </button>
         ))}
       </div>
-
-      {tab === "overview" && (
-        <div style={styles.panel}>
-          <h3>Platform Overview</h3>
-
-          <p>
-            Registered Students: {students.length}
-          </p>
-
-          <p>
-            Registered Teachers: {teachers.length}
-          </p>
-
-          <p>
-            Total Courses: {courses.length}
-          </p>
-
-          <p>
-            Published Courses: {publishedCourses.length}
-          </p>
-
-          <p>
-            Pending Teacher Approvals:{" "}
-            {pendingTeachers.length}
-          </p>
-
-          <p>
-            Pending Course Approvals:{" "}
-            {pendingCourses.length}
-          </p>
-        </div>
-      )}
 
       {tab === "teachers" && (
         <div style={{ display: "grid", gap: 15 }}>

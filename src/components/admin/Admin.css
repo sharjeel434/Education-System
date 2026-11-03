@@ -1,0 +1,798 @@
+.edc-admin-layout {
+  --edc-admin-ink: #1d2340;
+  --edc-admin-muted: #727b91;
+  --edc-admin-line: #e7eaf1;
+  --edc-admin-primary: #6845d5;
+  --edc-admin-primary-light: #f0edff;
+  display: grid;
+  grid-template-columns: 264px minmax(0, 1fr);
+  min-height: 100vh;
+  color: var(--edc-admin-ink);
+  background: #f6f7fb;
+}
+
+.edc-admin-sidebar {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  width: 264px;
+  height: 100vh;
+  height: 100dvh;
+  overflow-y: auto;
+  padding: 22px 14px 14px;
+  border-right: 1px solid var(--edc-admin-line);
+  background: #fff;
+  z-index: 20;
+}
+
+.edc-admin-brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-height: 49px;
+  padding: 0 7px;
+}
+
+.edc-admin-brand-icon,
+.edc-admin-account-avatar {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  color: var(--edc-admin-primary);
+  background: var(--edc-admin-primary-light);
+}
+
+.edc-admin-brand-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 13px;
+}
+
+.edc-admin-brand-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.edc-admin-brand-copy strong {
+  color: #24243b;
+  font-size: 15px;
+  letter-spacing: -0.3px;
+}
+
+.edc-admin-brand-copy strong b {
+  color: var(--edc-admin-primary);
+}
+
+.edc-admin-brand-copy small {
+  color: var(--edc-admin-muted);
+  font-size: 11px;
+}
+
+.edc-admin-sidebar-close,
+.edc-admin-menu-button {
+  display: none;
+  place-items: center;
+  border: 0;
+  color: #565e72;
+  background: transparent;
+}
+
+.edc-admin-navigation {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.edc-admin-navigation-label {
+  margin: 0 10px 8px;
+  color: #9aa1b1;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.1px;
+}
+
+.edc-admin-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-height: 42px;
+  padding: 9px 10px;
+  border-radius: 9px;
+  color: #667087;
+  font-size: 12px;
+  font-weight: 550;
+  text-decoration: none;
+  transition: color 150ms ease, background 150ms ease;
+}
+
+.edc-admin-nav-item svg {
+  flex: 0 0 auto;
+  color: #8a91a3;
+}
+
+.edc-admin-nav-item:hover {
+  color: var(--edc-admin-primary);
+  background: #f7f5ff;
+}
+
+.edc-admin-nav-item:hover svg {
+  color: var(--edc-admin-primary);
+}
+
+.edc-admin-nav-item-active,
+.edc-admin-nav-item-active:hover {
+  color: #5b3cc1;
+  background: var(--edc-admin-primary-light);
+  font-weight: 700;
+}
+
+.edc-admin-nav-item-active svg {
+  color: var(--edc-admin-primary);
+}
+
+.edc-admin-sidebar-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: auto;
+  padding: 13px 10px 2px;
+  color: #858da0;
+  font-size: 10px;
+}
+
+.edc-admin-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #e4a53d;
+}
+
+.edc-admin-main {
+  min-width: 0;
+}
+
+.edc-admin-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  min-height: 76px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 12px 34px;
+  border-bottom: 1px solid var(--edc-admin-line);
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(12px);
+}
+
+.edc-admin-topbar-heading,
+.edc-admin-account {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+
+.edc-admin-topbar-heading {
+  gap: 12px;
+}
+
+.edc-admin-topbar-eyebrow {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--edc-admin-muted);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.edc-admin-topbar h1 {
+  margin: 0;
+  color: #272b42;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.edc-admin-account {
+  gap: 10px;
+}
+
+.edc-admin-account-avatar {
+  width: 37px;
+  height: 37px;
+  border-radius: 50%;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.edc-admin-account-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.edc-admin-account-copy strong {
+  overflow: hidden;
+  color: #34394f;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.edc-admin-account-copy small {
+  overflow: hidden;
+  max-width: 210px;
+  color: var(--edc-admin-muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.edc-admin-logout {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-left: 9px;
+  padding: 9px 11px;
+  border: 1px solid var(--edc-admin-line);
+  border-radius: 9px;
+  color: #555d72;
+  background: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  transition: color 150ms ease, background 150ms ease, border-color 150ms ease;
+}
+
+.edc-admin-logout:hover {
+  border-color: #e3dafa;
+  color: #5b3cc1;
+  background: #faf9ff;
+}
+
+.edc-admin-content {
+  width: min(100%, 1500px);
+  margin: 0 auto;
+  padding: 31px 34px 40px;
+}
+
+.edc-admin-page-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 25px;
+}
+
+.edc-admin-page-eyebrow {
+  color: var(--edc-admin-primary);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.edc-admin-page-heading h2 {
+  margin: 8px 0 6px;
+  color: #252a40;
+  font-size: clamp(22px, 2vw, 27px);
+  line-height: 1.2;
+  letter-spacing: -0.6px;
+}
+
+.edc-admin-page-heading p {
+  max-width: 680px;
+  color: var(--edc-admin-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.edc-admin-overview {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.edc-admin-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 15px;
+}
+
+.edc-admin-breakdown-list {
+  display: grid;
+  gap: 0;
+  margin: 15px 0 0;
+}
+
+.edc-admin-breakdown-list > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid #f0f1f5;
+}
+
+.edc-admin-breakdown-list > div:last-child {
+  border-bottom: 0;
+}
+
+.edc-admin-breakdown-list dt {
+  color: #687187;
+  font-size: 11px;
+}
+
+.edc-admin-breakdown-list dd {
+  margin: 0;
+  color: #30364c;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.edc-admin-task-copy {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 3px 9px;
+}
+
+.edc-admin-task-copy strong {
+  grid-row: span 2;
+  color: var(--edc-admin-primary);
+  font-size: 18px;
+}
+
+.edc-admin-task-copy > span {
+  color: #40485e;
+  font-weight: 650;
+}
+
+.edc-admin-task-copy small {
+  color: var(--edc-admin-muted);
+  font-size: 10px;
+}
+
+.edc-admin-notifications .edc-admin-empty-state {
+  min-height: 95px;
+}
+
+.edc-admin-notification-list {
+  display: grid;
+  gap: 8px;
+  margin: 15px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.edc-admin-notification-list li {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  border: 1px solid #eeedf4;
+  border-radius: 9px;
+}
+
+.edc-admin-notification-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #e4a53d;
+}
+
+.edc-admin-notification-list p {
+  margin: 0;
+  color: #596177;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.edc-admin-notification-list p strong {
+  color: #30364c;
+}
+
+.edc-admin-notification-list a {
+  color: var(--edc-admin-primary);
+  font-size: 10px;
+  font-weight: 650;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.edc-admin-notification-list a:hover {
+  text-decoration: underline;
+}
+
+.edc-admin-task-list {
+  display: grid;
+  gap: 7px;
+  margin: 17px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.edc-admin-stat-card,
+.edc-admin-panel {
+  border: 1px solid var(--edc-admin-line);
+  border-radius: 13px;
+  background: #fff;
+  box-shadow: 0 3px 14px rgba(37, 45, 80, 0.025);
+}
+
+.edc-admin-stat-card {
+  position: relative;
+  min-height: 135px;
+  padding: 17px;
+}
+
+.edc-admin-stat-card p {
+  margin: 12px 0 7px;
+  color: #727b91;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.edc-admin-stat-card strong {
+  color: #252a40;
+  font-size: 25px;
+  line-height: 1;
+}
+
+.edc-admin-stat-icon,
+.edc-admin-empty-icon {
+  display: grid;
+  place-items: center;
+  color: var(--edc-admin-primary);
+  background: var(--edc-admin-primary-light);
+}
+
+.edc-admin-stat-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+}
+
+.edc-admin-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.edc-admin-panel {
+  min-width: 0;
+  padding: 19px;
+}
+
+.edc-admin-panel-heading h3 {
+  margin: 0;
+  color: #30364c;
+  font-size: 14px;
+}
+
+.edc-admin-panel-heading p {
+  margin: 5px 0 0;
+  color: var(--edc-admin-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.edc-admin-empty-state {
+  display: flex;
+  min-height: 150px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px 12px 8px;
+  text-align: center;
+}
+
+.edc-admin-empty-state-compact {
+  min-height: 132px;
+}
+
+.edc-admin-empty-icon {
+  width: 37px;
+  height: 37px;
+  margin-bottom: 11px;
+  border-radius: 11px;
+}
+
+.edc-admin-empty-state strong {
+  color: #424a60;
+  font-size: 11px;
+}
+
+.edc-admin-empty-state p {
+  max-width: 330px;
+  margin: 5px 0 0;
+  color: #858da0;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.edc-admin-task-list a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #eeedf4;
+  border-radius: 9px;
+  color: #515970;
+  font-size: 11px;
+  text-decoration: none;
+}
+
+.edc-admin-task-list a:hover {
+  border-color: #ded6f5;
+  color: var(--edc-admin-primary);
+  background: #faf9ff;
+}
+
+.edc-admin-task-list svg {
+  flex: 0 0 auto;
+}
+
+.edc-admin-notifications {
+  grid-column: 1 / -1;
+}
+
+.edc-admin-notifications .edc-admin-empty-state {
+  min-height: 95px;
+}
+
+.edc-admin-demo-note {
+  color: #8991a2;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.edc-admin-module-placeholder {
+  display: flex;
+  min-height: 280px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 22px;
+  border: 1px dashed #dfe2eb;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.8);
+  text-align: center;
+}
+
+.edc-admin-placeholder-icon {
+  display: grid;
+  width: 50px;
+  height: 50px;
+  place-items: center;
+  margin-bottom: 16px;
+  border-radius: 15px;
+  color: var(--edc-admin-primary);
+  background: var(--edc-admin-primary-light);
+}
+
+.edc-admin-module-placeholder h3 {
+  margin: 0;
+  color: #34394f;
+  font-size: 16px;
+}
+
+.edc-admin-module-placeholder p {
+  max-width: 500px;
+  margin: 8px 0 15px;
+  color: var(--edc-admin-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.edc-admin-coming-soon {
+  padding: 6px 9px;
+  border-radius: 20px;
+  color: #70628e;
+  background: #f0edfa;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.edc-admin-content .dashboard-section {
+  margin-top: 0;
+}
+
+.edc-admin-content .dashboard-cards {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: 0;
+}
+
+.edc-admin-content .dashboard-card {
+  min-height: 135px;
+  padding: 17px;
+}
+
+.edc-admin-tools-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.edc-admin-tools-header h3 {
+  margin: 0;
+  color: #30364c;
+  font-size: 14px;
+}
+
+.edc-admin-tools-header p {
+  margin-top: 5px;
+  color: var(--edc-admin-muted);
+  font-size: 11px;
+}
+
+.edc-admin-backdrop {
+  display: none;
+}
+
+@media (max-width: 1100px) {
+  .edc-admin-layout {
+    grid-template-columns: 238px minmax(0, 1fr);
+  }
+
+  .edc-admin-sidebar {
+    width: 238px;
+  }
+
+  .edc-admin-topbar {
+    padding-right: 24px;
+    padding-left: 24px;
+  }
+
+  .edc-admin-content {
+    padding-right: 24px;
+    padding-left: 24px;
+  }
+}
+
+@media (max-width: 760px) {
+  body:has(.edc-admin-layout) {
+    min-width: 0;
+  }
+
+  .edc-admin-layout {
+    display: block;
+  }
+
+  .edc-admin-sidebar {
+    position: fixed;
+    left: 0;
+    width: min(320px, 88vw);
+    transform: translateX(-105%);
+    transition: transform 200ms ease;
+    box-shadow: 12px 0 35px rgba(28, 31, 56, 0.12);
+  }
+
+  .edc-admin-sidebar-open {
+    transform: translateX(0);
+  }
+
+  .edc-admin-sidebar-close,
+  .edc-admin-menu-button {
+    display: grid;
+  }
+
+  .edc-admin-sidebar-close {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+  }
+
+  .edc-admin-sidebar-close:hover,
+  .edc-admin-menu-button:hover {
+    color: var(--edc-admin-primary);
+    background: #f4f1ff;
+  }
+
+  .edc-admin-backdrop {
+    position: fixed;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    background: rgba(25, 30, 50, 0.4);
+    z-index: 19;
+  }
+
+  .edc-admin-topbar {
+    min-height: 68px;
+    padding: 10px 16px;
+  }
+
+  .edc-admin-content {
+    padding: 25px 16px 32px;
+  }
+
+  .edc-admin-stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 11px;
+  }
+
+  .edc-admin-stat-card {
+    min-height: 125px;
+    padding: 14px;
+  }
+
+  .edc-admin-overview-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .edc-admin-notifications {
+    grid-column: auto;
+  }
+
+  .edc-admin-content .dashboard-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  .edc-admin-topbar {
+    gap: 8px;
+    padding-right: 11px;
+    padding-left: 11px;
+  }
+
+  .edc-admin-account {
+    gap: 7px;
+  }
+
+  .edc-admin-account-avatar {
+    width: 32px;
+    height: 32px;
+  }
+
+  .edc-admin-account-copy small {
+    max-width: 105px;
+  }
+
+  .edc-admin-logout {
+    gap: 0;
+    margin-left: 2px;
+    padding: 8px;
+  }
+
+  .edc-admin-logout span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+
+  .edc-admin-content {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .edc-admin-content .dashboard-cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .edc-admin-stat-card strong {
+    font-size: 23px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .edc-admin-nav-item,
+  .edc-admin-logout,
+  .edc-admin-sidebar {
+    transition: none;
+  }
+}

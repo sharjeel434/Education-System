@@ -107,14 +107,16 @@ function LoginPage() {
       return;
     }
 
-    const user = findSavedAccount(email);
-
-    if (!user) {
-      setError(
-        "This email is not registered yet. Please create an account first."
-      );
-      return;
-    }
+    const adminEmail = import.meta.env.DEV
+      ? import.meta.env.VITE_ADMIN_EMAIL?.trim().toLowerCase()
+      : "";
+    const adminPassword = import.meta.env.DEV
+      ? import.meta.env.VITE_ADMIN_PASSWORD
+      : "";
+    const normalizedEmail = email.trim().toLowerCase();
+    const isConfiguredAdminEmail =
+      Boolean(adminEmail && adminPassword) &&
+      normalizedEmail === adminEmail;
 
     if (!password) {
       setError("Please enter your password.");
@@ -128,11 +130,46 @@ function LoginPage() {
       return;
     }
 
-    if (!(await checkPassword(user, password))) {
-      setError(
-        "That password does not match this account."
-      );
-      return;
+    let authenticatedUser;
+
+    if (isConfiguredAdminEmail) {
+      if (password !== adminPassword) {
+        setError("That password does not match this account.");
+        return;
+      }
+
+      const registeredAccount = findSavedAccount(email);
+
+      if (
+        registeredAccount &&
+        registeredAccount.role !== "Admin"
+      ) {
+        setError("This account does not have Admin access.");
+        return;
+      }
+
+      authenticatedUser = {
+        email: adminEmail,
+        role: "Admin",
+      };
+    } else {
+      const user = findSavedAccount(email);
+
+      if (!user) {
+        setError(
+          "This email is not registered yet. Please create an account first."
+        );
+        return;
+      }
+
+      if (!(await checkPassword(user, password))) {
+        setError(
+          "That password does not match this account."
+        );
+        return;
+      }
+
+      authenticatedUser = user;
     }
 
     if (rememberMe) {
@@ -148,22 +185,22 @@ function LoginPage() {
 
     window.sessionStorage.setItem(
       "educonnect.demoEmail",
-      user.email
+      authenticatedUser.email
     );
 
     window.sessionStorage.setItem(
       "educonnect.demoRole",
-      user.role
+      authenticatedUser.role
     );
 
     const dashboardPath =
-  user.role === "Admin"
-    ? "/admin/dashboard"
-    : user.role === "Teacher"
-      ? "/teacher/dashboard"
-      : "/student/dashboard";
+      authenticatedUser.role === "Admin"
+        ? "/admin/dashboard"
+        : authenticatedUser.role === "Teacher"
+          ? "/teacher/dashboard"
+          : "/student/dashboard";
 
-navigate(dashboardPath, { replace: true });
+    navigate(dashboardPath, { replace: true });
   };
 
   const handleForgotPassword = () => {

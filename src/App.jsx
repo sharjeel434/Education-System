@@ -581,6 +581,13 @@ if (
   }
 
   if (
+    location.pathname === "/admin" ||
+    location.pathname.startsWith("/admin/")
+  ) {
+    return <DashboardPage />;
+  }
+
+  if (
     location.pathname === "/student/dashboard" ||
     location.pathname.startsWith("/student/dashboard/")
   ) {
@@ -595,10 +602,7 @@ if (
   }
 
 if (
-  [
-    "/dashboard",
-    "/admin/dashboard",
-  ].includes(location.pathname)
+  location.pathname === "/dashboard"
 ) {
   return (
     <div className="website">

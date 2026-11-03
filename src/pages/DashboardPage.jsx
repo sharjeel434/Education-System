@@ -15,7 +15,7 @@ import {
 
 import StudentDashboard from "./dashboards/StudentDashboard";
 import TeacherDashboard from "./dashboards/TeacherDashboard";
-import AdminDashboard from "./dashboards/AdminDashboard";
+import AdminLayout from "../components/admin/AdminLayout";
 
 import "./AuthPages.css";
 
@@ -24,6 +24,23 @@ const DASHBOARDS = {
   Teacher: "/teacher/dashboard",
   Admin: "/admin/dashboard",
 };
+
+const ADMIN_ROUTES = [
+  "/admin/dashboard",
+  "/admin/teachers",
+  "/admin/courses",
+  "/admin/knowledge",
+  "/admin/users",
+  "/admin/institutions",
+  "/admin/tutors",
+  "/admin/finance",
+  "/admin/ai-operations",
+  "/admin/support",
+  "/admin/reports",
+  "/admin/audit-logs",
+  "/admin/settings",
+  "/admin/security",
+];
 
 function DashboardPage() {
   const navigate = useNavigate();
@@ -52,8 +69,14 @@ function DashboardPage() {
   const isRoleSubpage =
     ["Student", "Teacher"].includes(role) &&
     location.pathname.startsWith(`${expectedPath}/`);
+  const isAdminSubpage =
+    role === "Admin" && ADMIN_ROUTES.includes(location.pathname);
 
-  if (location.pathname !== expectedPath && !isRoleSubpage) {
+  if (
+    location.pathname !== expectedPath &&
+    !isRoleSubpage &&
+    !isAdminSubpage
+  ) {
     return <Navigate to={expectedPath} replace />;
   }
 
@@ -69,19 +92,19 @@ function DashboardPage() {
     navigate("/login", { replace: true });
   }
 
+  if (role === "Admin") {
+    return <AdminLayout email={email} onLogout={signOut} />;
+  }
+
   const welcomeTitle =
     role === "Teacher"
       ? "Welcome to your teaching space."
-      : role === "Admin"
-        ? "Welcome to the control center."
-        : "Welcome to your learning space.";
+      : "Welcome to your learning space.";
 
   const welcomeDescription =
     role === "Teacher"
       ? "Create courses and manage your teaching journey."
-      : role === "Admin"
-        ? "Manage teachers, courses and platform activity."
-        : "Explore courses and continue your learning journey.";
+      : "Explore courses and continue your learning journey.";
 
   
 return (
@@ -146,10 +169,6 @@ return (
 
         {role === "Teacher" && (
           <TeacherDashboard email={email} />
-        )}
-
-        {role === "Admin" && (
-          <AdminDashboard />
         )}
 
         <p className="dashboard-demo-note">

@@ -1,0 +1,112 @@
+[1mdiff --git a/src/pages/LoginPage.jsx b/src/pages/LoginPage.jsx[m
+[1mindex bbc9551..630e07d 100644[m
+[1m--- a/src/pages/LoginPage.jsx[m
+[1m+++ b/src/pages/LoginPage.jsx[m
+[36m@@ -107,14 +107,16 @@[m [mfunction LoginPage() {[m
+       return;[m
+     }[m
+ [m
+[31m-    const user = findSavedAccount(email);[m
+[31m-[m
+[31m-    if (!user) {[m
+[31m-      setError([m
+[31m-        "This email is not registered yet. Please create an account first."[m
+[31m-      );[m
+[31m-      return;[m
+[31m-    }[m
+[32m+[m[32m    const adminEmail = import.meta.env.DEV[m
+[32m+[m[32m      ? import.meta.env.VITE_ADMIN_EMAIL?.trim().toLowerCase()[m
+[32m+[m[32m      : "";[m
+[32m+[m[32m    const adminPassword = import.meta.env.DEV[m
+[32m+[m[32m      ? import.meta.env.VITE_ADMIN_PASSWORD[m
+[32m+[m[32m      : "";[m
+[32m+[m[32m    const normalizedEmail = email.trim().toLowerCase();[m
+[32m+[m[32m    const isConfiguredAdminEmail =[m
+[32m+[m[32m      Boolean(adminEmail && adminPassword) &&[m
+[32m+[m[32m      normalizedEmail === adminEmail;[m
+ [m
+     if (!password) {[m
+       setError("Please enter your password.");[m
+[36m@@ -128,11 +130,46 @@[m [mfunction LoginPage() {[m
+       return;[m
+     }[m
+ [m
+[31m-    if (!(await checkPassword(user, password))) {[m
+[31m-      setError([m
+[31m-        "That password does not match this account."[m
+[31m-      );[m
+[31m-      return;[m
+[32m+[m[32m    let authenticatedUser;[m
+[32m+[m
+[32m+[m[32m    if (isConfiguredAdminEmail) {[m
+[32m+[m[32m      if (password !== adminPassword) {[m
+[32m+[m[32m        setError("That password does not match this account.");[m
+[32m+[m[32m        return;[m
+[32m+[m[32m      }[m
+[32m+[m
+[32m+[m[32m      const registeredAccount = findSavedAccount(email);[m
+[32m+[m
+[32m+[m[32m      if ([m
+[32m+[m[32m        registeredAccount &&[m
+[32m+[m[32m        registeredAccount.role !== "Admin"[m
+[32m+[m[32m      ) {[m
+[32m+[m[32m        setError("This account does not have Admin access.");[m
+[32m+[m[32m        return;[m
+[32m+[m[32m      }[m
+[32m+[m
+[32m+[m[32m      authenticatedUser = {[m
+[32m+[m[32m        email: adminEmail,[m
+[32m+[m[32m        role: "Admin",[m
+[32m+[m[32m      };[m
+[32m+[m[32m    } else {[m
+[32m+[m[32m      const user = findSavedAccount(email);[m
+[32m+[m
+[32m+[m[32m      if (!user) {[m
+[32m+[m[32m        setError([m
+[32m+[m[32m          "This email is not registered yet. Please create an account first."[m
+[32m+[m[32m        );[m
+[32m+[m[32m        return;[m
+[32m+[m[32m      }[m
+[32m+[m
+[32m+[m[32m      if (!(await checkPassword(user, password))) {[m
+[32m+[m[32m        setError([m
+[32m+[m[32m          "That password does not match this account."[m
+[32m+[m[32m        );[m
+[32m+[m[32m        return;[m
+[32m+[m[32m      }[m
+[32m+[m
+[32m+[m[32m      authenticatedUser = user;[m
+     }[m
+ [m
+     if (rememberMe) {[m
+[36m@@ -148,22 +185,22 @@[m [mfunction LoginPage() {[m
+ [m
+     window.sessionStorage.setItem([m
+       "educonnect.demoEmail",[m
+[31m-      user.email[m
+[32m+[m[32m      authenticatedUser.email[m
+     );[m
+ [m
+     window.sessionStorage.setItem([m
+       "educonnect.demoRole",[m
+[31m-      user.role[m
+[32m+[m[32m      authenticatedUser.role[m
+     );[m
+ [m
+     const dashboardPath =[m
+[31m-  user.role === "Admin"[m
+[31m-    ? "/admin/dashboard"[m
+[31m-    : user.role === "Teacher"[m
+[31m-      ? "/teacher/dashboard"[m
+[31m-      : "/student/dashboard";[m
+[32m+[m[32m      authenticatedUser.role === "Admin"[m
+[32m+[m[32m        ? "/admin/dashboard"[m
+[32m+[m[32m        : authenticatedUser.role === "Teacher"[m
+[32m+[m[32m          ? "/teacher/dashboard"[m
+[32m+[m[32m          : "/student/dashboard";[m
+ [m
+[31m-navigate(dashboardPath, { replace: true });[m
+[32m+[m[32m    navigate(dashboardPath, { replace: true });[m
+   };[m
+ [m
+   const handleForgotPassword = () => {[m
