@@ -1,4 +1,4 @@
-
+import DemoAdminSetup from "./pages/DemoAdminSetup";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
@@ -567,7 +567,12 @@ function App() {
       </div>
     )
   );
-
+if (
+  import.meta.env.DEV &&
+  location.pathname === "/dev/admin-setup"
+) {
+  return <DemoAdminSetup />;
+}
   if (location.pathname === "/signup") {
     return <SignupPage />;
   }
@@ -575,14 +580,23 @@ function App() {
     return <LoginPage />;
   }
 
-  if (location.pathname === "/student/dashboard") {
+  if (
+    location.pathname === "/student/dashboard" ||
+    location.pathname.startsWith("/student/dashboard/")
+  ) {
+    return <DashboardPage />;
+  }
+
+  if (
+    location.pathname === "/teacher/dashboard" ||
+    location.pathname.startsWith("/teacher/dashboard/")
+  ) {
     return <DashboardPage />;
   }
 
 if (
   [
     "/dashboard",
-    "/teacher/dashboard",
     "/admin/dashboard",
   ].includes(location.pathname)
 ) {

@@ -156,12 +156,14 @@ function LoginPage() {
       user.role
     );
 
-    navigate(
-      user.role === "Teacher"
-        ? "/teacher/dashboard"
-        : "/student/dashboard",
-      { replace: true }
-    );
+    const dashboardPath =
+  user.role === "Admin"
+    ? "/admin/dashboard"
+    : user.role === "Teacher"
+      ? "/teacher/dashboard"
+      : "/student/dashboard";
+
+navigate(dashboardPath, { replace: true });
   };
 
   const handleForgotPassword = () => {

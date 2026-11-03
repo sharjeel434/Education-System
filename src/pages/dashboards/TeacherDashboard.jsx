@@ -1,5 +1,6 @@
 
 import { useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   BookOpen,
   CheckCircle2,
@@ -16,6 +17,7 @@ import {
   Layers3,
   ArrowRight,
   UserRound,
+  LogOut,
 } from "lucide-react";
 
 const purple = "#6d28d9";
@@ -91,8 +93,16 @@ const navigation = [
 ];
 
 function TeacherDashboard({ email = "teacher@example.com" }) {
+  const location = useLocation();
+  const navigate = useNavigate();
   const courseKey = `educonnect.teacher.${email}.courses`;
   const profileKey = `educonnect.teacher.${email}.profile`;
+
+  function signOut() {
+    window.sessionStorage.removeItem("educonnect.demoEmail");
+    window.sessionStorage.removeItem("educonnect.demoRole");
+    navigate("/login", { replace: true });
+  }
 
   const [courses, setCourses] = useState(() =>
     readSaved(courseKey, [])
@@ -106,7 +116,13 @@ function TeacherDashboard({ email = "teacher@example.com" }) {
     })
   );
 
-  const [tab, setTab] = useState("overview");
+  const [tab, setTab] = useState(() =>
+    location.pathname.startsWith("/teacher/dashboard/students/")
+      ? "students"
+      : location.pathname.startsWith("/teacher/dashboard/earnings/")
+        ? "earnings"
+        : "overview"
+  );
   
 const [earningsPeriod, setEarningsPeriod] = useState("6months");
 const [transactionSearch, setTransactionSearch] = useState("");
@@ -335,6 +351,9 @@ const filteredCourses = courses.filter((course) => {
   function navigateTo(nextTab) {
     setTab(nextTab);
     setMobileMenuOpen(false);
+    if (location.pathname !== "/teacher/dashboard") {
+      navigate("/teacher/dashboard");
+    }
   }
 
   function startCreate() {
@@ -718,6 +737,135 @@ function handleDemoWithdrawal(event) {
     },
   ];
 
+  const teacherStatDetailSlug = location.pathname.startsWith("/teacher/dashboard/overview/")
+    ? location.pathname.split("/").at(-1)
+    : "";
+  const teacherStatDetailConfig = {
+    "total-courses": {
+      title: "Total Courses",
+      description: "All courses in your teaching workspace.",
+      courses,
+      emptyMessage: "You have not created any courses yet.",
+    },
+    "draft-courses": {
+      title: "Draft Courses",
+      description: "Courses saved as drafts and not submitted for approval.",
+      courses: courses.filter((course) => (course.status || "Draft") === "Draft"),
+      emptyMessage: "You have no draft courses.",
+    },
+    "pending-approval": {
+      title: "Pending Approval",
+      description: "Courses waiting for an administrator to review them.",
+      courses: courses.filter((course) => course.status === "Pending Approval"),
+      emptyMessage: "You have no courses waiting for approval.",
+    },
+    "approved-courses": {
+      title: "Approved Courses",
+      description: "Courses approved and ready for learners.",
+      courses: courses.filter((course) => course.status === "Approved"),
+      emptyMessage: "You have no approved courses yet.",
+    },
+  }[teacherStatDetailSlug];
+
+  const teacherStudentDetailSlug = location.pathname.startsWith("/teacher/dashboard/students/")
+    ? location.pathname.split("/").at(-1)
+    : "";
+  const teacherStudentDetailConfig = {
+    "total-students": {
+      title: "Total Demo Students",
+      description: "Student enrollment records shown in this frontend demo.",
+      items: demoStudents.map((student) => ({
+        id: student.id,
+        title: student.name,
+        detail: `${student.email} · ${student.courseTitle} · Enrolled ${student.enrolledAt}`,
+        status: `${student.progress}% progress`,
+        progress: student.progress,
+      })),
+      emptyMessage: "No demo student records are available.",
+    },
+    "demo-courses": {
+      title: "Demo Courses",
+      description: "Courses with sample student enrollments and progress.",
+      items: studentCourses.map((courseTitle) => {
+        const enrolledStudents = demoStudents.filter((student) => student.courseTitle === courseTitle);
+        const averageCourseProgress = enrolledStudents.length
+          ? Math.round(enrolledStudents.reduce((total, student) => total + student.progress, 0) / enrolledStudents.length)
+          : 0;
+        return {
+          id: courseTitle,
+          title: courseTitle,
+          detail: enrolledStudents.map((student) => `${student.name} (${student.progress}%)`).join(" · "),
+          status: `${enrolledStudents.length} ${enrolledStudents.length === 1 ? "student" : "students"}`,
+          progress: averageCourseProgress,
+        };
+      }),
+      emptyMessage: "No demo courses have student enrollments.",
+    },
+    "average-progress": {
+      title: "Average Demo Progress",
+      description: `Average learning progress across all demo enrollments is ${demoStudents.length ? Math.round(demoStudents.reduce((total, student) => total + student.progress, 0) / demoStudents.length) : 0}%. Individual progress is listed below.`,
+      items: [...demoStudents].sort((a, b) => a.progress - b.progress).map((student) => ({
+        id: student.id,
+        title: student.name,
+        detail: `${student.courseTitle} · ${student.completedLessons} of ${student.totalLessons} lessons completed`,
+        status: `${student.progress}%`,
+        progress: student.progress,
+      })),
+      emptyMessage: "No demo progress records are available.",
+    },
+  }[teacherStudentDetailSlug];
+
+  const teacherEarningsDetailSlug = location.pathname.startsWith("/teacher/dashboard/earnings/")
+    ? location.pathname.split("/").at(-1)
+    : "";
+  const teacherEarningsDetailConfig = {
+    "total-earnings": {
+      title: "Total Demo Earnings",
+      description: "Sample revenue by month. The monthly revenue figures are demo data and are not calculated from the sample transactions.",
+      items: demoRevenue.map((month) => ({
+        id: month.month,
+        title: `${month.month} 2026`,
+        detail: "Sample monthly revenue",
+        amount: month.revenue,
+        status: "Demo revenue",
+      })),
+      emptyMessage: "No sample revenue data is available.",
+    },
+    "monthly-earnings": {
+      title: "November Demo Earnings",
+      description: "Sample November revenue and transactions recorded for November.",
+      items: [
+        {
+          id: "november-revenue",
+          title: "November sample revenue",
+          detail: "Monthly demo revenue figure",
+          amount: demoMonthlyEarnings,
+          status: "Demo revenue",
+        },
+        ...demoTransactions.filter((transaction) => transaction.date.startsWith("2026-11")).map((transaction) => ({
+          id: transaction.id,
+          title: transaction.id,
+          detail: `${transaction.student} · ${transaction.course} · ${transaction.date}`,
+          amount: transaction.amount,
+          status: transaction.status,
+        })),
+      ],
+      emptyMessage: "No November earnings data is available.",
+    },
+    "completed-sales": {
+      title: "Demo Completed Sales",
+      description: `${demoCompletedSales} completed sample transactions. These are fictional sales for this frontend demo.`,
+      items: demoTransactions.filter((transaction) => transaction.status === "Completed").map((transaction) => ({
+        id: transaction.id,
+        title: transaction.id,
+        detail: `${transaction.student} · ${transaction.course} · ${transaction.date}`,
+        amount: transaction.amount,
+        status: transaction.status,
+      })),
+      emptyMessage: "There are no completed demo sales.",
+    },
+  }[teacherEarningsDetailSlug];
+
   return (
     <section className="edc-teacher-shell">
       {/* MOBILE MENU */}
@@ -807,18 +955,6 @@ function handleDemoWithdrawal(event) {
           ))}
         </nav>
 
-        <div className="edc-teacher-sidebar-tip">
-          <strong>Ready to teach?</strong>
-
-          <p>
-            Create a course, add lessons and prepare it
-            for approval.
-          </p>
-
-          <button type="button" onClick={startCreate}>
-            + Create Course
-          </button>
-        </div>
       </aside>
 
       {/* MAIN CONTENT */}
@@ -827,28 +963,117 @@ function handleDemoWithdrawal(event) {
         <header className="edc-teacher-topbar">
           <div>
             <span className="edc-teacher-breadcrumb">
-              Teacher Workspace /{" "}
-              {navigation.find(([id]) => id === tab)?.[1]}
+              Teacher Workspace / {teacherEarningsDetailConfig ? `Earnings / ${teacherEarningsDetailConfig.title}` : teacherStudentDetailConfig ? `My Students / ${teacherStudentDetailConfig.title}` : teacherStatDetailConfig ? `Overview / ${teacherStatDetailConfig.title}` : navigation.find(([id]) => id === tab)?.[1]}
             </span>
 
             <h2>
-              {navigation.find(([id]) => id === tab)?.[1]}
+              {teacherEarningsDetailConfig?.title || teacherStudentDetailConfig?.title || teacherStatDetailConfig?.title || navigation.find(([id]) => id === tab)?.[1]}
             </h2>
           </div>
-
-          <button
-            type="button"
-            className="edc-teacher-primary"
-            onClick={startCreate}
-          >
-            <Plus size={17} />
-            Create Course
+          <button type="button" className="edc-dashboard-logout" onClick={signOut}>
+            <LogOut size={17} /> Log out
           </button>
         </header>
 
+        {teacherStatDetailConfig && (
+          <section className="edc-teacher-stat-detail-page">
+            <button type="button" className="edc-teacher-detail-back" onClick={() => navigateTo("overview")}>
+              <ArrowRight size={16} /> Back to Overview
+            </button>
+            <p className="edc-teacher-detail-description">{teacherStatDetailConfig.description}</p>
+            {teacherStatDetailConfig.courses.length ? (
+              <div className="edc-teacher-detail-courses">
+                {teacherStatDetailConfig.courses.map((course) => (
+                  <article key={course.id} className="edc-teacher-course-row">
+                    <BookOpen size={22} color={purple} />
+                    <div className="edc-teacher-course-info">
+                      <strong>{course.title}</strong>
+                      <span>{course.category || "Uncategorized"} · {(course.lessons || []).length} lessons</span>
+                    </div>
+                    <span className={`edc-teacher-stat-detail-status ${course.status === "Approved" ? "approved" : course.status === "Pending Approval" ? "pending" : "draft"}`}>
+                      {course.status || "Draft"}
+                    </span>
+                    <button type="button" className="edc-teacher-detail-edit" onClick={() => startEdit(course)} aria-label={`Edit ${course.title}`}>
+                      <Edit3 size={15} /> Edit
+                    </button>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <section className="edc-teacher-panel edc-teacher-detail-empty">
+                <BookOpen size={38} color={purple} />
+                <h3>{teacherStatDetailConfig.emptyMessage}</h3>
+                <button type="button" className="edc-teacher-primary" onClick={startCreate}>
+                  <Plus size={16} /> Create Course
+                </button>
+              </section>
+            )}
+          </section>
+        )}
+
+        {teacherStudentDetailConfig && (
+          <section className="edc-teacher-stat-detail-page">
+            <button type="button" className="edc-teacher-detail-back" onClick={() => navigateTo("students")}>
+              <ArrowRight size={16} /> Back to My Students
+            </button>
+            <p className="edc-teacher-detail-description">{teacherStudentDetailConfig.description}</p>
+            {teacherStudentDetailConfig.items.length ? (
+              <div className="edc-teacher-detail-courses edc-teacher-student-detail-list">
+                {teacherStudentDetailConfig.items.map((item) => (
+                  <article key={item.id} className="edc-teacher-student-detail-row">
+                    <div className="edc-teacher-course-info">
+                      <strong>{item.title}</strong>
+                      <span>{item.detail}</span>
+                    </div>
+                    <span className="edc-teacher-stat-detail-status">{item.status}</span>
+                    <div className="edc-teacher-student-detail-progress" role="img" aria-label={`${item.progress}% progress`}>
+                      <span style={{ width: `${item.progress}%` }} />
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <section className="edc-teacher-panel edc-teacher-detail-empty">
+                <Users size={38} color={purple} />
+                <h3>{teacherStudentDetailConfig.emptyMessage}</h3>
+              </section>
+            )}
+          </section>
+        )}
+
+        {teacherEarningsDetailConfig && (
+          <section className="edc-teacher-stat-detail-page">
+            <button type="button" className="edc-teacher-detail-back" onClick={() => navigateTo("earnings")}>
+              <ArrowRight size={16} /> Back to Earnings
+            </button>
+            <p className="edc-teacher-detail-description">{teacherEarningsDetailConfig.description}</p>
+            {teacherEarningsDetailConfig.items.length ? (
+              <div className="edc-teacher-detail-courses edc-teacher-earnings-detail-list">
+                {teacherEarningsDetailConfig.items.map((item) => (
+                  <article key={item.id} className="edc-earnings-request-row">
+                    <div>
+                      <strong>{item.title}</strong>
+                      <p>{item.detail}</p>
+                    </div>
+                    <strong>PKR {item.amount.toLocaleString()}</strong>
+                    <span className={`edc-earnings-status ${item.status === "Completed" ? "completed" : item.status === "Pending" ? "pending" : ""}`}>
+                      {item.status}
+                    </span>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <section className="edc-teacher-panel edc-teacher-detail-empty">
+                <Wallet size={38} color={purple} />
+                <h3>{teacherEarningsDetailConfig.emptyMessage}</h3>
+              </section>
+            )}
+          </section>
+        )}
+
         {/* STEP 1: OVERVIEW */}
 
-        {tab === "overview" && (
+        {tab === "overview" && !teacherStatDetailConfig && (
           <div className="edc-teacher-overview">
             <section className="edc-teacher-hero">
               <div>
@@ -892,9 +1117,16 @@ function handleDemoWithdrawal(event) {
 
             <section className="edc-teacher-stats">
               {statCards.map(({ label, value, icon: Icon }) => (
-                <article
+                <button
+                  type="button"
                   key={label}
-                  className="edc-teacher-stat"
+                  className="edc-teacher-stat edc-teacher-stat-button"
+                  onClick={() => navigate(`/teacher/dashboard/overview/${{
+                    "Total Courses": "total-courses",
+                    "Draft Courses": "draft-courses",
+                    "Pending Approval": "pending-approval",
+                    "Approved Courses": "approved-courses",
+                  }[label]}`)}
                 >
                   <div className="edc-teacher-stat-icon">
                     <Icon size={23} />
@@ -905,7 +1137,7 @@ function handleDemoWithdrawal(event) {
                   <span style={{ color: "#80758e" }}>
                     {label}
                   </span>
-                </article>
+                </button>
               ))}
             </section>
 
@@ -998,42 +1230,9 @@ function handleDemoWithdrawal(event) {
                 )}
               </section>
 
-              {/* QUICK ACTIONS AND SUMMARY */}
+              {/* TEACHING SUMMARY */}
 
               <div className="edc-teacher-overview-side">
-                <section className="edc-teacher-panel">
-                  <div className="edc-teacher-panel-heading">
-                    <h3>Quick Actions</h3>
-                  </div>
-
-                  <div className="edc-teacher-quick-actions">
-                    <button type="button" onClick={startCreate}>
-                      + Create a New Course
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => navigateTo("courses")}
-                    >
-                      Manage My Courses
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => navigateTo("lessons")}
-                    >
-                      Manage Lessons
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => navigateTo("profile")}
-                    >
-                      Edit Teacher Profile
-                    </button>
-                  </div>
-                </section>
-
                 <section className="edc-teacher-panel">
                   <div className="edc-teacher-panel-heading">
                     <h3>Teaching Summary</h3>
@@ -1531,7 +1730,17 @@ function handleDemoWithdrawal(event) {
         </p>
       </div>
 
-      <div className="edc-lessons-count">
+      <div className="edc-lessons-header-actions">
+        <button
+          type="button"
+          className="edc-lessons-add-button"
+          disabled={!courses.length}
+          onClick={() => openLessonForm(courses[0]?.id || "")}
+        >
+          <Plus size={17} /> Add Lesson
+        </button>
+
+        <div className="edc-lessons-count">
         <BookOpen size={20} />
         <span>
           {courses.reduce(
@@ -1541,6 +1750,7 @@ function handleDemoWithdrawal(event) {
           )}{" "}
           Total Lessons
         </span>
+        </div>
       </div>
     </div>
 
@@ -1585,16 +1795,6 @@ function handleDemoWithdrawal(event) {
                 </div>
               </div>
 
-              <button
-                type="button"
-                className="edc-lessons-add-button"
-                onClick={() =>
-                  openLessonForm(course.id)
-                }
-              >
-                <Plus size={17} />
-                Add Lesson
-              </button>
             </div>
 
             {(course.lessons || []).length === 0 ? (
@@ -1602,7 +1802,7 @@ function handleDemoWithdrawal(event) {
                 <Layers3 size={30} />
                 <p>No lessons added yet.</p>
                 <span>
-                  Click Add Lesson to create your first lesson.
+                  Use the Add Lesson button above to create your first lesson.
                 </span>
               </div>
             ) : (
@@ -1744,6 +1944,21 @@ function handleDemoWithdrawal(event) {
 
           <div className="edc-lesson-modal-body">
             <div className="edc-lesson-field">
+              <label htmlFor="edc-lesson-course">Course</label>
+              <select
+                id="edc-lesson-course"
+                required
+                value={selectedLessonCourse}
+                disabled={editingLessonId !== null}
+                onChange={(event) => setSelectedLessonCourse(event.target.value)}
+              >
+                {courses.map((course) => (
+                  <option key={course.id} value={course.id}>{course.title}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="edc-lesson-field">
               <label>Lesson Title</label>
               <input
                 required
@@ -1858,7 +2073,7 @@ function handleDemoWithdrawal(event) {
       
 {/* STUDENTS */}
 
-{tab === "students" && (
+{tab === "students" && !teacherStudentDetailConfig && (
   <div className="edc-students-page">
     <div className="edc-students-header">
       <div>
@@ -1877,23 +2092,26 @@ function handleDemoWithdrawal(event) {
     </div>
 
     <div className="edc-students-stats">
-      <div className="edc-students-stat-card">
+      <button type="button" className="edc-students-stat-card edc-students-stat-button"
+        onClick={() => navigate("/teacher/dashboard/students/total-students")}>
         <Users size={23} />
         <div>
           <h3>{demoStudents.length}</h3>
           <p>Total Demo Students</p>
         </div>
-      </div>
+      </button>
 
-      <div className="edc-students-stat-card">
+      <button type="button" className="edc-students-stat-card edc-students-stat-button"
+        onClick={() => navigate("/teacher/dashboard/students/demo-courses")}>
         <BookOpen size={23} />
         <div>
           <h3>{studentCourses.length}</h3>
           <p>Demo Courses</p>
         </div>
-      </div>
+      </button>
 
-      <div className="edc-students-stat-card">
+      <button type="button" className="edc-students-stat-card edc-students-stat-button"
+        onClick={() => navigate("/teacher/dashboard/students/average-progress")}>
         <CheckCircle2 size={23} />
         <div>
           <h3>
@@ -1907,7 +2125,7 @@ function handleDemoWithdrawal(event) {
           </h3>
           <p>Average Demo Progress</p>
         </div>
-      </div>
+      </button>
     </div>
 
     <div className="edc-students-main-card">
@@ -2088,7 +2306,7 @@ function handleDemoWithdrawal(event) {
       
 {/* EARNINGS */}
 
-{tab === "earnings" && (
+{tab === "earnings" && !teacherEarningsDetailConfig && (
   <div className="edc-earnings-page">
     <div className="edc-earnings-header">
       <div>
@@ -2107,32 +2325,35 @@ function handleDemoWithdrawal(event) {
     </div>
 
     <div className="edc-earnings-stats">
-      <div className="edc-earnings-stat-card">
+      <button type="button" className="edc-earnings-stat-card edc-earnings-stat-button"
+        onClick={() => navigate("/teacher/dashboard/earnings/total-earnings")}>
         <div className="edc-earnings-stat-icon">
           <Wallet size={24} />
         </div>
         <p>Total Demo Earnings</p>
         <h3>PKR {totalDemoEarnings.toLocaleString()}</h3>
         <span>Sample revenue across 6 months</span>
-      </div>
+      </button>
 
-      <div className="edc-earnings-stat-card">
+      <button type="button" className="edc-earnings-stat-card edc-earnings-stat-button"
+        onClick={() => navigate("/teacher/dashboard/earnings/monthly-earnings")}>
         <div className="edc-earnings-stat-icon">
           <Clock3 size={24} />
         </div>
         <p>November Demo Earnings</p>
         <h3>PKR {demoMonthlyEarnings.toLocaleString()}</h3>
         <span>Sample monthly revenue</span>
-      </div>
+      </button>
 
-      <div className="edc-earnings-stat-card">
+      <button type="button" className="edc-earnings-stat-card edc-earnings-stat-button"
+        onClick={() => navigate("/teacher/dashboard/earnings/completed-sales")}>
         <div className="edc-earnings-stat-icon">
           <BookOpen size={24} />
         </div>
         <p>Demo Completed Sales</p>
         <h3>{demoCompletedSales}</h3>
         <span>Completed sample transactions</span>
-      </div>
+      </button>
     </div>
 
     <div className="edc-earnings-chart-card">

@@ -199,6 +199,29 @@
   color: #6e6090;
 }
 
+.edc-dashboard-logout {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  padding: 10px 13px;
+  border: 1px solid #e9e3f3;
+  border-radius: 10px;
+  background: #fff;
+  color: #6335c6;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background .18s ease, border-color .18s ease;
+}
+
+.edc-dashboard-logout:hover {
+  border-color: #d2c1f2;
+  background: #f7f3ff;
+}
+
 .edc-demo-badge span {
   width: 7px;
   height: 7px;
@@ -388,6 +411,30 @@
   font-size: 26px;
   font-weight: 800;
   color: #2c1c50;
+}
+
+.edc-academic-stat-card {
+  width: 100%;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.edc-academic-stat-card:hover,
+.edc-academic-stat-card:focus-visible {
+  border-color: #bba4eb;
+  box-shadow: 0 8px 22px rgba(91, 53, 151, 0.1);
+}
+
+.edc-academic-stat-card:hover {
+  transform: translateY(-2px);
+}
+
+.edc-academic-stat-card:focus-visible {
+  outline: 3px solid rgba(112, 66, 216, 0.22);
+  outline-offset: 2px;
 }
 
 .edc-two-column {
@@ -1261,6 +1308,29 @@
   padding: 16px 32px;
 }
 
+@media (min-width: 901px) {
+  .edc-student-shell {
+    display: block;
+  }
+
+  .edc-student-shell > .edc-sidebar {
+    position: fixed;
+    top: 82px;
+    bottom: 0;
+    left: 0;
+    z-index: 20;
+    width: 260px;
+    height: auto;
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  .edc-student-shell > .edc-main {
+    width: calc(100% - 260px);
+    margin-left: 260px;
+  }
+}
+
 /* Responsive alignment */
 
 @media (max-width: 1200px) {
@@ -1314,6 +1384,13 @@
 }
 /* Student Dashboard: Assignments & Grades */
 .edc-academic-page{width:100%;min-width:0}
+.edc-academic-detail-page{width:min(100%,980px);min-width:0;margin:0 auto;padding:8px 0 32px}
+.edc-academic-detail-back{display:inline-flex;align-items:center;gap:8px;margin:0 0 22px;padding:10px 14px;border:1px solid #e7def5;border-radius:10px;background:#fff;color:#6941b2;cursor:pointer}
+.edc-academic-back-icon{transform:rotate(180deg)}
+.edc-academic-detail-page .edc-academic-results{margin-top:22px}
+.edc-overview-detail-courses{margin-top:22px}
+.edc-academic-stat-detail-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.edc-academic-stat-empty{margin:12px 0 0;padding:18px;border-radius:11px;background:#faf8ff;color:#81778f;font-size:13px;line-height:1.7}
 .edc-academic-tabs{display:flex;gap:10px;flex-wrap:wrap;border-bottom:1px solid #e9e3f3;padding-bottom:14px}
 .edc-academic-tab{display:flex;align-items:center;justify-content:center;gap:9px;border:1px solid transparent;border-radius:11px;padding:13px 17px;background:#fff;color:#776b8e;font-size:12px;font-weight:700;cursor:pointer;transition:.2s}
 .edc-academic-tab:hover{background:#f2ecff;color:#7042d8}
@@ -1433,6 +1510,10 @@
 .edc-research-page{display:grid;gap:22px}
 .edc-research-overview{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
 .edc-research-count{background:#fff;border:1px solid #e9e2fa;border-radius:15px;padding:16px;display:flex;flex-direction:column;gap:5px}
+.edc-research-count-button{width:100%;font:inherit;text-align:left;cursor:pointer;transition:border-color .2s ease,box-shadow .2s ease,transform .2s ease}
+.edc-research-count-button:hover,.edc-research-count-button:focus-visible{border-color:#bba4eb;box-shadow:0 8px 22px rgba(91,53,151,.1)}
+.edc-research-count-button:hover{transform:translateY(-2px)}
+.edc-research-count-button:focus-visible{outline:3px solid rgba(112,66,216,.22);outline-offset:2px}
 .edc-research-count strong{font-size:25px;color:#7044c5}.edc-research-count span{font-size:12px;color:#655c77}
 .edc-research-tabs{display:flex;gap:8px;flex-wrap:wrap}.edc-research-tabs button{border:1px solid #e3d8f7;border-radius:12px;padding:10px 13px;background:#fff;color:#594c71;cursor:pointer;font:inherit;font-size:13px;font-weight:650}
 .edc-research-tabs button.active{background:#7044c5;color:white;border-color:#7044c5}
@@ -1446,6 +1527,7 @@
 .edc-research-library-head{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:15px}
 .edc-research-search{display:flex;align-items:center;gap:6px;color:#7c699d;min-width:190px}.edc-research-search input{padding:9px}
 .edc-research-list{display:grid;gap:12px}.edc-research-item{padding:16px;border:1px solid #e9e2f5;background:#fcfaff;border-radius:13px;min-width:0}
+.edc-research-detail-list{margin-top:22px}
 .edc-research-item h4{font-size:16px;margin:0 0 12px;overflow-wrap:anywhere}.edc-research-field{font-size:13px;line-height:1.6;margin:6px 0;overflow-wrap:anywhere;white-space:pre-wrap}
 .edc-research-field strong{color:#514268}.edc-research-field a{color:#6b3ac4;text-decoration:underline}.edc-research-item small{display:block;color:#8b809d;margin-top:12px}
 .edc-research-disclaimer{margin:0}
@@ -1677,6 +1759,100 @@
   gap: 10px;
 }
 
+.edc-teacher-stat-button {
+  width: 100%;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease;
+}
+
+.edc-teacher-stat-button:hover,
+.edc-teacher-stat-button:focus-visible {
+  border-color: #bba4eb;
+  box-shadow: 0 8px 22px rgba(91, 53, 151, .1);
+}
+
+.edc-teacher-stat-button:hover {
+  transform: translateY(-2px);
+}
+
+.edc-teacher-stat-button:focus-visible {
+  outline: 3px solid rgba(112, 66, 216, .22);
+  outline-offset: 2px;
+}
+
+.edc-teacher-stat-detail-page {
+  display: grid;
+  gap: 18px;
+}
+
+.edc-teacher-detail-back,
+.edc-teacher-detail-edit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 13px;
+  border: 1px solid #e7def5;
+  border-radius: 9px;
+  background: white;
+  color: #6941b2;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.edc-teacher-detail-back {
+  justify-self: start;
+}
+
+.edc-teacher-detail-back svg {
+  transform: rotate(180deg);
+}
+
+.edc-teacher-detail-description {
+  margin: -12px 0 0;
+  color: #80758e;
+  font-size: 13px;
+}
+
+.edc-teacher-detail-courses {
+  padding: 8px 20px;
+  border: 1px solid #ebe5f4;
+  border-radius: 15px;
+  background: white;
+}
+
+.edc-teacher-stat-detail-status {
+  flex: none;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: #f3e8ff;
+  color: #6b21a8;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.edc-teacher-stat-detail-status.pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.edc-teacher-stat-detail-status.approved {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.edc-teacher-detail-empty {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  text-align: center;
+}
+
 .edc-teacher-stat strong {
   font-size: 27px;
 }
@@ -1836,6 +2012,19 @@
   .edc-teacher-stats {
     gap: 10px;
   }
+
+  .edc-teacher-student-detail-row {
+    grid-template-columns: 1fr auto;
+    gap: 12px;
+  }
+
+  .edc-teacher-student-detail-row .edc-teacher-course-info {
+    grid-column: 1 / -1;
+  }
+
+  .edc-teacher-student-detail-progress {
+    min-width: 75px;
+  }
 }
 
 /* Teacher Dashboard - Full Screen */
@@ -1874,7 +2063,23 @@ body:has(.edc-teacher-shell) .dashboard-container {
 
 @media (min-width: 901px) {
   .edc-teacher-shell {
-    grid-template-columns: 250px minmax(0, 1fr);
+    display: block;
+  }
+
+  .edc-teacher-shell > .edc-teacher-sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 1002;
+    width: 250px;
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  .edc-teacher-shell > .edc-teacher-main {
+    width: calc(100% - 250px);
+    margin-left: 250px;
   }
 }
 
@@ -2545,6 +2750,14 @@ body:has(.edc-teacher-shell) .dashboard-container {
   gap: 16px;
 }
 
+.edc-lessons-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
 .edc-lessons-page-header h2 {
   margin: 7px 0;
   font-size: 25px;
@@ -2624,6 +2837,11 @@ body:has(.edc-teacher-shell) .dashboard-container {
   color: #fff;
   font-weight: 700;
   cursor: pointer;
+}
+
+.edc-lessons-add-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .edc-lessons-items {
@@ -2811,6 +3029,7 @@ body:has(.edc-teacher-shell) .dashboard-container {
 }
 
 .edc-lesson-field input,
+.edc-lesson-field select,
 .edc-lesson-field textarea {
   box-sizing: border-box;
   width: 100%;
@@ -2822,6 +3041,7 @@ body:has(.edc-teacher-shell) .dashboard-container {
 }
 
 .edc-lesson-field input:focus,
+.edc-lesson-field select:focus,
 .edc-lesson-field textarea:focus {
   border-color: #7042d8;
 }
@@ -2895,6 +3115,11 @@ body:has(.edc-teacher-shell) .dashboard-container {
   .edc-lessons-course-header {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .edc-lessons-header-actions {
+    width: 100%;
+    justify-content: space-between;
   }
 
   .edc-lessons-item {
@@ -2978,6 +3203,61 @@ body:has(.edc-teacher-shell) .dashboard-container {
   margin: 0;
   color: #82778e;
   font-size: 12px;
+}
+
+.edc-students-stat-button {
+  width: 100%;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease;
+}
+
+.edc-students-stat-button:hover,
+.edc-students-stat-button:focus-visible {
+  border-color: #bba4eb;
+  box-shadow: 0 8px 22px rgba(91, 53, 151, .1);
+}
+
+.edc-students-stat-button:hover {
+  transform: translateY(-2px);
+}
+
+.edc-students-stat-button:focus-visible {
+  outline: 3px solid rgba(112, 66, 216, .22);
+  outline-offset: 2px;
+}
+
+.edc-teacher-student-detail-list {
+  display: grid;
+  gap: 0;
+}
+
+.edc-teacher-student-detail-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(90px, 150px);
+  align-items: center;
+  gap: 18px;
+  padding: 17px 0;
+  border-bottom: 1px solid #f0eaf7;
+}
+
+.edc-teacher-student-detail-row:last-child {
+  border-bottom: 0;
+}
+
+.edc-teacher-student-detail-progress {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 10px;
+  background: #eeeaf5;
+}
+
+.edc-teacher-student-detail-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #9a75ed, #7042d8);
 }
 
 .edc-students-main-card {
@@ -3286,6 +3566,36 @@ body:has(.edc-teacher-shell) .dashboard-container {
   margin: 0;
   color: #82778e;
   font-size: 13px;
+}
+
+.edc-earnings-stat-button {
+  display: block;
+  width: 100%;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease;
+}
+
+.edc-earnings-stat-button:hover,
+.edc-earnings-stat-button:focus-visible {
+  border-color: #bba4eb;
+  box-shadow: 0 8px 22px rgba(91, 53, 151, .1);
+}
+
+.edc-earnings-stat-button:hover {
+  transform: translateY(-2px);
+}
+
+.edc-earnings-stat-button:focus-visible {
+  outline: 3px solid rgba(112, 66, 216, .22);
+  outline-offset: 2px;
+}
+
+.edc-teacher-earnings-detail-list {
+  padding-top: 12px;
+  padding-bottom: 12px;
 }
 
 .edc-earnings-stat-card h3 {

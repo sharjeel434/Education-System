@@ -49,8 +49,11 @@ function DashboardPage() {
   }
 
   const expectedPath = DASHBOARDS[role];
+  const isRoleSubpage =
+    ["Student", "Teacher"].includes(role) &&
+    location.pathname.startsWith(`${expectedPath}/`);
 
-  if (location.pathname !== expectedPath) {
+  if (location.pathname !== expectedPath && !isRoleSubpage) {
     return <Navigate to={expectedPath} replace />;
   }
 
