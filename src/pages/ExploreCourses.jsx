@@ -1,4 +1,6 @@
 
+import PublishedCourses from "../components/Marketplace/PublishedCourses";
+
 import React, { useEffect, useMemo, useState } from "react";
 import ResilientImage from "../components/ResilientImage";
 import ClassBooksArtwork from "../components/ClassBooksArtwork";
@@ -743,7 +745,7 @@ function ExploreCourses({
               </p>
             </div>
           )}
-
+           <PublishedCourses />
           <div className="explore-course-grid">
             {visibleCourses.map((course) => (
               <article className="explore-course-card" key={course.id}>

@@ -1,5 +1,5 @@
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -10,11 +10,21 @@ import {
   Bot,
   Users,
   Heart,
+  ShoppingCart,
+  ReceiptText,
+  Printer,
   Award,
   Microscope,
   GraduationCap,
   Search,
   Bell,
+  MessageCircle,
+  NotebookPen,
+  ChartNoAxesCombined,
+  ListChecks,
+  Route,
+  ListTree,
+  CheckCheck,
   ChevronRight,
   Play,
   CheckCircle2,
@@ -43,6 +53,19 @@ import {
   LogOut,
 } from "lucide-react";
 import "./Dashboard.css";
+import "../../components/notifications/NotificationsCenter.css";
+import CourseReviews from "../../components/reviews/CourseReviews";
+import NotificationsCenter from "../../components/notifications/NotificationsCenter";
+import CourseDiscussions from "../../components/discussions/CourseDiscussions";
+import CourseNotes from "../../components/notes/CourseNotes";
+import LearningAnalytics from "../../components/analytics/LearningAnalytics";
+import CourseQuizzes from "../../components/quizzes/CourseQuizzes";
+import CourseAssignments from "../../components/assignments/CourseAssignments";
+import LearningPaths from "../../components/learning-paths/LearningPaths";
+import CurriculumBuilder from "../../components/curriculum/CurriculumBuilder";
+import { readDiscussions, subscribeDiscussions } from "../../utils/courseDiscussions";
+import { getPublishedTeacherCourses } from "../../utils/teacherCourses";
+import { lessonVideoKey, loadLessonVideo } from "../../utils/lessonVideos";
 
 const COURSES = [
   {
@@ -116,12 +139,23 @@ const DEMO_TUTORS = [
 const MENU = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
   { id: "learning", label: "My Learning", icon: BookOpen },
+  { id: "reviews", label: "My Reviews", icon: Star },
+  { id: "discussions", label: "Course Q&A", icon: MessageCircle },
+  { id: "notes", label: "Notes & Bookmarks", icon: NotebookPen },
+  { id: "analytics", label: "Learning Analytics", icon: ChartNoAxesCombined },
+  { id: "quizzes", label: "Course Quizzes", icon: ListChecks },
+  { id: "course-assignments", label: "Course Assignments", icon: ClipboardList },
+  { id: "learning-paths", label: "Learning Paths", icon: Route },
+  { id: "curriculum", label: "Course Curriculum", icon: ListTree },
   { id: "planner", label: "Study Planner", icon: CalendarDays },
   { id: "assignments", label: "Assignments & Grades", icon: ClipboardList },
   { id: "mastery", label: "Topic Mastery", icon: Brain },
   { id: "ai", label: "AI Tutor", icon: Bot },
   { id: "tutors", label: "Hire a Tutor", icon: Users },
   { id: "wishlist", label: "Wishlist", icon: Heart },
+  { id: "cart", label: "Shopping Cart", icon: ShoppingCart },
+  { id: "orders", label: "My Purchases", icon: ReceiptText },
+  { id: "notifications", label: "Notifications", icon: Bell },
   { id: "portfolio", label: "Certificates & Portfolio", icon: Award },
   { id: "research", label: "Research Workspace", icon: Microscope },
   { id: "profile", label: "My Profile", icon: UserRound },
@@ -175,7 +209,7 @@ function EmptyState({ icon: Icon = BookOpen, title, description }) {
 }
 
 export default function StudentDashboard({ email = "student" }) {
-  const baseKey = `educonnect.student.${email}`;
+  const baseKey = `educonnect.student.${email.trim().toLowerCase()}`;
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -190,6 +224,78 @@ export default function StudentDashboard({ email = "student" }) {
   const [search, setSearch] = useState("");
   const [playerCourseId, setPlayerCourseId] = useState(null);
   const [playerLessonIndex, setPlayerLessonIndex] = useState(0);
+  const lessonVideoRef = useRef(null);
+  const [lessonVideoTime, setLessonVideoTime] = useState(0);
+  const [pendingVideoSeek, setPendingVideoSeek] = useState(null);
+  // Playback analytics: count real HTML-video playback, not seeks or paused time.
+  const [learningActivity, setLearningActivity] = useState(() =>
+    readStorage(`${baseKey}.learningActivity`, { totalSeconds: 0, days: {} })
+  );
+  const playbackClock = useRef(null);
+  const playbackBuffer = useRef(0);
+  function recordPlayback(seconds) {
+    const delta = Math.max(0, Math.min(5, Number(seconds) || 0));
+    if (!delta) return;
+    const now = new Date();
+    const day = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    setLearningActivity(previous => ({
+      totalSeconds: (Number(previous.totalSeconds) || 0) + delta,
+      days: { ...(previous.days || {}), [day]: (Number(previous.days?.[day]) || 0) + delta }
+    }));
+  }
+  function handlePlaybackTick(event) {
+    const video = event.currentTarget;
+    const now = performance.now();
+    if (video.paused || video.seeking || video.ended || !playbackClock.current) {
+      playbackClock.current = null;
+      return;
+    }
+    const delta = (now - playbackClock.current) / 1000;
+    playbackClock.current = now;
+    if (delta > 0 && delta <= 5) {
+      playbackBuffer.current += delta;
+      if (playbackBuffer.current >= 2) {
+        recordPlayback(playbackBuffer.current);
+        playbackBuffer.current = 0;
+      }
+    }
+  }
+  function flushPlayback() {
+    if (playbackBuffer.current > 0) recordPlayback(playbackBuffer.current);
+    playbackBuffer.current = 0;
+    playbackClock.current = null;
+  }
+  useEffect(() => {
+    localStorage.setItem(`${baseKey}.learningActivity`, JSON.stringify(learningActivity));
+  }, [baseKey, learningActivity]);
+  useEffect(() => () => {
+    // Keep the last short playback segment when the player unmounts.
+    // Browser unload persistence is handled by regular activity updates.
+    playbackClock.current = null;
+  }, []);
+
+  function jumpToNote(courseId, lessonIndex, seconds) {
+    openCoursePlayer(courseId);
+    setPlayerLessonIndex(lessonIndex);
+    setPendingVideoSeek({ courseId: String(courseId), lessonIndex, seconds: Math.max(0, Number(seconds) || 0) });
+  }
+  useEffect(() => {
+    if (pendingVideoSeek && lessonVideoRef.current?.readyState >= 1) {
+      const video = lessonVideoRef.current;
+      if (String(playerCourseId) === pendingVideoSeek.courseId && playerLessonIndex === pendingVideoSeek.lessonIndex) {
+        video.currentTime = Math.min(pendingVideoSeek.seconds, Number.isFinite(video.duration) ? video.duration : pendingVideoSeek.seconds);
+        setPendingVideoSeek(null);
+      }
+    }
+  }, [pendingVideoSeek, playerCourseId, playerLessonIndex]);
+  function applyPendingSeek() {
+    if (!pendingVideoSeek || !lessonVideoRef.current) return;
+    if (String(playerCourseId) !== pendingVideoSeek.courseId || playerLessonIndex !== pendingVideoSeek.lessonIndex) return;
+    try {
+      lessonVideoRef.current.currentTime = Math.min(pendingVideoSeek.seconds, Number.isFinite(lessonVideoRef.current.duration) ? lessonVideoRef.current.duration : pendingVideoSeek.seconds);
+      setPendingVideoSeek(null);
+    } catch { /* wait for metadata */ }
+  }
 
   const [studentProfile, setStudentProfile] = useState(() =>
     readStorage(`${baseKey}.profile`, {
@@ -277,6 +383,49 @@ export default function StudentDashboard({ email = "student" }) {
     readStorage(`${baseKey}.wishlist`, [])
   );
 
+  const [cart, setCart] = useState(() => readStorage(`${baseKey}.cart`, []));
+  const [cartNotice, setCartNotice] = useState("");
+  const [orders, setOrders] = useState(() => readStorage(`${baseKey}.orders`, []));
+  const [orderNotice, setOrderNotice] = useState("");
+  const [notifications, setNotifications] = useState(() => readStorage(`${baseKey}.notifications`, []));
+  const unreadNotifications = notifications.filter(item => !item.read).length;
+  const [discussionRevision, setDiscussionRevision] = useState(0);
+  useEffect(() => subscribeDiscussions(() => setDiscussionRevision(v => v + 1)), []);
+  useEffect(() => {
+    // Teacher replies are detected when the student dashboard is opened or receives an update.
+    // Notification IDs prevent duplicate alerts after refresh.
+    const questions = readDiscussions();
+    const ownReplies = questions.filter(q =>
+      q.studentEmail === email.trim().toLowerCase() && q.reply?.text && q.reply?.createdAt
+    );
+    if (!ownReplies.length) return;
+    setNotifications(previous => {
+      const ids = new Set(previous.map(n => n.id));
+      const additions = ownReplies.filter(q => !ids.has(`qa-reply:${q.id}:${q.reply.createdAt}`))
+        .map(q => ({ id: `qa-reply:${q.id}:${q.reply.createdAt}`, type: "discussion",
+          title: "Teacher replied to your question",
+          message: `Your question about ${q.courseTitle || "a course"} has a new answer.`,
+          link: "discussions", read: false, createdAt: q.reply.createdAt }));
+      return additions.length ? [...additions, ...previous].slice(0, 150) : previous;
+    });
+  }, [email, discussionRevision]);
+  function notify({ id, type, title, message, link }) {
+    setNotifications(previous => {
+      if (previous.some(item => item.id === id)) return previous;
+      return [{ id, type, title, message, link, read: false, createdAt: new Date().toISOString() }, ...previous].slice(0, 150);
+    });
+  }
+  function markNotificationRead(id) {
+    setNotifications(previous => previous.map(item => item.id === id ? { ...item, read: true } : item));
+  }
+  function markAllNotificationsRead() {
+    setNotifications(previous => previous.map(item => item.read ? item : { ...item, read: true }));
+  }
+  function deleteNotification(id) {
+    setNotifications(previous => previous.filter(item => item.id !== id));
+  }
+
+
   const [dailyGoals, setDailyGoals] = useState(() =>
     readStorage(`${baseKey}.dailyGoals`, [
       { id: 1, title: "Complete one lesson", done: false },
@@ -291,6 +440,9 @@ export default function StudentDashboard({ email = "student" }) {
   const [portfolioTab, setPortfolioTab] = useState("certificates");
   const [portfolioName, setPortfolioName] = useState(() =>
     readStorage(`${baseKey}.portfolioName`, "")
+  );
+  const [certificateDates, setCertificateDates] = useState(() =>
+    readStorage(`${baseKey}.certificateDates`, {})
   );
   const [portfolioProjects, setPortfolioProjects] = useState(() =>
     readStorage(`${baseKey}.portfolioProjects`, [])
@@ -359,6 +511,7 @@ export default function StudentDashboard({ email = "student" }) {
       setPortfolioMessage("Enter your name above before creating a demo certificate.");
       return;
     }
+    const certificate = certificateInfo(course);
     const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (char) => ({
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
     }[char]));
@@ -378,7 +531,8 @@ export default function StudentDashboard({ email = "student" }) {
       <div class="brand">EduConnect AI</div><div class="heading">Demo Course Completion Record</div>
       <p>This demo record recognizes</p><div class="name">${escapeHtml(name)}</div>
       <p>for completing all sample lessons in</p><div class="course">${escapeHtml(course.title)}</div>
-      <p>Completion progress: 100%</p><p class="disclaimer">Frontend demonstration only · Not an accredited or verified certificate</p>
+      <p>Completion progress: 100%</p><p>Completion date: ${escapeHtml(certificate.date)}</p>
+      <p>Certificate ID: ${escapeHtml(certificate.id)}</p><p class="disclaimer">Frontend demonstration only · Not an accredited or verified certificate</p>
       </main></body></html>`);
     popup.document.close();
     setPortfolioMessage("Certificate preview opened. Choose Print / Save as PDF in the new tab.");
@@ -674,37 +828,206 @@ export default function StudentDashboard({ email = "student" }) {
   }, [baseKey, wishlist]);
 
   useEffect(() => {
+    try { localStorage.setItem(`${baseKey}.notifications`, JSON.stringify(notifications)); }
+    catch (error) { console.error("Could not save notifications", error); }
+  }, [baseKey, notifications]);
+
+  useEffect(() => {
+    localStorage.setItem(`${baseKey}.orders`, JSON.stringify(orders));
+  }, [baseKey, orders]);
+
+  useEffect(() => {
+    localStorage.setItem(`${baseKey}.cart`, JSON.stringify(cart));
+    window.dispatchEvent(new Event("educonnect:student-data-changed"));
+  }, [baseKey, cart]);
+
+  useEffect(() => {
     localStorage.setItem(
       `${baseKey}.dailyGoals`,
       JSON.stringify(dailyGoals)
     );
   }, [baseKey, dailyGoals]);
 
+  // Keep instructor lesson data alongside the student's enrollment record.
+  // Demo courses still use their existing numbered sample lessons.
+  function getLessonMedia(lesson) {
+    const raw = String(lesson?.videoUrl || lesson?.video || lesson?.url || "").trim();
+    if (!raw) return null;
+    try {
+      const url = new URL(raw);
+      if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+      const host = url.hostname.toLowerCase();
+      if (host === "youtu.be") {
+        const id = url.pathname.slice(1).split("/")[0];
+        return /^[\w-]{11}$/.test(id) ? { type: "youtube", src: `https://www.youtube-nocookie.com/embed/${id}` } : null;
+      }
+      if (["youtube.com", "www.youtube.com", "m.youtube.com"].includes(host)) {
+        const id = url.searchParams.get("v") || (url.pathname.startsWith("/shorts/") ? url.pathname.split("/")[2] : null) || (url.pathname.startsWith("/embed/") ? url.pathname.split("/")[2] : null);
+        return id && /^[\w-]{11}$/.test(id) ? { type: "youtube", src: `https://www.youtube-nocookie.com/embed/${id}` } : null;
+      }
+      if (/\.(mp4|webm|ogg)(\?|$)/i.test(url.pathname)) return { type: "video", src: url.href };
+    } catch { /* Invalid media URL; show the lesson placeholder. */ }
+    return null;
+  }
+
+  const [courseRevision, setCourseRevision] = useState(0);
+  const [localVideoUrl, setLocalVideoUrl] = useState(null);
+  useEffect(() => {
+    const refresh = () => setCourseRevision(n => n + 1);
+    window.addEventListener("storage", refresh);
+    window.addEventListener("focus", refresh);
+    window.addEventListener("educonnect:teacher-courses-changed", refresh);
+    return () => {
+      window.removeEventListener("storage", refresh);
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("educonnect:teacher-courses-changed", refresh);
+    };
+  }, []);
+  const latestPublishedCourses = useMemo(() => getPublishedTeacherCourses(), [courseRevision]);
   const enrolledCourses = useMemo(
     () =>
       enrollments
         .map((item) => {
-          const course = COURSES.find((c) => c.id === item.id);
-          if (!course) return null;
+          const demoCourse = COURSES.find(
+            (course) => String(course.id) === String(item.id)
+          );
+          const latest = latestPublishedCourses.find(c =>
+            String(c.id) === String(item.id) &&
+            String(c.teacherEmail || "").toLowerCase() === String(item.teacherEmail || "").toLowerCase()
+          );
+          const latestLessons = Array.isArray(latest?.lessons) ? latest.lessons :
+            (Array.isArray(item.lessons) ? item.lessons : []);
+          const lessonCount = Math.max(
+            0,
+            Number(
+              demoCourse?.lessons ??
+                (latestLessons.length || (Array.isArray(item.lessons) ? item.lessons.length : item.lessons))
+            ) || 0
+          );
+          const course = demoCourse || {
+            id: item.id,
+            title: item.title || "Untitled Course",
+            category: item.category || "General",
+            instructor: item.instructor || "EduConnect Instructor",
+            lessons: lessonCount,
+            icon: "EC",
+            color: "purple",
+          };
 
           const completed = Math.min(
-            course.lessons,
+            lessonCount,
             Math.max(0, Number(item.completedLessons) || 0)
           );
 
           return {
             ...course,
+            lessons: lessonCount,
+            lessonItems: latestLessons,
+            teacherEmail: item.teacherEmail || latest?.teacherEmail || "",
             completedLessons: completed,
-            progress: Math.round((completed / course.lessons) * 100),
+            progress: lessonCount
+              ? Math.round((completed / lessonCount) * 100)
+              : 0,
           };
         })
         .filter(Boolean),
-    [enrollments]
+    [enrollments, latestPublishedCourses]
   );
+
+  const playerCourse = enrolledCourses.find(c => String(c.id) === String(playerCourseId));
+  const playerLesson = playerCourse?.lessonItems?.[playerLessonIndex];
+  useEffect(() => {
+    let cancelled = false;
+    let objectUrl = null;
+    setLocalVideoUrl(null);
+    if (playerCourse?.teacherEmail && playerLesson?.hasLocalVideo) {
+      loadLessonVideo(lessonVideoKey(playerCourse.teacherEmail, playerCourse.id, playerLesson.id))
+        .then(blob => {
+          if (!cancelled && blob) {
+            objectUrl = URL.createObjectURL(blob);
+            setLocalVideoUrl(objectUrl);
+          }
+        }).catch(console.error);
+    }
+    return () => { cancelled = true; if (objectUrl) URL.revokeObjectURL(objectUrl); };
+  }, [playerCourse?.teacherEmail, playerCourse?.id, playerLesson?.id, playerLesson?.hasLocalVideo]);
 
   const completedCourses = enrolledCourses.filter(
     (course) => course.progress === 100
   );
+
+  // Compare teacher lesson IDs with the last snapshot for this student.
+  // First observation establishes a baseline; it does not create false alerts.
+  useEffect(() => {
+    const key = `${baseKey}.lessonNotificationSnapshot`;
+    const previous = readStorage(key, {});
+    const next = { ...previous };
+    for (const course of enrolledCourses) {
+      if (!course.teacherEmail) continue;
+      const courseKey = `${course.teacherEmail}:${course.id}`;
+      const ids = Array.isArray(course.lessonItems)
+        ? course.lessonItems.map((lesson, index) => String(lesson.id ?? index)) : [];
+      const old = previous[courseKey];
+      if (Array.isArray(old)) {
+        const oldIds = new Set(old);
+        const added = ids.filter(id => !oldIds.has(id));
+        if (added.length) {
+          notify({ id: `lesson:${courseKey}:${added.join("|")}`,
+            type: "lesson", title: "New lesson available",
+            message: `${added.length} new lesson(s) in ${course.title}.`, link: "learning" });
+        }
+      }
+      next[courseKey] = ids;
+    }
+    try { localStorage.setItem(key, JSON.stringify(next)); }
+    catch (error) { console.error("Could not save lesson snapshot", error); }
+  }, [baseKey, enrolledCourses]);
+
+  // Notify once when a course first reaches 100% completion.
+  useEffect(() => {
+    for (const course of completedCourses) {
+      const courseKey = `${course.teacherEmail || "demo"}:${course.id}`;
+      notify({ id: `certificate:${courseKey}`, type: "certificate",
+        title: "Course completed!", message: `Your demo certificate for ${course.title} is ready.`, link: "portfolio" });
+    }
+  }, [completedCourses]);
+
+  // Store the first date a completed course is observed, without overwriting it on refresh.
+  useEffect(() => {
+    if (!completedCourses.length) return;
+    setCertificateDates((previous) => {
+      const next = { ...previous };
+      let changed = false;
+      completedCourses.forEach((course) => {
+        const key = `${course.teacherEmail || "demo"}:${course.id}`;
+        if (!next[key]) {
+          next[key] = new Date().toISOString();
+          changed = true;
+        }
+      });
+      return changed ? next : previous;
+    });
+  }, [enrollments, latestPublishedCourses]);
+
+  useEffect(() => {
+    localStorage.setItem(`${baseKey}.certificateDates`, JSON.stringify(certificateDates));
+  }, [baseKey, certificateDates]);
+
+  function certificateInfo(course) {
+    const key = `${course.teacherEmail || "demo"}:${course.id}`;
+    const source = `${email}:${key}`;
+    let hash = 2166136261;
+    for (let i = 0; i < source.length; i += 1) {
+      hash ^= source.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    return {
+      id: `EDC-${(hash >>> 0).toString(16).toUpperCase().padStart(8, "0")}`,
+      date: certificateDates[key]
+        ? new Date(certificateDates[key]).toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" })
+        : "Completion recorded",
+    };
+  }
 
   const averageProgress = enrolledCourses.length
     ? Math.round(
@@ -727,6 +1050,68 @@ export default function StudentDashboard({ email = "student" }) {
       .includes(search.toLowerCase())
   );
 
+  // Cart is stored per student, using the same key as the existing marketplace cart.
+  // Keep teacher identity in each entry so similarly named course IDs do not collide.
+  const shopCourses = [
+    ...COURSES.map(c => ({ ...c, teacherEmail: "", price: 0 })),
+    ...latestPublishedCourses.map(c => ({
+      ...c,
+      instructor: c.instructorName || c.instructor || "Instructor",
+      price: Math.max(0, Number(c.price) || 0),
+      icon: "📚", color: "blue",
+    })),
+  ];
+  const shopKey = (c) => `${String(c.teacherEmail || "demo").toLowerCase()}::${String(c.id)}`;
+  const alreadyEnrolled = (c) => enrollments.some(e =>
+    String(e.id) === String(c.id) &&
+    String(e.teacherEmail || "").toLowerCase() === String(c.teacherEmail || "").toLowerCase()
+  );
+  function addCart(course) {
+    if (alreadyEnrolled(course)) { setCartNotice("Already enrolled. Open My Learning."); return; }
+    if (cart.some(c => shopKey(c) === shopKey(course))) { setCartNotice("Course already in cart."); return; }
+    setCart(prev => [...prev, {
+      id: course.id, teacherEmail: course.teacherEmail || "",
+      title: course.title, instructor: course.instructorName || course.instructor || "Instructor",
+      category: course.category || "General", price: Math.max(0, Number(course.price) || 0),
+      thumbnail: course.thumbnail || course.image || "",
+      lessons: Array.isArray(course.lessons) ? course.lessons.length : Number(course.lessons) || 0,
+    }]);
+    setCartNotice("Added to shopping cart.");
+  }
+  function removeCart(course) {
+    setCart(prev => prev.filter(c => shopKey(c) !== shopKey(course)));
+    setCartNotice("Removed from cart.");
+  }
+  function checkoutCart() {
+    const available = cart.filter(c => !alreadyEnrolled(c));
+    if (!available.length) { setCartNotice("Cart is empty or courses are already enrolled."); return; }
+    const total = available.reduce((sum,c) => sum + Math.max(0, Number(c.price) || 0), 0);
+    if (!window.confirm(`Demo checkout: ${available.length} course(s), total $${total.toFixed(2)}. No real payment will be charged. Continue?`)) return;
+    const purchasedAt = new Date().toISOString();
+    const order = {
+      id: `EDC-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
+      purchasedAt,
+      status: "Demo completed",
+      paymentMethod: "Demo checkout — no real payment",
+      currency: "USD",
+      items: available.map(c => ({
+        id: String(c.id), teacherEmail: String(c.teacherEmail || ""),
+        title: String(c.title || "Untitled Course"),
+        instructor: String(c.instructor || "Instructor"),
+        price: Math.max(0, Number(c.price) || 0),
+      })),
+      total,
+    };
+    // Snapshot the order at checkout so later course edits don't change receipts.
+    setOrders(prev => [order, ...prev]);
+    notify({ id: `purchase:${order.id}`, type: "purchase", title: "Demo purchase completed",
+      message: `${available.length} course(s) added to My Learning — $${total.toFixed(2)} USD (demo only).`, link: "orders" });
+    setEnrollments(prev => [...prev, ...available.map(c => ({ ...c, completedLessons: 0, progress: 0, enrolledAt: purchasedAt }))]);
+    setCart([]);
+    setCartNotice("Demo checkout complete! Courses added to My Learning.");
+    setActiveTab("learning");
+  }
+
   function enrollCourse(id) {
     if (enrollments.some((item) => item.id === id)) {
       setActiveTab("learning");
@@ -742,12 +1127,14 @@ export default function StudentDashboard({ email = "student" }) {
   }
 
   function updateLesson(id, amount) {
-    const course = COURSES.find((item) => item.id === id);
-    if (!course) return;
+    const course = enrolledCourses.find(
+      (item) => String(item.id) === String(id)
+    );
+    if (!course || !course.lessons) return;
 
     setEnrollments((previous) =>
       previous.map((item) =>
-        item.id === id
+        String(item.id) === String(id)
           ? {
               ...item,
               completedLessons: Math.min(
@@ -764,19 +1151,26 @@ export default function StudentDashboard({ email = "student" }) {
   }
 
   function openCoursePlayer(courseId) {
-    const enrollment = enrollments.find((item) => item.id === courseId);
+    const enrollment = enrollments.find(
+      (item) => String(item.id) === String(courseId)
+    );
     if (!enrollment) return;
     setPlayerCourseId(courseId);
-    setPlayerLessonIndex(Math.max(0, Number(enrollment.completedLessons) || 0));
+    const total = enrolledCourses.find((course) => String(course.id) === String(courseId))?.lessons || 0;
+    setPlayerLessonIndex(Math.max(0, Math.min(Math.max(0, total - 1), Number(enrollment.completedLessons) || 0)));
     setActiveTab("player");
     setMobileMenu(false);
   }
 
   function completePlayerLesson() {
     if (!playerCourseId) return;
-    const course = COURSES.find((item) => item.id === playerCourseId);
-    const enrollment = enrollments.find((item) => item.id === playerCourseId);
-    if (!course || !enrollment) return;
+    const course = enrolledCourses.find(
+      (item) => String(item.id) === String(playerCourseId)
+    );
+    const enrollment = enrollments.find(
+      (item) => String(item.id) === String(playerCourseId)
+    );
+    if (!course || !course.lessons || !enrollment) return;
     const completed = Math.max(0, Number(enrollment.completedLessons) || 0);
     // Sequential demo completion keeps the existing count-based storage compatible.
     if (playerLessonIndex !== completed || completed >= course.lessons) return;
@@ -857,7 +1251,7 @@ export default function StudentDashboard({ email = "student" }) {
 
           <div className="edc-course-meta">
             <span>
-              <BookOpen size={14} /> {course.lessons} lessons
+              <BookOpen size={14} /> {Array.isArray(course.lessons) ? course.lessons.length : course.lessons} lessons
             </span>
             <span>
               <Star size={14} /> Beginner friendly
@@ -872,6 +1266,8 @@ export default function StudentDashboard({ email = "student" }) {
               {isEnrolled ? "Go to Learning" : "Demo Enroll"}
               <ArrowRight size={16} />
             </button>
+
+            <button type="button" className="edc-btn edc-btn-light" onClick={() => { addCart(course); navigateTo("cart"); }}><ShoppingCart size={16}/> Add to Cart</button>
 
             <button
               className={`edc-icon-btn ${isSaved ? "edc-saved" : ""}`}
@@ -920,10 +1316,13 @@ export default function StudentDashboard({ email = "student" }) {
           <div className="edc-learning-actions">
             <button
               className="edc-btn edc-btn-primary"
+              disabled={!course.lessons}
               onClick={() => openCoursePlayer(course.id)}
             >
               <Play size={15} />
-              {course.progress === 100
+              {!course.lessons
+                ? "No lessons available"
+                : course.progress === 100
                 ? "Review Lessons"
                 : "Open Learning Player"}
             </button>
@@ -1189,9 +1588,13 @@ export default function StudentDashboard({ email = "student" }) {
         </div>
       );
     }
-    const index = Math.min(course.lessons - 1, Math.max(0, playerLessonIndex));
+    const index = Math.max(0, Math.min(course.lessons - 1, playerLessonIndex));
+    const lesson = course.lessonItems?.[index];
+    const lessonTitle = lesson?.title || `Lesson ${index + 1} — ${course.title}`;
+    const media = localVideoUrl ? { type: "video", src: localVideoUrl } : getLessonMedia(lesson);
     const isCompleted = index < course.completedLessons;
     const isNext = index === course.completedLessons;
+    const notesCourse = { ...course, teacherEmail: course.teacherEmail || course.instructorEmail || "demo" };
     return (
       <div className="edc-tab-content edc-player-page">
         <button type="button" className="edc-text-btn" onClick={() => navigateTo("learning")}>
@@ -1203,20 +1606,46 @@ export default function StudentDashboard({ email = "student" }) {
           <section className="edc-panel edc-player-main">
             <div className="edc-player-screen edc-player-screen-premium">
               <span className="edc-player-screen-tag"><BookOpen size={14} /> EDUCONNECT AI CLASSROOM</span>
-              <div className="edc-player-play-symbol"><Play size={34} fill="currentColor" /></div>
+              {media?.type === "youtube" ? (
+                <iframe
+                  key={media.src}
+                  src={media.src}
+                  title={lessonTitle}
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  allowFullScreen
+                  style={{ width: "100%", aspectRatio: "16 / 9", border: 0, borderRadius: 12 }}
+                />
+              ) : media?.type === "video" ? (
+                <video key={media.src} src={media.src} controls playsInline
+                  ref={lessonVideoRef}
+                  onTimeUpdate={event => {
+                    setLessonVideoTime(event.currentTarget.currentTime);
+                    handlePlaybackTick(event);
+                  }}
+                  onPlaying={() => { playbackClock.current = performance.now(); }}
+                  onPause={flushPlayback}
+                  onEnded={flushPlayback}
+                  onSeeking={flushPlayback}
+                  onSeeked={() => { playbackClock.current = null; }}
+                  onRateChange={() => { playbackClock.current = performance.now(); }}
+                  onLoadedMetadata={applyPendingSeek}
+                  style={{ width: "100%", aspectRatio: "16 / 9", borderRadius: 12 }} />
+              ) : (
+                <div className="edc-player-play-symbol"><Play size={34} fill="currentColor" /></div>
+              )}
               <div className="edc-player-screen-caption">
                 <span>LESSON {String(index + 1).padStart(2, "0")} / {String(course.lessons).padStart(2, "0")}</span>
-                <h3>{course.title}</h3>
-                <p>Part {index + 1} · Learning preview</p>
+                <h3>{lessonTitle}</h3>
+                <p>{lesson?.description || `Part ${index + 1} · Learning preview`}</p>
               </div>
-              <div className="edc-player-screen-bottom"><span><Video size={14} /> Video coming soon</span><span>Course preview</span></div>
+              <div className="edc-player-screen-bottom"><span><Video size={14} /> {media ? "Lesson video" : "Video coming soon"}</span><span>Course preview</span></div>
             </div>
             <div className="edc-player-details edc-player-details-premium">
               <div className="edc-player-lesson-heading">
-                <div><span className="edc-player-eyebrow">CURRENT LESSON</span><h3>Lesson {index + 1} — {course.title}</h3></div>
+                <div><span className="edc-player-eyebrow">CURRENT LESSON</span><h3>{lessonTitle}</h3></div>
                 <span className={`edc-player-state ${isCompleted ? "is-done" : ""}`}>{isCompleted ? "Completed" : "In progress"}</span>
               </div>
-              <div className="edc-player-inline-note"><Video size={18} /><span>Video content will appear here when the instructor uploads it. You can explore the demo lesson flow meanwhile.</span></div>
+              <div className="edc-player-inline-note"><Video size={18} /><span>{media ? "Watch the lesson, then mark it complete to save your progress." : "No video has been attached to this lesson yet. You can explore the demo lesson flow meanwhile."}</span></div>
               <div className="edc-player-actions">
                 <button type="button" className="edc-btn edc-btn-light" disabled={index === 0}
                   onClick={() => setPlayerLessonIndex(index - 1)}>Previous Lesson</button>
@@ -1228,6 +1657,10 @@ export default function StudentDashboard({ email = "student" }) {
                 <button type="button" className="edc-btn edc-btn-light" disabled={index >= course.lessons - 1 || index >= course.completedLessons}
                   onClick={() => setPlayerLessonIndex(index + 1)}>Next Lesson</button>
               </div>
+              <CourseNotes email={email} courses={[notesCourse]} activeCourse={notesCourse}
+                activeLessonIndex={index} currentTime={lessonVideoTime}
+                canTimestamp={media?.type === "video"}
+                onJump={jumpToNote} compact />
             </div>
           </section>
           <aside className="edc-panel edc-player-sidebar">
@@ -1244,7 +1677,7 @@ export default function StudentDashboard({ email = "student" }) {
                     disabled={locked}
                     onClick={() => setPlayerLessonIndex(lessonIndex)}>
                     {done ? <CheckCircle2 size={18} /> : locked ? <LockKeyhole size={17} /> : <Play size={17} />}
-                    <span>Lesson {lessonIndex + 1}<small>{done ? "Completed" : locked ? "Complete previous lessons first" : "Ready to learn"}</small></span>
+                    <span>{course.lessonItems?.[lessonIndex]?.title || `Lesson ${lessonIndex + 1}`}<small>{done ? "Completed" : locked ? "Complete previous lessons first" : "Ready to learn"}</small></span>
                   </button>
                 );
               })}
@@ -1492,10 +1925,95 @@ export default function StudentDashboard({ email = "student" }) {
     );
   }
 
+  function printOrderInvoice(order) {
+    const escapeHtml = value => String(value ?? "").replace(/[&<>"']/g, ch => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    })[ch]);
+    const money = value => `$${Math.max(0, Number(value) || 0).toFixed(2)}`;
+    const win = window.open("", "_blank", "width=850,height=700");
+    if (!win) { setOrderNotice("Please allow pop-ups to print the demo invoice."); return; }
+    const rows = (order.items || []).map(item => `<tr><td>${escapeHtml(item.title)}</td><td>${escapeHtml(item.instructor)}</td><td style="text-align:right">${money(item.price)}</td></tr>`).join("");
+    win.document.open();
+    win.document.write(`<!doctype html><html><head><meta charset="utf-8"/><title>EduConnect Demo Invoice ${escapeHtml(order.id)}</title>
+      <style>body{font-family:Arial,sans-serif;max-width:780px;margin:42px auto;color:#17223b;padding:0 20px}h1{margin-bottom:4px}p{line-height:1.6}table{border-collapse:collapse;width:100%;margin:25px 0}th,td{border-bottom:1px solid #ddd;padding:12px;text-align:left}th{background:#f5f7fa}.total{text-align:right;font-size:20px;font-weight:bold}.note{padding:15px;background:#fff6df;border-radius:8px}@media print{button{display:none}}</style>
+      </head><body><h1>EduConnect AI</h1><p>Demo Purchase Receipt</p>
+      <p><b>Order:</b> ${escapeHtml(order.id)}<br/><b>Date:</b> ${escapeHtml(new Date(order.purchasedAt).toLocaleString())}<br/><b>Status:</b> ${escapeHtml(order.status)}<br/><b>Payment:</b> ${escapeHtml(order.paymentMethod)}</p>
+      <table><thead><tr><th>Course</th><th>Instructor</th><th style="text-align:right">Price (USD)</th></tr></thead><tbody>${rows}</tbody></table>
+      <p class="total">Total: ${money(order.total)} USD</p><p class="note">DEMO ONLY — No payment was collected. This is not a tax invoice or proof of a real purchase.</p>
+      <button onclick="window.print()">Print / Save as PDF</button></body></html>`);
+    win.document.close();
+    win.focus();
+  }
+
+  function OrdersPage() {
+    const money = value => `$${Math.max(0, Number(value) || 0).toFixed(2)}`;
+    return <div className="edc-tab-content">
+      <SectionHeading eyebrow="PURCHASE HISTORY" title="My Purchases"
+        description="Demo checkout orders saved in this browser. No real payments are processed." />
+      {orderNotice && <p role="status">{orderNotice}</p>}
+      {orders.length === 0 ? <EmptyState icon={ReceiptText} title="No purchase history yet"
+        description="Complete a demo checkout in Shopping Cart to create your first order." /> :
+      <div style={{display:"grid",gap:18}}>{orders.map(order =>
+        <section key={order.id} className="edc-panel" style={{padding:22}}>
+          <div style={{display:"flex",justifyContent:"space-between",gap:16,flexWrap:"wrap"}}>
+            <div><strong>Order {order.id}</strong><p>{new Date(order.purchasedAt).toLocaleString()}</p><p>{order.status || "Demo completed"} · No real payment</p></div>
+            <div><strong>{money(order.total)} USD</strong><p>{(order.items || []).length} course(s)</p></div>
+          </div>
+          <div style={{borderTop:"1px solid #e5e7eb",marginTop:12,paddingTop:12}}>
+            {(order.items || []).map((item,index) => <div key={`${item.teacherEmail || "demo"}-${item.id}-${index}`}
+              style={{display:"flex",justifyContent:"space-between",gap:12,padding:"9px 0",flexWrap:"wrap"}}>
+              <div><strong>{item.title}</strong><p>By {item.instructor}</p></div><span>{money(item.price)}</span>
+            </div>)}
+          </div>
+          <div style={{display:"flex",gap:10,flexWrap:"wrap",marginTop:14}}>
+            <button type="button" className="edc-btn edc-btn-primary" onClick={() => navigateTo("learning")}><BookOpen size={16}/> Open My Learning</button>
+            <button type="button" className="edc-btn edc-btn-light" onClick={() => printOrderInvoice(order)}><Printer size={16}/> Print / Save PDF</button>
+          </div>
+        </section>
+      )}</div>}
+      <p style={{marginTop:20,fontSize:13,opacity:.8}}>Orders created before Step 9 cannot be reconstructed automatically from enrollments. New demo checkouts will appear here.</p>
+    </div>;
+  }
+
+  function ShoppingCartPage() {
+    const visible = cart.filter(c => !alreadyEnrolled(c));
+    const total = visible.reduce((sum, c) => sum + Math.max(0, Number(c.price) || 0), 0);
+    return <div className="edc-tab-content">
+      <SectionHeading eyebrow="DEMO CHECKOUT" title="Shopping Cart"
+        description="Add multiple courses and enroll together. No real payment is collected." />
+      {cartNotice && <p role="status">{cartNotice}</p>}
+      {visible.length ? <>
+        <div className="edc-panel">
+          {visible.map(course => <div key={shopKey(course)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:16,padding:"16px 0",borderBottom:"1px solid #e5e7eb",flexWrap:"wrap"}}>
+            <div><strong>{course.title}</strong><p>By {course.instructor} · {course.category}</p></div>
+            <div style={{display:"flex",alignItems:"center",gap:12}}><strong>${Number(course.price || 0).toFixed(2)}</strong>
+              <button type="button" className="edc-btn edc-btn-light" onClick={() => removeCart(course)}><Trash2 size={15}/> Remove</button>
+            </div>
+          </div>)}
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,paddingTop:20,flexWrap:"wrap"}}>
+            <strong>Total ({visible.length} courses): ${total.toFixed(2)}</strong>
+            <button type="button" className="edc-btn edc-btn-primary" onClick={checkoutCart}><ShoppingCart size={17}/> Complete Demo Checkout</button>
+          </div>
+        </div>
+      </> : <EmptyState icon={ShoppingCart} title="Your cart is empty" description="Browse available courses below and add them to your cart." />}
+      <SectionHeading eyebrow="BROWSE" title="Available Courses" description="Published instructor courses and free demo courses." />
+      <div className="edc-course-grid">{shopCourses.filter(c => !alreadyEnrolled(c)).map(course =>
+        <article className="edc-course-card" key={shopKey(course)}>
+          <div className="edc-course-body"><span className="edc-category">{course.category}</span>
+            <h3>{course.title}</h3><p>By {course.instructor}</p>
+            <p><strong>${Math.max(0, Number(course.price) || 0).toFixed(2)}</strong> {Number(course.price) ? "" : "· Free"}</p>
+            <button type="button" className="edc-btn edc-btn-primary" onClick={() => addCart(course)}
+              disabled={cart.some(c => shopKey(c) === shopKey(course))}>
+              <ShoppingCart size={16}/> {cart.some(c => shopKey(c) === shopKey(course)) ? "In Cart" : "Add to Cart"}
+            </button>
+          </div>
+        </article>
+      )}</div>
+    </div>;
+  }
+
   function Wishlist() {
-    const savedCourses = COURSES.filter((course) =>
-      wishlist.includes(course.id)
-    );
+    const savedCourses = shopCourses.filter(course => wishlist.includes(course.id));
 
     return (
       <div className="edc-tab-content">
@@ -1583,7 +2101,8 @@ export default function StudentDashboard({ email = "student" }) {
                     <div className="edc-portfolio-seal"><Award size={38} /></div>
                     <span className="edc-portfolio-overline">EduConnect AI · Demo Record</span>
                     <h3>{course.title}</h3>
-                    <p>All {course.lessons} demo lessons completed</p>
+                    <p>All {course.lessons} lessons completed</p>
+                    <p>{certificateInfo(course).date} · {certificateInfo(course).id}</p>
                     <span className="edc-portfolio-verified"><CheckCircle2 size={16} /> Demo Completion</span>
                     <button type="button" className="edc-btn edc-btn-primary" onClick={() => printDemoCertificate(course)}>
                       Preview / Save PDF <ArrowRight size={16} />
@@ -2137,6 +2656,8 @@ export default function StudentDashboard({ email = "student" }) {
               >
                 <Icon size={18} />
                 <span>{item.label}</span>
+                {item.id === "notifications" && unreadNotifications > 0 &&
+                  <span className="edc-notification-count" aria-label={`${unreadNotifications} unread`}>{unreadNotifications}</span>}
                 {activeTab === item.id && <ChevronRight size={15} />}
               </button>
             );
@@ -2161,6 +2682,11 @@ export default function StudentDashboard({ email = "student" }) {
           </div>
 
           <div className="edc-header-right">
+            <button type="button" className="edc-notification-bell" onClick={() => navigateTo("notifications")}
+              aria-label={`Open notifications, ${unreadNotifications} unread`} title="Notifications">
+              <Bell size={20} />
+              {unreadNotifications > 0 && <span className="edc-notification-badge">{unreadNotifications > 99 ? "99+" : unreadNotifications}</span>}
+            </button>
             <span className="edc-demo-badge">
               <span /> Demo Mode
             </span>
@@ -2175,6 +2701,15 @@ export default function StudentDashboard({ email = "student" }) {
         </div>
 {activeTab === "overview" && Overview()}
 {activeTab === "learning" && Learning()}
+          {activeTab === "reviews" && <CourseReviews role="student" email={email} courses={enrolledCourses} />}
+          {activeTab === "discussions" && <CourseDiscussions role="student" email={email} courses={enrolledCourses} />}
+          {activeTab === "notes" && <CourseNotes email={email} courses={enrolledCourses} onJump={jumpToNote} />}
+          {activeTab === "analytics" && <LearningAnalytics courses={enrolledCourses} activity={learningActivity} />}
+          {activeTab === "quizzes" && <CourseQuizzes role="student" email={email} courses={enrolledCourses} />}
+          {activeTab === "course-assignments" && <CourseAssignments role="student" email={email} courses={enrolledCourses} />}
+          {activeTab === "learning-paths" && <LearningPaths email={email} courses={enrolledCourses} />}
+          {activeTab === "curriculum" && <CurriculumBuilder role="student" email={email} courses={enrolledCourses}
+            onOpenLesson={(courseId,index)=>{openCoursePlayer(courseId);setPlayerLessonIndex(Math.max(0,index));navigateTo("player")}} />}
         {activeTab === "player" && LearningPlayer()}
 {activeTab === "planner" && Planner()}
 
@@ -2656,6 +3191,11 @@ export default function StudentDashboard({ email = "student" }) {
 
         {activeTab === "profile" && StudentProfile()}
         {activeTab === "wishlist" && Wishlist()}
+        {activeTab === "cart" && ShoppingCartPage()}
+        {activeTab === "orders" && OrdersPage()}
+        {activeTab === "notifications" && <NotificationsCenter notifications={notifications}
+          onRead={markNotificationRead} onReadAll={markAllNotificationsRead}
+          onDelete={deleteNotification} onNavigate={navigateTo} />}
 {activeTab === "portfolio" && Portfolio()}
         {activeTab === "research" && (
           <div className="edc-tab-content edc-research-page">
