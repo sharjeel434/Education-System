@@ -1680,6 +1680,13 @@
   margin-bottom: 25px;
 }
 
+.edc-teacher-topbar-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
 .edc-teacher-breadcrumb {
   color: #9489a4;
   font-size: 11px;

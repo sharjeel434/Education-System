@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   BookOpen,
+  MessageCircle,
   CheckCircle2,
   Clock3,
   Edit3,
@@ -12,6 +13,10 @@ import {
   Trash2,
   Users,
   Wallet,
+  ChartNoAxesCombined,
+  ListChecks,
+  ClipboardList,
+  ListTree,
   X,
   Menu,
   Layers3,
@@ -19,6 +24,14 @@ import {
   UserRound,
   LogOut,
 } from "lucide-react";
+
+import { lessonVideoKey, saveLessonVideo, deleteLessonVideo } from "../../utils/lessonVideos";
+import CourseReviews from "../../components/reviews/CourseReviews";
+import CourseDiscussions from "../../components/discussions/CourseDiscussions";
+import InstructorAnalytics from "../../components/analytics/InstructorAnalytics";
+import CourseQuizzes from "../../components/quizzes/CourseQuizzes";
+import CourseAssignments from "../../components/assignments/CourseAssignments";
+import CurriculumBuilder from "../../components/curriculum/CurriculumBuilder";
 
 const purple = "#6d28d9";
 
@@ -86,9 +99,15 @@ const emptyCourse = {
 const navigation = [
   ["overview", "Overview", GraduationCap],
   ["courses", "My Courses", BookOpen],
+  ["reviews", "Course Reviews", GraduationCap],
+  ["discussions", "Course Q&A", MessageCircle],
   ["lessons", "Lessons", Layers3],
   ["students", "My Students", Users],
   ["earnings", "Earnings", Wallet],
+  ["analytics", "Learning Analytics & Sales", ChartNoAxesCombined],
+  ["quizzes", "Course Quizzes", ListChecks],
+  ["course-assignments", "Course Assignments", ClipboardList],
+  ["curriculum", "Curriculum Builder", ListTree],
   ["profile", "My Profile", UserRound],
 ];
 
@@ -318,6 +337,7 @@ const filteredCourses = courses.filter((course) => {
 
   useEffect(() => {
     localStorage.setItem(courseKey, JSON.stringify(courses));
+    window.dispatchEvent(new Event("educonnect:teacher-courses-changed"));
   }, [courses, courseKey]);
 
 
@@ -488,6 +508,10 @@ function removeThumbnail() {
 
   function deleteCourse(id) {
     if (!window.confirm("Delete this course?")) return;
+    const oldCourse = courses.find((item) => item.id === id);
+    (oldCourse?.lessons || []).forEach((lesson) => {
+      deleteLessonVideo(lessonVideoKey(email, id, lesson.id)).catch(console.error);
+    });
 
     setCourses((previous) =>
       previous.filter((course) => course.id !== id)
@@ -529,6 +553,7 @@ function removeThumbnail() {
 
   function removeLesson(courseId, lessonId) {
     if (!window.confirm("Remove this lesson?")) return;
+    deleteLessonVideo(lessonVideoKey(email, courseId, lessonId)).catch(console.error);
 
     setCourses((previous) =>
       previous.map((course) =>
@@ -566,7 +591,7 @@ function closeLessonForm() {
   setLessonVideoFile(null);
 }
 
-function saveLesson(event) {
+async function saveLesson(event) {
   event.preventDefault();
 
   const title = lessonForm.title.trim();
@@ -574,6 +599,18 @@ function saveLesson(event) {
   if (!title || !selectedLessonCourse) {
     alert("Please enter a lesson title.");
     return;
+  }
+
+  const newLessonId = editingLessonId !== null
+    ? editingLessonId
+    : (window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`);
+  if (lessonVideoFile) {
+    try {
+      await saveLessonVideo(lessonVideoKey(email, selectedLessonCourse, newLessonId), lessonVideoFile);
+    } catch (error) {
+      alert(`Video could not be saved: ${error.message}. Try a smaller file or free browser storage.`);
+      return;
+    }
   }
 
   setCourses((previous) =>
@@ -589,6 +626,7 @@ function saveLesson(event) {
         description: lessonForm.description.trim(),
         duration: lessonForm.duration,
         isFreePreview: lessonForm.isFreePreview,
+        ...(lessonVideoFile ? { hasLocalVideo: true } : {}),
       };
 
       if (editingLessonId !== null) {
@@ -607,7 +645,7 @@ function saveLesson(event) {
         lessons: [
           ...lessons,
           {
-            id: Date.now().toString(),
+            id: newLessonId,
             ...updatedLesson,
           },
         ],
@@ -1281,6 +1319,22 @@ function handleDemoWithdrawal(event) {
         {/* MY COURSES */}
 
        
+{tab === "analytics" && <InstructorAnalytics email={email} courses={courses} />}
+{tab === "quizzes" && <CourseQuizzes role="teacher" email={email} courses={courses.map(c => ({ ...c, teacherEmail: email }))} />}
+{tab === "course-assignments" && <CourseAssignments role="teacher" email={email} courses={courses.map(c => ({ ...c, teacherEmail: email }))} />}
+{tab === "curriculum" && <CurriculumBuilder role="teacher" email={email} courses={courses.map(c => ({ ...c, teacherEmail: email }))}
+  onAddLesson={(courseId, lesson) => setCourses(prev => prev.map(c => String(c.id)===String(courseId) ? {...c,lessons:[...(Array.isArray(c.lessons)?c.lessons:[]),lesson]} : c))}
+  onReorderLessons={(courseId, orderedIds) => setCourses(prev => prev.map(c => {
+    if(String(c.id)!==String(courseId))return c;
+    const old=Array.isArray(c.lessons)?c.lessons:[];
+    const picked=orderedIds.map(id=>old.find(l=>String(l.id)===String(id))).filter(Boolean);
+    const remaining=old.filter(l=>!orderedIds.some(id=>String(id)===String(l.id)));
+    return {...c,lessons:[...picked,...remaining]};
+  }))}
+/>}
+{tab === "reviews" && <CourseReviews role="teacher" email={email} courses={courses} />}
+{tab === "discussions" && <CourseDiscussions role="teacher" email={email} courses={courses.map(course => ({ ...course, teacherEmail: email }))} />}
+
 {tab === "courses" && (
   <div style={{ display: "grid", gap: 20 }}>
     {/* SEARCH AND FILTERS */}
@@ -2035,7 +2089,7 @@ function handleDemoWithdrawal(event) {
               <small>
                 {lessonVideoFile
                   ? `Selected: ${lessonVideoFile.name}`
-                  : "Video upload will be connected when the backend is ready."}
+                  : "MP4/WebM saved locally in this browser (IndexedDB)."}
               </small>
             </div>
 
