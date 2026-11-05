@@ -37,7 +37,10 @@ const ADMIN_ROUTES = [
   "/admin/ai-operations",
   "/admin/support",
   "/admin/reports",
-  "/admin/audit-logs",
+  "/admin/data-export",
+  "/admin/data-import",
+  "/admin/notifications",
+  "/admin/activity-log",
   "/admin/settings",
   "/admin/security",
 ];

@@ -2192,6 +2192,29 @@ body:has(.edc-teacher-shell) .dashboard-container {
   color: #991b1b;
 }
 
+.edc-teacher-status-badge.changes-requested {
+  background: #e3efff;
+  color: #24559b;
+}
+
+.edc-teacher-course-revision-note {
+  display: grid;
+  gap: 5px;
+  margin: 12px 0 0;
+  padding: 10px 11px;
+  border-left: 3px solid #5986ca;
+  border-radius: 0 8px 8px 0;
+  color: #3e5f91;
+  background: #f0f6ff;
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.edc-teacher-course-revision-note strong {
+  font-size: 10px;
+}
+
 .edc-teacher-course-card-body {
   padding: 18px;
 }

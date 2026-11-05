@@ -12,10 +12,12 @@ import {
   XCircle,
 } from "lucide-react";
 import {
-  notifyAdminDataChanged,
   ADMIN_USERS_KEY,
   getAdminCourses,
+  notifyAdminDataChanged,
   readAdminArray,
+  updateAdminCourseStatus,
+  updateAdminTeacherStatus,
 } from "../../components/admin/adminData";
 
 const styles = {
@@ -83,18 +85,7 @@ function AdminDashboard({ initialTab = "teachers", onSectionChange }) {
   }, []);
 
   function updateTeacherStatus(email, status) {
-    const updatedUsers = users.map((user) =>
-      user.email === email
-        ? { ...user, status }
-        : user
-    );
-
-    window.localStorage.setItem(
-      ADMIN_USERS_KEY,
-      JSON.stringify(updatedUsers)
-    );
-
-    notifyAdminDataChanged();
+    const updatedUsers = updateAdminTeacherStatus(email, status);
     setUsers(updatedUsers);
   }
 
@@ -103,21 +94,7 @@ function AdminDashboard({ initialTab = "teachers", onSectionChange }) {
     courseId,
     status
   ) {
-    const key =
-      `educonnect.teacher.${teacherEmail}.courses`;
-
-    const updated = readAdminArray(key).map((course) =>
-      course.id === courseId
-        ? { ...course, status }
-        : course
-    );
-
-    window.localStorage.setItem(
-      key,
-      JSON.stringify(updated)
-    );
-
-    notifyAdminDataChanged();
+    updateAdminCourseStatus(teacherEmail, courseId, status);
     refreshData();
   }
 
@@ -381,7 +358,7 @@ function AdminDashboard({ initialTab = "teachers", onSectionChange }) {
                       updateCourseStatus(
                         course.teacherEmail,
                         course.id,
-                        "Published"
+                        "Approved"
                       )
                     }
                   >
@@ -395,13 +372,19 @@ function AdminDashboard({ initialTab = "teachers", onSectionChange }) {
                       ...styles.secondary,
                       color: "#b91c1c",
                     }}
-                    onClick={() =>
-                      updateCourseStatus(
-                        course.teacherEmail,
-                        course.id,
-                        "Rejected"
-                      )
-                    }
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          `Reject "${course.title || "this course"}"?`
+                        )
+                      ) {
+                        updateCourseStatus(
+                          course.teacherEmail,
+                          course.id,
+                          "Rejected"
+                        );
+                      }
+                    }}
                   >
                     <XCircle size={16} />
                     Reject

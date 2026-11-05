@@ -1,0 +1,189 @@
+import { Bell, BookOpenCheck, ClipboardCheck } from "lucide-react";
+import {
+  ADMIN_DATA_CHANGED_EVENT,
+  getAdminKnowledgeStorageState,
+  getAdminTeachers,
+  readAdminUsersState,
+} from "./adminData";
+
+function isRecord(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function firstText(record, fields) {
+  for (const field of fields) {
+    const value = record[field];
+    if (
+      (typeof value === "string" || typeof value === "number") &&
+      String(value).trim()
+    ) {
+      return String(value).trim();
+    }
+  }
+  return "";
+}
+
+function getTimestamp(record, fields) {
+  for (const field of fields) {
+    const value = record[field];
+    if (typeof value !== "string" && typeof value !== "number") continue;
+    if (String(value).trim() && !Number.isNaN(new Date(value).getTime())) {
+      return value;
+    }
+  }
+  return null;
+}
+
+function getCourseNotifications(teachers) {
+  const notifications = [];
+  const errors = [];
+  const seen = new Set();
+
+  teachers.forEach((teacher) => {
+    const teacherEmail = teacher.email.trim();
+    const key = `educonnect.teacher.${teacherEmail}.courses`;
+    let courses;
+
+    try {
+      const raw = window.localStorage.getItem(key);
+      if (raw === null) return;
+      courses = JSON.parse(raw);
+      if (!Array.isArray(courses)) {
+        errors.push("Saved teacher course data is not in the expected array format.");
+        return;
+      }
+    } catch {
+      errors.push("Some saved teacher course data could not be read.");
+      return;
+    }
+
+    courses.filter(isRecord).forEach((course) => {
+      if (course.status !== "Pending Approval") return;
+
+      const identity =
+        course.id === undefined || course.id === null || course.id === ""
+          ? JSON.stringify(course)
+          : String(course.id);
+      const dedupeKey = `${teacherEmail.toLowerCase()}:${identity}`;
+      if (seen.has(dedupeKey)) return;
+      seen.add(dedupeKey);
+
+      const courseTitle = firstText(course, ["title", "name"]) || "Untitled course";
+      notifications.push({
+        id: `course:${dedupeKey}`,
+        category: "course",
+        categoryLabel: "Course review",
+        title: "Course awaiting approval",
+        description: `${courseTitle} is marked Pending Approval.`,
+        related: courseTitle,
+        timestamp: getTimestamp(course, [
+          "submittedAt",
+          "submissionDate",
+          "submittedOn",
+          "submittedDate",
+          "createdAt",
+        ]),
+        path: "/admin/courses",
+        icon: BookOpenCheck,
+      });
+    });
+  });
+
+  return { notifications, errors };
+}
+
+export function getAdminNotifications() {
+  const errors = [];
+  const userState = readAdminUsersState();
+  if (userState.error) errors.push(userState.error);
+
+  const teachers = getAdminTeachers(userState.users);
+  const notifications = [];
+
+  teachers.forEach((teacher) => {
+    if (
+      typeof teacher.status !== "string" ||
+      teacher.status.trim().toLowerCase() !== "pending"
+    ) {
+      return;
+    }
+
+    const email = teacher.email.trim().toLowerCase();
+    const name = firstText(teacher, ["name"]) || email;
+    notifications.push({
+      id: `teacher:${email}`,
+      category: "teacher",
+      categoryLabel: "Teacher application",
+      title: "Teacher application awaiting review",
+      description: `${name} has a teacher application marked pending.`,
+      related: name,
+      timestamp: getTimestamp(teacher, [
+        "appliedAt",
+        "submittedAt",
+        "createdAt",
+        "registeredAt",
+      ]),
+      path: "/admin/teachers",
+      icon: ClipboardCheck,
+    });
+  });
+
+  const courseState = getCourseNotifications(teachers);
+  notifications.push(...courseState.notifications);
+  errors.push(...courseState.errors);
+
+  const knowledgeState = getAdminKnowledgeStorageState();
+  if (knowledgeState.error) errors.push(knowledgeState.error);
+  const seenProposals = new Set();
+  knowledgeState.proposals.forEach((proposal) => {
+    if (proposal.status !== "Pending Review") return;
+
+    const proposalId =
+      firstText(proposal, ["proposalId"]) || JSON.stringify(proposal);
+    if (seenProposals.has(proposalId)) return;
+    seenProposals.add(proposalId);
+
+    const topic =
+      firstText(proposal, ["proposedTopic"]) ||
+      firstText(proposal.courseSnapshot || {}, ["title"]) ||
+      "Untitled proposal";
+    const requester = firstText(proposal, ["teacherName", "teacherEmail"]);
+    notifications.push({
+      id: `knowledge:${proposalId}`,
+      category: "knowledge",
+      categoryLabel: "AI knowledge",
+      title: "AI knowledge proposal awaiting review",
+      description: requester
+        ? `${topic} was proposed by ${requester}.`
+        : `${topic} is marked Pending Review.`,
+      related: topic,
+      timestamp: getTimestamp(proposal, ["submittedAt"]),
+      path: "/admin/knowledge",
+      icon: Bell,
+    });
+  });
+
+  const uniqueNotifications = [
+    ...new Map(
+      notifications.map((notification) => [notification.id, notification]),
+    ).values(),
+  ];
+
+  uniqueNotifications.sort((first, second) => {
+    if (!first.timestamp) return second.timestamp ? 1 : 0;
+    if (!second.timestamp) return -1;
+    return new Date(second.timestamp).getTime() - new Date(first.timestamp).getTime();
+  });
+
+  return { notifications: uniqueNotifications, errors };
+}
+
+export function formatAdminNotificationTimestamp(value) {
+  if (!value) return null;
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
+export { ADMIN_DATA_CHANGED_EVENT };

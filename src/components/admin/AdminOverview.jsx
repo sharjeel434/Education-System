@@ -9,11 +9,20 @@ import {
 import { Link } from "react-router-dom";
 import {
   ADMIN_DATA_CHANGED_EVENT,
+  getAdminActivityLog,
   getAdminOverviewData,
 } from "./adminData";
 
 function AdminOverview() {
   const [overview, setOverview] = useState(getAdminOverviewData);
+  const recentActivity = getAdminActivityLog()
+    .records.slice()
+    .sort((first, second) => {
+      const left = new Date(first.timestamp || 0).getTime();
+      const right = new Date(second.timestamp || 0).getTime();
+      return right - left;
+    })
+    .slice(0, 4);
 
   useEffect(() => {
     function refreshOverview() {
@@ -48,6 +57,21 @@ function AdminOverview() {
       value: overview.publishedCourseCount,
       icon: CheckCircle2,
     },
+    {
+      label: "Pending Knowledge Review",
+      value: overview.pendingKnowledgeProposalCount,
+      icon: BookOpen,
+    },
+    {
+      label: "Approved for Processing",
+      value: overview.approvedKnowledgeProposalCount,
+      icon: CheckCircle2,
+    },
+    {
+      label: "Rejected Knowledge Proposals",
+      value: overview.rejectedKnowledgeProposalCount,
+      icon: BookOpen,
+    },
   ];
 
   const pendingTasks = [
@@ -62,6 +86,12 @@ function AdminOverview() {
       count: overview.pendingCourseCount,
       path: "/admin/courses",
       action: "Review courses",
+    },
+    overview.pendingKnowledgeProposalCount > 0 && {
+      label: "knowledge proposal",
+      count: overview.pendingKnowledgeProposalCount,
+      path: "/admin/knowledge",
+      action: "Review AI knowledge",
     },
   ].filter(Boolean);
 
@@ -114,19 +144,50 @@ function AdminOverview() {
         <section className="edc-admin-panel">
           <div className="edc-admin-panel-heading">
             <div>
-              <h3>Recent Activity</h3>
-              <p>Recent platform events will appear here.</p>
+              <h3>AI Knowledge Governance</h3>
+              <p>Separate proposal decisions; no content is processed or published.</p>
             </div>
           </div>
-          <div className="edc-admin-empty-state">
-            <span className="edc-admin-empty-icon" aria-hidden="true">
-              <BookOpen size={19} />
-            </span>
-            <strong>No activity history available</strong>
-            <p>
-              The current demo does not store activity events. This section
-              can show them when the application supports activity history.
-            </p>
+          <dl className="edc-admin-breakdown-list">
+            <div><dt>Total proposals</dt><dd>{overview.knowledgeProposalCount}</dd></div>
+            <div><dt>Pending review</dt><dd>{overview.pendingKnowledgeProposalCount}</dd></div>
+            <div><dt>Approved for processing</dt><dd>{overview.approvedKnowledgeProposalCount}</dd></div>
+            <div><dt>Rejected</dt><dd>{overview.rejectedKnowledgeProposalCount}</dd></div>
+          </dl>
+        </section>
+
+        <section className="edc-admin-panel">
+          <div className="edc-admin-panel-heading">
+            <div>
+              <h3>Recent Activity</h3>
+              <p>Latest admin actions recorded by the activity log.</p>
+            </div>
+          </div>
+          {recentActivity.length > 0 ? (
+            <ul className="edc-admin-activity-summary-list">
+              {recentActivity.map((item) => (
+                <li key={item.id || `${item.timestamp}-${item.action}`}>
+                  <strong>{item.description || item.action || "Admin activity"}</strong>
+                  <span>{item.targetName || item.entityId || "Target not provided"}</span>
+                  <small>{item.timestamp ? new Date(item.timestamp).toLocaleString() : "Not provided"}</small>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="edc-admin-empty-state">
+              <span className="edc-admin-empty-icon" aria-hidden="true">
+                <BookOpen size={19} />
+              </span>
+              <strong>No activity history available</strong>
+              <p>
+                Successful admin actions will appear here after they are recorded in the activity log.
+              </p>
+            </div>
+          )}
+          <div className="edc-admin-activity-summary-link-wrap">
+            <Link to="/admin/activity-log" className="edc-admin-activity-summary-link">
+              View all activity
+            </Link>
           </div>
         </section>
 
@@ -158,7 +219,10 @@ function AdminOverview() {
                 <CheckCircle2 size={19} />
               </span>
               <strong>No pending tasks</strong>
-              <p>There are no teacher applications or course approvals awaiting review.</p>
+              <p>
+                There are no teacher applications, course approvals, or
+                knowledge proposals awaiting review.
+              </p>
             </div>
           )}
         </section>
@@ -190,18 +254,23 @@ function AdminOverview() {
             <div className="edc-admin-empty-state edc-admin-empty-state-compact">
               <strong>No notifications</strong>
               <p>
-                The demo has no separate notification feed or pending items
-                to summarize.
+                There are no teacher applications, course reviews, or
+                knowledge proposals currently marked for review.
               </p>
             </div>
           )}
+          <div className="edc-admin-activity-summary-link-wrap">
+            <Link to="/admin/notifications" className="edc-admin-activity-summary-link">
+              View notification queue
+            </Link>
+          </div>
         </section>
       </div>
 
       <p className="edc-admin-demo-note">
         Counts use the existing browser demo records. Password data is never
-        displayed; activity history and a separate notification feed are not
-        currently stored.
+        displayed. Notifications are derived from current pending review
+        records; historical Admin actions remain in the Activity Log.
       </p>
     </div>
   );

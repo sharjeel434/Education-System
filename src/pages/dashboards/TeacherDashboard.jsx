@@ -706,7 +706,11 @@ function handleDemoWithdrawal(event) {
     setCourses((previous) =>
       previous.map((item) =>
         item.id === courseId
-          ? { ...item, status: "Pending Approval" }
+          ? {
+              ...item,
+              status: "Pending Approval",
+              revisionNotes: "",
+            }
           : item
       )
     );
@@ -1621,8 +1625,11 @@ function handleDemoWithdrawal(event) {
                     ? "approved"
                     : course.status === "Pending Approval"
                     ? "pending"
-                    : course.status === "Rejected"
+                    : course.status === "Rejected" ||
+                        course.status === "Suspended"
                     ? "rejected"
+                    : course.status === "Changes Requested"
+                    ? "changes-requested"
                     : "draft"
                 }`}
               >
@@ -1640,6 +1647,14 @@ function handleDemoWithdrawal(event) {
               <p className="edc-teacher-course-description">
                 {course.description || "No description added."}
               </p>
+
+              {typeof course.revisionNotes === "string" &&
+                course.revisionNotes.trim() && (
+                  <p className="edc-teacher-course-revision-note">
+                    <strong>Admin revision notes</strong>
+                    <span>{course.revisionNotes}</span>
+                  </p>
+                )}
 
               <div className="edc-teacher-course-meta">
                 <span>
