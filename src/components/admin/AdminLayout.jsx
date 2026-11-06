@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import AdminDashboard from "../../pages/dashboards/AdminDashboard";
 import AdminActivityLog from "./AdminActivityLog";
 import AdminAnalytics from "./AdminAnalytics";
-import AdminSettings from "./AdminSettings";
+import AdminSettings from "./AdminSettings.jsx";
 import AdminCourseReview from "./AdminCourseReview";
 import AdminDataExport from "./AdminDataExport";
 import AdminDataImport from "./AdminDataImport";
