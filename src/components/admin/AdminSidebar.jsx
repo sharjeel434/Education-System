@@ -1,8 +1,15 @@
 import { GraduationCap, X } from "lucide-react";
-import { NavLink } from "react-router-dom";
-import { ADMIN_SECTIONS } from "./adminNavigation";
+import { Link, useLocation } from "react-router-dom";
+import {
+  ADMIN_NAV_GROUPS,
+  getAdminSectionByPath,
+} from "./adminNavigation";
 
 function AdminSidebar({ isOpen, onClose }) {
+  const location = useLocation();
+  const currentSection = getAdminSectionByPath(location.pathname);
+  const highlightedItemId = currentSection?.parentId ?? currentSection?.id;
+
   return (
     <>
       {isOpen && (
@@ -41,21 +48,50 @@ function AdminSidebar({ isOpen, onClose }) {
           className="edc-admin-navigation"
           aria-label="Admin sections"
         >
-          <span className="edc-admin-navigation-label">WORKSPACE</span>
-          {ADMIN_SECTIONS.map(({ id, path, title, icon: Icon }) => (
-            <NavLink
-              key={id}
-              to={path}
-              end
-              className={({ isActive }) =>
-                `edc-admin-nav-item${isActive ? " edc-admin-nav-item-active" : ""}`
-              }
-              onClick={onClose}
-            >
-              <Icon size={18} aria-hidden="true" />
-              <span>{title}</span>
-            </NavLink>
-          ))}
+          {ADMIN_NAV_GROUPS.map(({ id: groupId, label, items }) => {
+            const labelId = `edc-admin-navigation-label-${groupId}`;
+
+            return (
+              <div
+                key={groupId}
+                className="edc-admin-nav-group"
+                role="group"
+                aria-labelledby={label ? labelId : undefined}
+              >
+                {label && (
+                  <span
+                    id={labelId}
+                    className="edc-admin-navigation-label"
+                  >
+                    {label}
+                  </span>
+                )}
+                {items.map(({ id, path, title, navTitle, icon: Icon }) => {
+                  const isCurrentPage = id === currentSection?.id;
+                  const isHighlighted = id === highlightedItemId;
+
+                  return (
+                    <Link
+                      key={id}
+                      to={path}
+                      aria-current={
+                        isCurrentPage
+                          ? "page"
+                          : isHighlighted
+                            ? "true"
+                            : undefined
+                      }
+                      className={`edc-admin-nav-item${isHighlighted ? " edc-admin-nav-item-active" : ""}`}
+                      onClick={onClose}
+                    >
+                      <Icon size={18} aria-hidden="true" />
+                      <span>{navTitle ?? title}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            );
+          })}
         </nav>
 
         <div className="edc-admin-sidebar-footer">

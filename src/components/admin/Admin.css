@@ -1,17 +1,19 @@
 .edc-admin-layout {
-  --edc-admin-ink: #1d2340;
-  --edc-admin-muted: #727b91;
-  --edc-admin-line: #e7eaf1;
-  --edc-admin-primary: #6845d5;
-  --edc-admin-primary-light: #f0edff;
+  --edc-admin-ink: #25134c;
+  --edc-admin-muted: #817b93;
+  --edc-admin-line: #ece8f5;
+  --edc-admin-primary: #6d42d8;
+  --edc-admin-primary-light: #eee6ff;
+  --edc-admin-background: #f8f7fd;
   display: grid;
-  grid-template-columns: 264px minmax(0, 1fr);
+  grid-template-columns: 250px minmax(0, 1fr);
   width: 100%;
   height: 100vh;
   height: 100dvh;
   overflow: hidden;
   color: var(--edc-admin-ink);
-  background: #f4f6fb;
+  background: var(--edc-admin-background);
+  font-family: inherit;
 }
 
 .edc-admin-sidebar {
@@ -19,11 +21,11 @@
   display: flex;
   min-height: 0;
   flex-direction: column;
-  gap: 24px;
+  gap: 22px;
   width: 100%;
   height: 100%;
   overflow: hidden;
-  padding: 22px 14px 14px;
+  padding: 25px 14px 14px;
   border-right: 1px solid var(--edc-admin-line);
   background: #fff;
   z-index: 20;
@@ -50,7 +52,7 @@
 .edc-admin-brand-icon {
   width: 42px;
   height: 42px;
-  border-radius: 13px;
+  border-radius: 12px;
 }
 
 .edc-admin-brand-copy {
@@ -99,20 +101,20 @@
 
 .edc-admin-navigation-label {
   margin: 0 10px 8px;
-  color: #9aa1b1;
+  color: #a19ab1;
   font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 1.1px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
 }
 
 .edc-admin-nav-item {
   display: flex;
   align-items: center;
-  gap: 11px;
+  gap: 12px;
   min-height: 44px;
-  padding: 9px 10px;
-  border-radius: 9px;
-  color: #667087;
+  padding: 12px 11px;
+  border-radius: 10px;
+  color: #766e8c;
   font-size: 12px;
   font-weight: 600;
   text-decoration: none;
@@ -121,12 +123,12 @@
 
 .edc-admin-nav-item svg {
   flex: 0 0 auto;
-  color: #8a91a3;
+  color: #8d81a6;
 }
 
 .edc-admin-nav-item:hover {
   color: var(--edc-admin-primary);
-  background: #f7f5ff;
+  background: #f5f0ff;
 }
 
 .edc-admin-nav-item:hover svg {
@@ -135,10 +137,9 @@
 
 .edc-admin-nav-item-active,
 .edc-admin-nav-item-active:hover {
-  color: #5b3cc1;
+  color: #6537d1;
   background: var(--edc-admin-primary-light);
-  box-shadow: inset 3px 0 #6845d5;
-  font-weight: 700;
+  font-weight: 800;
 }
 
 .edc-admin-nav-item-active svg {
@@ -151,7 +152,7 @@
   gap: 8px;
   margin-top: auto;
   padding: 13px 10px 2px;
-  color: #858da0;
+  color: #8d81a6;
   font-size: 10px;
 }
 
@@ -195,7 +196,7 @@
   padding: 12px 34px;
   border-bottom: 1px solid var(--edc-admin-line);
   background: #fff;
-  box-shadow: 0 2px 10px rgba(37, 45, 80, 0.035);
+  box-shadow: 0 4px 18px rgba(40, 20, 90, 0.025);
   backdrop-filter: blur(12px);
 }
 
@@ -220,9 +221,9 @@
 
 .edc-admin-topbar h1 {
   margin: 0;
-  color: #272b42;
-  font-size: 16px;
-  font-weight: 700;
+  color: #2b1c49;
+  font-size: 20px;
+  font-weight: 800;
 }
 
 .edc-admin-account {
@@ -434,15 +435,15 @@
 }
 
 .edc-admin-logout:hover {
-  border-color: #e3dafa;
-  color: #5b3cc1;
-  background: #faf9ff;
+  border-color: #d2c1f2;
+  color: #6537d1;
+  background: #f7f3ff;
 }
 
 .edc-admin-content {
   width: min(100%, 1500px);
   margin: 0 auto;
-  padding: 32px 34px 42px;
+  padding: 30px 27px 42px;
 }
 
 .edc-admin-layout-compact .edc-admin-content {
@@ -483,23 +484,23 @@
 .edc-admin-page-eyebrow {
   color: var(--edc-admin-primary);
   font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 1px;
+  font-weight: 800;
+  letter-spacing: 1.2px;
 }
 
 .edc-admin-page-heading h2 {
-  margin: 8px 0 6px;
-  color: #252a40;
-  font-size: clamp(22px, 2vw, 27px);
+  margin: 5px 0 0;
+  color: #2b1c49;
+  font-size: clamp(22px, 2vw, 24px);
   line-height: 1.2;
-  letter-spacing: -0.6px;
+  font-weight: 800;
 }
 
 .edc-admin-page-heading p {
   max-width: 680px;
   color: var(--edc-admin-muted);
-  font-size: 13px;
-  line-height: 1.6;
+  font-size: 12px;
+  line-height: 1.7;
 }
 
 .edc-admin-overview {
@@ -510,7 +511,7 @@
 
 .edc-admin-stat-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
   gap: 15px;
 }
 
@@ -2438,7 +2439,7 @@
 
 @media (max-width: 1100px) {
   .edc-admin-layout {
-    grid-template-columns: 238px minmax(0, 1fr);
+    grid-template-columns: 250px minmax(0, 1fr);
   }
 
   .edc-admin-sidebar {
@@ -2456,7 +2457,7 @@
   }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 900px) {
   body:has(.edc-admin-layout) {
     min-width: 0;
   }
@@ -2471,7 +2472,7 @@
     top: 0;
     bottom: 0;
     left: 0;
-    width: min(320px, 88vw);
+    width: min(290px, 85vw);
     height: 100vh;
     height: 100dvh;
     max-height: 100dvh;
@@ -2637,7 +2638,315 @@
   .edc-admin-layout-compact .edc-admin-content {
     padding: 16px 12px 20px;
   }
+}
 
+/* Align Admin surfaces with the shared dashboard palette and component rhythm. */
+  .edc-admin-topbar {
+    padding-right: 27px;
+    padding-left: 27px;
+  }
+
+  .edc-admin-topbar-eyebrow,
+  .edc-admin-account-copy small {
+    color: var(--edc-admin-muted);
+  }
+
+  .edc-admin-notification-bell:hover,
+  .edc-admin-notification-bell[aria-expanded="true"] {
+    color: var(--edc-admin-primary);
+    background: #f7f3ff;
+  }
+
+  .edc-admin-notification-bell:focus-visible,
+  .edc-admin-menu-button:focus-visible,
+  .edc-admin-sidebar-close:focus-visible,
+  .edc-admin-nav-item:focus-visible,
+  .edc-admin-action-button:focus-visible,
+  .edc-admin-button-primary:focus-visible {
+    outline: 3px solid #6d42d84d;
+    outline-offset: 2px;
+  }
+
+  .edc-admin-notification-indicator {
+    background: var(--edc-admin-primary);
+  }
+
+  .edc-admin-content :is(.edc-admin-page-heading h2, .edc-admin-panel-heading h3, .edc-admin-tools-header h3, .edc-admin-security-subtitle) {
+    color: var(--edc-admin-ink);
+  }
+
+  .edc-admin-content :is(.edc-admin-stat-card, .edc-admin-panel, .edc-admin-notification-card, .edc-admin-knowledge-stat, .edc-admin-settings-card) {
+    border-color: var(--edc-admin-line);
+    border-radius: 14px;
+    box-shadow: 0 4px 18px rgba(40, 20, 90, 0.035);
+  }
+
+  .edc-admin-stat-card,
+  .edc-admin-panel {
+    box-shadow: 0 4px 18px rgba(40, 20, 90, 0.035);
+  }
+
+  .edc-admin-stat-card p {
+    color: var(--edc-admin-muted);
+  }
+
+  .edc-admin-stat-card strong {
+    color: var(--edc-admin-ink);
+  }
+
+  .edc-admin-breakdown-list > div {
+    border-color: #f0edf5;
+  }
+
+  .edc-admin-breakdown-list dt,
+  .edc-admin-breakdown-list dd {
+    color: #655b78;
+  }
+
+  .edc-admin-breakdown-list dd {
+    color: var(--edc-admin-ink);
+  }
+
+  .edc-admin-empty-icon,
+  .edc-admin-stat-icon,
+  .edc-admin-placeholder-icon {
+    color: var(--edc-admin-primary);
+    background: var(--edc-admin-primary-light);
+  }
+
+  .edc-admin-task-list a,
+  .edc-admin-notification-list li,
+  .edc-admin-notification-card,
+  .edc-admin-security-route-item,
+  .edc-admin-security-action-box,
+  .edc-admin-security-role-card,
+  .edc-admin-security-limitation-item {
+    border-color: var(--edc-admin-line);
+    border-radius: 11px;
+  }
+
+  .edc-admin-task-list a:hover,
+  .edc-admin-notification-list li:hover,
+  .edc-admin-security-route-item:hover {
+    border-color: #d7c9f3;
+    background: #faf8ff;
+  }
+
+  .edc-admin-search:focus-within,
+  .edc-admin-import-field select:focus-visible,
+  .edc-admin-support-add-response-form textarea:focus-visible {
+    border-color: #bca9f0;
+    box-shadow: 0 0 0 3px #6d42d81a;
+  }
+
+  .edc-admin-filter-button-active,
+  .edc-admin-filter-button-active:hover {
+    border-color: #e2d8f6;
+    color: #6034c8;
+    background: #f1ebff;
+  }
+
+  .edc-admin-table-wrap {
+    border-color: var(--edc-admin-line);
+    border-radius: 11px;
+  }
+
+  .edc-admin-applications-table th,
+  .edc-admin-table th {
+    border-bottom-color: var(--edc-admin-line);
+    color: #766e88;
+    background: #faf9fd;
+  }
+
+  .edc-admin-applications-table td,
+  .edc-admin-table td {
+    border-bottom-color: #f0edf5;
+    color: #615a70;
+  }
+
+  .edc-admin-applications-table tbody tr:hover,
+  .edc-admin-table tbody tr:hover {
+    background: #fcfaff;
+  }
+
+  .edc-admin-action-button {
+    border-radius: 8px;
+  }
+
+  .edc-admin-action-button:hover:not(:disabled) {
+    border-color: #d7c9f3;
+    color: #6034c8;
+    background: #f8f4ff;
+  }
+
+  .edc-admin-module-placeholder {
+    border-color: #e5def1;
+    background: #fff;
+  }
+
+  .edc-admin-security-notice {
+    border-color: #e8e1f3;
+    border-left-color: var(--edc-admin-primary);
+    border-radius: 11px;
+    background: #faf8ff;
+  }
+
+  .edc-admin-security-role-card-highlight {
+    border-color: #d6c7f5;
+    background: #faf7ff;
+  }
+
+  .edc-admin-security-role-card p,
+  .edc-admin-security-unavailable-list {
+    color: #655d73;
+  }
+
+  .edc-admin-security-role-card code {
+    color: #5736a4;
+    background: #f1ebff;
+  }
+
+  .edc-admin-security-route-icon {
+    border-radius: 8px;
+  }
+
+  .edc-admin-security-route-meta code {
+    color: #817b93;
+  }
+
+  .edc-admin-security-limitation-item {
+    border-color: #eee8f5;
+    background: #faf9fd;
+  }
+
+  .edc-admin-security-action-box {
+    padding: 16px 18px;
+  }
+
+  .edc-admin-security-footer-links {
+    border-top-color: var(--edc-admin-line);
+  }
+
+  .edc-admin-system-health {
+    display: grid;
+    gap: 16px;
+  }
+
+  .edc-admin-system-health .edc-admin-page-heading {
+    display: none;
+  }
+
+  .edc-admin-health-section {
+    min-width: 0;
+    padding: 18px;
+    border: 1px solid var(--edc-admin-line);
+    border-radius: 14px;
+    background: #fff;
+    box-shadow: 0 4px 18px rgba(40, 20, 90, 0.035);
+  }
+
+  .edc-admin-health-section h3 {
+    margin: 0 0 12px;
+    color: var(--edc-admin-ink);
+    font-size: 14px;
+    font-weight: 750;
+  }
+
+  .edc-admin-health-section ul {
+    display: grid;
+    gap: 8px;
+    margin: 0;
+    padding-left: 20px;
+    color: #655d73;
+    font-size: 12px;
+    line-height: 1.6;
+  }
+
+  .edc-admin-table {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: left;
+  }
+
+  .edc-admin-table th,
+  .edc-admin-table td {
+    padding: 11px 12px;
+    border-bottom: 1px solid var(--edc-admin-line);
+    font-size: 11px;
+  }
+
+  .edc-admin-table th {
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .edc-admin-table tr:last-child td {
+    border-bottom: 0;
+  }
+
+  .edc-admin-button-primary {
+    display: inline-flex;
+    min-height: 38px;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 9px 14px;
+    border: 1px solid var(--edc-admin-primary);
+    border-radius: 9px;
+    color: #fff;
+    background: var(--edc-admin-primary);
+    font: inherit;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 150ms ease, border-color 150ms ease, transform 150ms ease;
+  }
+
+  .edc-admin-button-primary:hover {
+    transform: translateY(-1px);
+    border-color: #5e35c2;
+    background: #5e35c2;
+  }
+
+  @media (max-width: 900px) {
+    .edc-admin-topbar {
+      padding-right: 20px;
+      padding-left: 20px;
+    }
+  }
+
+  @media (max-width: 760px) {
+    .edc-admin-topbar {
+      padding-right: 16px;
+      padding-left: 16px;
+    }
+
+    .edc-admin-table {
+      min-width: 540px;
+    }
+
+    .edc-admin-health-section {
+      overflow-x: auto;
+      padding: 15px;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .edc-admin-topbar h1 {
+      font-size: 17px;
+    }
+
+    .edc-admin-content .edc-admin-stat-card,
+    .edc-admin-health-section {
+      padding: 13px;
+    }
+
+    .edc-admin-system-health .edc-admin-page-heading h2 {
+      font-size: 21px;
+    }
+  }
+
+@media (max-width: 480px) {
   .edc-admin-topbar {
     gap: 8px;
     padding-right: 11px;
@@ -3597,3 +3906,6 @@
     justify-content: center;
   }
 }
+
+.edc-admin-nav-group { display: flex; flex-direction: column; gap: 4px; }
+.edc-admin-nav-group + .edc-admin-nav-group { margin-top: 14px; }

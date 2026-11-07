@@ -13,6 +13,10 @@ import {
   Sparkles,
 } from "lucide-react";
 
+import {
+  ADMIN_PATH_REDIRECTS,
+  ADMIN_ROUTES,
+} from "../components/admin/adminNavigation";
 import StudentDashboard from "./dashboards/StudentDashboard";
 import TeacherDashboard from "./dashboards/TeacherDashboard";
 import AdminLayout from "../components/admin/AdminLayout";
@@ -24,26 +28,6 @@ const DASHBOARDS = {
   Teacher: "/teacher/dashboard",
   Admin: "/admin/dashboard",
 };
-
-const ADMIN_ROUTES = [
-  "/admin/dashboard",
-  "/admin/teachers",
-  "/admin/courses",
-  "/admin/knowledge",
-  "/admin/users",
-  "/admin/institutions",
-  "/admin/tutors",
-  "/admin/finance",
-  "/admin/ai-operations",
-  "/admin/support",
-  "/admin/reports",
-  "/admin/data-export",
-  "/admin/data-import",
-  "/admin/notifications",
-  "/admin/activity-log",
-  "/admin/settings",
-  "/admin/security",
-];
 
 function DashboardPage() {
   const navigate = useNavigate();
@@ -66,6 +50,10 @@ function DashboardPage() {
     !["Student", "Teacher", "Admin"].includes(role)
   ) {
     return <Navigate to="/login" replace />;
+  }
+
+  if (role === "Admin" && ADMIN_PATH_REDIRECTS[location.pathname]) {
+    return <Navigate to={ADMIN_PATH_REDIRECTS[location.pathname]} replace />;
   }
 
   const expectedPath = DASHBOARDS[role];

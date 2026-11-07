@@ -3,17 +3,22 @@ import { useLocation, useNavigate } from "react-router-dom";
 import AdminDashboard from "../../pages/dashboards/AdminDashboard";
 import AdminActivityLog from "./AdminActivityLog";
 import AdminAnalytics from "./AdminAnalytics";
+import AdminAIOperations from "./AdminAIOperations";
+import AdminFinancialManagement from "./AdminFinancialManagement";
+import AdminSecurity from "./AdminSecurity";
 import AdminSettings from "./AdminSettings";
 import AdminCourseReview from "./AdminCourseReview";
 import AdminDataExport from "./AdminDataExport";
 import AdminDataImport from "./AdminDataImport";
 import AdminKnowledgeGovernance from "./AdminKnowledgeGovernance";
+import AdminModerationGovernance from "./AdminModerationGovernance";
 import AdminNotifications from "./AdminNotifications";
 import AdminModulePlaceholder from "./AdminModulePlaceholder";
 import AdminOverview from "./AdminOverview";
 import AdminSystemHealth from "./AdminSystemHealth";
 import AdminSupportModeration from "./AdminSupportModeration";
 import AdminTeacherApplications from "./AdminTeacherApplications";
+import AdminTutorMarketplace from "./AdminTutorMarketplace";
 import AdminUserManagement from "./AdminUserManagement";
 import AdminSidebar from "./AdminSidebar";
 import AdminTopbar from "./AdminTopbar";
@@ -95,8 +100,24 @@ function AdminLayout({ email, onLogout }) {
       return <AdminUserManagement />;
     }
 
+    if (section.id === "tutors") {
+      return <AdminTutorMarketplace email={email} />;
+    }
+
+    if (section.id === "finance") {
+      return <AdminFinancialManagement email={email} />;
+    }
+
+    if (section.id === "ai-operations") {
+      return <AdminAIOperations email={email} />;
+    }
+
     if (section.id === "support") {
       return <AdminSupportModeration email={email} />;
+    }
+
+    if (section.id === "moderation") {
+      return <AdminModerationGovernance email={email} />;
     }
 
     if (section.id === "reports") {
@@ -131,6 +152,10 @@ function AdminLayout({ email, onLogout }) {
           preferences={preferences}
         />
       );
+    }
+
+    if (section.id === "security") {
+      return <AdminSecurity email={email} onLogout={onLogout} />;
     }
 
     if (section.id === "system-health") {

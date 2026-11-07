@@ -68,7 +68,7 @@ function getStatusBadgeClass(status) {
   }
 }
 
-function AdminSupportModeration({ email }) {
+function AdminSupportModeration({ email, moderationOnly = false }) {
   const adminActor = email || window.sessionStorage.getItem("educonnect.demoEmail") || "Admin";
 
   const [requests, setRequests] = useState(() => readAdminSupportRequestsState().records);
@@ -132,6 +132,14 @@ function AdminSupportModeration({ email }) {
     categoryFilter !== "all" ||
     priorityFilter !== "all";
 
+  const viewRequests = useMemo(
+    () =>
+      moderationOnly
+        ? requests.filter((item) => item.category === "Moderation & Appeal")
+        : requests,
+    [moderationOnly, requests],
+  );
+
   function handleResetFilters() {
     setSearch("");
     setStatusFilter("all");
@@ -142,7 +150,7 @@ function AdminSupportModeration({ email }) {
   const filteredRequests = useMemo(() => {
     const query = search.trim().toLowerCase();
 
-    return requests.filter((item) => {
+    return viewRequests.filter((item) => {
       const matchesStatus = statusFilter === "all" || item.status === statusFilter;
       const matchesCategory = categoryFilter === "all" || item.category === categoryFilter;
       const matchesPriority = priorityFilter === "all" || item.priority === priorityFilter;
@@ -171,7 +179,7 @@ function AdminSupportModeration({ email }) {
 
       return searchableText.includes(query);
     });
-  }, [categoryFilter, priorityFilter, requests, search, statusFilter]);
+  }, [categoryFilter, priorityFilter, search, statusFilter, viewRequests]);
 
   function handleOpenCreateModal() {
     setCreateError("");
@@ -254,7 +262,11 @@ function AdminSupportModeration({ email }) {
       <div className="edc-admin-security-notice" style={{ margin: "0 0 18px" }}>
         <LifeBuoy size={16} aria-hidden="true" />
         <div>
-          <strong>Browser-Local Support &amp; Moderation Demo</strong>
+          <strong>
+            {moderationOnly
+              ? "Browser-Local Moderation & Governance View"
+              : "Browser-Local Support & Moderation Demo"}
+          </strong>
           <p>
             Support requests, status transitions, and notes are managed in this browser’s <code>localStorage</code>.
             Records are simulated for administrative demo purposes and are not dispatched to an external helpdesk or ticketing service.
@@ -285,12 +297,18 @@ function AdminSupportModeration({ email }) {
       <div className="edc-admin-applications-toolbar">
         <label className="edc-admin-search edc-admin-support-search">
           <Search size={17} aria-hidden="true" />
-          <span className="edc-admin-visually-hidden">Search support requests</span>
+          <span className="edc-admin-visually-hidden">
+            {moderationOnly ? "Search moderation requests" : "Search support requests"}
+          </span>
           <input
             type="search"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search by subject, requester, category, or ID..."
+            placeholder={
+              moderationOnly
+                ? "Search moderation requests by subject, requester, or ID..."
+                : "Search by subject, requester, category, or ID..."
+            }
           />
         </label>
 
@@ -349,48 +367,65 @@ function AdminSupportModeration({ email }) {
             </button>
           )}
 
-          <button
-            type="button"
-            className="edc-admin-action-button edc-admin-support-create-btn"
-            onClick={handleOpenCreateModal}
-          >
-            <Plus size={15} aria-hidden="true" />
-            Create Demo Request
-          </button>
+          {!moderationOnly && (
+            <button
+              type="button"
+              className="edc-admin-action-button edc-admin-support-create-btn"
+              onClick={handleOpenCreateModal}
+            >
+              <Plus size={15} aria-hidden="true" />
+              Create Demo Request
+            </button>
+          )}
         </div>
       </div>
 
       {/* Empty State: No requests exist at all */}
-      {!storeError && requests.length === 0 && (
+      {!storeError && viewRequests.length === 0 && (
         <div className="edc-admin-applications-empty edc-admin-support-empty">
           <span className="edc-admin-applications-empty-icon" aria-hidden="true">
-            <LifeBuoy size={24} />
+            {moderationOnly ? <ShieldAlert size={24} /> : <LifeBuoy size={24} />}
           </span>
-          <h3>No support requests found</h3>
+          <h3>
+            {moderationOnly
+              ? "No moderation-related requests found"
+              : "No support requests found"}
+          </h3>
           <p>
-            There are currently no support requests or user appeals stored in this browser session.
-            You can create a new demo support request to test the administrative review, status management, and note-taking workflow.
+            {moderationOnly
+              ? "Requests categorized as Moderation & Appeal will appear here. This existing category combines moderation requests and appeals."
+              : "There are currently no support requests or user appeals stored in this browser session. You can create a new demo support request to test the administrative review, status management, and note-taking workflow."}
           </p>
-          <button
-            type="button"
-            className="edc-admin-action-button edc-admin-support-create-btn"
-            style={{ marginTop: "14px" }}
-            onClick={handleOpenCreateModal}
-          >
-            <Plus size={15} aria-hidden="true" />
-            Create Demo Support Request
-          </button>
+          {!moderationOnly && (
+            <button
+              type="button"
+              className="edc-admin-action-button edc-admin-support-create-btn"
+              style={{ marginTop: "14px" }}
+              onClick={handleOpenCreateModal}
+            >
+              <Plus size={15} aria-hidden="true" />
+              Create Demo Support Request
+            </button>
+          )}
         </div>
       )}
 
       {/* Empty State: Search or filters yield zero results */}
-      {!storeError && requests.length > 0 && filteredRequests.length === 0 && (
+      {!storeError && viewRequests.length > 0 && filteredRequests.length === 0 && (
         <div className="edc-admin-applications-empty edc-admin-support-empty">
           <span className="edc-admin-applications-empty-icon" aria-hidden="true">
             <Search size={24} />
           </span>
-          <h3>No matching support requests</h3>
-          <p>No support records matched your active search term or filter parameters.</p>
+          <h3>
+            {moderationOnly
+              ? "No matching moderation requests"
+              : "No matching support requests"}
+          </h3>
+          <p>
+            {moderationOnly
+              ? "No Moderation & Appeal records matched your active search term or filter parameters."
+              : "No support records matched your active search term or filter parameters."}
+          </p>
           <button
             type="button"
             className="edc-admin-action-button"
@@ -476,14 +511,16 @@ function AdminSupportModeration({ email }) {
       )}
 
       {/* Request Count Info */}
-      {!storeError && requests.length > 0 && (
+      {!storeError && viewRequests.length > 0 && (
         <p className="edc-admin-applications-count" aria-live="polite">
-          Showing {filteredRequests.length} of {requests.length} support request{requests.length === 1 ? "" : "s"}
+          Showing {filteredRequests.length} of {viewRequests.length}{" "}
+          {moderationOnly ? "moderation-related request" : "support request"}
+          {viewRequests.length === 1 ? "" : "s"}
         </p>
       )}
 
       {/* CREATE SUPPORT REQUEST MODAL */}
-      {isCreateOpen && (
+      {!moderationOnly && isCreateOpen && (
         <div className="edc-admin-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="create-request-title">
           <div className="edc-admin-details-modal edc-admin-support-modal">
             <div className="edc-admin-details-header">
@@ -615,7 +652,11 @@ function AdminSupportModeration({ email }) {
           <div className="edc-admin-details-modal edc-admin-support-modal">
             <div className="edc-admin-details-header">
               <div>
-                <span className="edc-admin-page-eyebrow">SUPPORT REQUEST DETAILS</span>
+                <span className="edc-admin-page-eyebrow">
+                  {moderationOnly
+                    ? "MODERATION & GOVERNANCE DETAILS"
+                    : "SUPPORT REQUEST DETAILS"}
+                </span>
                 <h3 id="details-request-title">{selectedRequest.subject}</h3>
                 <span className="edc-admin-support-id-tag">#{selectedRequest.id}</span>
               </div>

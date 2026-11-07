@@ -1,6 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Search, UserRound, UsersRound } from "lucide-react";
+import {
+  AlertTriangle,
+  GraduationCap,
+  Search,
+  ShieldCheck,
+  UserRound,
+  UsersRound,
+} from "lucide-react";
 import { ADMIN_DATA_CHANGED_EVENT, readAdminUsersState } from "./adminData";
+import "./AdminOperations.css";
 
 function formatDate(value) {
   if (typeof value !== "string" || !value.trim()) {
@@ -19,6 +27,73 @@ function displayValue(value) {
     return String(value);
   }
   return "Not available";
+}
+
+function detailValue(value) {
+  if (typeof value === "boolean") {
+    return value ? "Yes" : "No";
+  }
+  if (Array.isArray(value)) {
+    const values = value.filter(
+      (item) => typeof item === "string" || typeof item === "number",
+    );
+    return values.length ? values.join(", ") : "Not available";
+  }
+  return displayValue(value);
+}
+
+function getUserDetails(user) {
+  const fields = [
+    ["Name", user.name],
+    ["Email", user.email],
+    ["Role", user.role],
+    ["Status", user.status],
+    ["Registered", user.createdAt || user.registeredAt],
+    ["Last updated", user.updatedAt],
+  ];
+  const profileFields = [
+    ["Institution", "institution"],
+    ["Specialization", "specialization"],
+    ["Subject", "subject"],
+    ["Qualification", "qualification"],
+    ["Experience", "experience"],
+    ["Availability", "availability"],
+    ["Verification status", "verificationStatus"],
+    ["Level", "level"],
+    ["Rating", "rating"],
+    ["Phone", "phone"],
+    ["City", "city"],
+    ["About", "about"],
+    ["Teacher application status", "teacherStatus"],
+  ];
+
+  profileFields.forEach(([label, key]) => {
+    if (user[key] !== undefined && user[key] !== null && user[key] !== "") {
+      fields.push([label, user[key]]);
+    }
+  });
+
+  [
+    ["Profile", user.profile],
+    ["Student profile", user.studentProfile],
+    ["Teacher profile", user.teacherProfile],
+    ["Tutor profile", user.tutorProfile],
+    ["Teacher application", user.teacherApplication],
+    ["Tutor application", user.tutorApplication],
+  ].forEach(([prefix, profile]) => {
+    if (!profile || typeof profile !== "object" || Array.isArray(profile)) {
+      return;
+    }
+
+    profileFields.forEach(([label, key]) => {
+      const value = profile[key];
+      if (value !== undefined && value !== null && value !== "") {
+        fields.push([`${prefix} ${label.toLowerCase()}`, value]);
+      }
+    });
+  });
+
+  return fields;
 }
 
 function filteredRoles(users) {
@@ -73,31 +148,62 @@ function AdminUserManagement() {
 
     return users.filter((user) => {
       const matchesRole = roleFilter === "all" || user.role === roleFilter;
-      const matchesStatus = statusFilter === "all" || user.status === statusFilter;
-      const searchableText = [user.name, user.email].filter((value) => typeof value === "string").join(" ").toLowerCase();
+      const matchesStatus = statusFilter === "all" ||
+        String(user.status).toLowerCase() === statusFilter.toLowerCase();
+      const searchableText = getUserDetails(user)
+        .flatMap(([, value]) => Array.isArray(value) ? value : [value])
+        .filter((value) => typeof value === "string" || typeof value === "number")
+        .join(" ")
+        .toLowerCase();
 
       return matchesRole && matchesStatus && (!query || searchableText.includes(query));
     });
   }, [roleFilter, search, statusFilter, users]);
 
   const detailFields = selectedUser
-    ? [
-        ["Name", selectedUser.name],
-        ["Email", selectedUser.email],
-        ["Role", selectedUser.role],
-        ["Status", selectedUser.status],
-        ["Created", selectedUser.createdAt],
-        ["Last updated", selectedUser.updatedAt],
-        ["Registered at", selectedUser.registeredAt],
-        ["Institution", selectedUser.institution],
-        ["Specialization", selectedUser.specialization],
-        ["Subject", selectedUser.subject],
-        ["Teacher application status", selectedUser.teacherStatus],
-      ]
+    ? getUserDetails(selectedUser)
     : [];
+  const summaryCards = [
+    { label: "Registered accounts", value: users.length, role: "all", status: "all", icon: UsersRound },
+    { label: "Students", value: users.filter((user) => user.role === "Student").length, role: "Student", status: "all", icon: GraduationCap },
+    { label: "Teachers", value: users.filter((user) => user.role === "Teacher").length, role: "Teacher", status: "all", icon: UserRound },
+    { label: "Admins", value: users.filter((user) => user.role === "Admin").length, role: "Admin", status: "all", icon: ShieldCheck },
+    { label: "Active accounts", value: users.filter((user) => String(user.status).toLowerCase() === "active").length, role: "all", status: "active", icon: UserRound },
+    { label: "Pending accounts", value: users.filter((user) => String(user.status).toLowerCase() === "pending").length, role: "all", status: "pending", icon: AlertTriangle },
+  ];
 
   return (
     <section className="edc-admin-user-management">
+      <p className="edc-admin-security-note">
+        These counts and account details come from registered user records stored in this browser. This view is read-only; it does not edit account roles or statuses.
+      </p>
+      {!storeError && users.length > 0 && (
+        <div className="edc-admin-stat-grid" aria-label="User account summaries">
+          {summaryCards.map(({ label, value, role, status, icon: Icon }) => {
+            const isActive = !search && roleFilter === role &&
+              (statusFilter === status ||
+                (status !== "all" &&
+                  String(statusFilter).toLowerCase() === status.toLowerCase()));
+            return (
+              <button
+                type="button"
+                className={`edc-admin-stat-card edc-admin-ops-card${isActive ? " edc-admin-ops-card-active" : ""}`}
+                key={label}
+                onClick={() => {
+                  setSearch("");
+                  setRoleFilter(role);
+                  setStatusFilter(status);
+                }}
+                aria-pressed={isActive}
+              >
+                <span className="edc-admin-stat-icon" aria-hidden="true"><Icon size={19} /></span>
+                <p>{label}</p>
+                <strong>{value}</strong>
+              </button>
+            );
+          })}
+        </div>
+      )}
       <div className="edc-admin-applications-toolbar">
         <label className="edc-admin-search edc-admin-user-search">
           <Search size={17} aria-hidden="true" />
@@ -158,7 +264,7 @@ function AdminUserManagement() {
             <UsersRound size={23} />
           </span>
           <h3>No registered users found</h3>
-          <p>New user accounts created in this browser will appear here.</p>
+          <p>No account records are available in this browser yet.</p>
         </div>
       )}
 
@@ -249,8 +355,8 @@ function AdminUserManagement() {
 
             <dl className="edc-admin-details-list">
               {detailFields.map(([label, value], index) => {
-                const safeValue = value === undefined || value === null || value === "" ? "Not available" : displayValue(value);
-                const formattedValue = label === "Created" || label === "Last updated" || label === "Registered at"
+                const safeValue = detailValue(value);
+                const formattedValue = label === "Registered" || label === "Last updated"
                   ? formatDate(value)
                   : safeValue;
 
@@ -262,6 +368,9 @@ function AdminUserManagement() {
                 );
               })}
             </dl>
+            <p className="edc-admin-security-note">
+              Only available account and profile fields are shown. Passwords, hashes, salts, and other authentication credentials are not displayed.
+            </p>
           </div>
         </div>
       )}

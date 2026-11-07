@@ -1,6 +1,6 @@
 // Admin System Health & Diagnostics page
 // This component follows the existing Admin UI conventions.
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { ADMIN_SECTIONS } from "./adminNavigation";
 import {
   ADMIN_USERS_KEY,

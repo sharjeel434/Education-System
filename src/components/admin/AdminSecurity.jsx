@@ -19,10 +19,12 @@ import {
   ADMIN_DATA_CHANGED_EVENT,
   ADMIN_USERS_KEY,
   appendAdminActivityRecord,
+  getAdminActivityLog,
   notifyAdminDataChanged,
   readAdminArray,
 } from "./adminData";
 import { ADMIN_SECTIONS } from "./adminNavigation";
+import "./AdminOperations.css";
 
 function maskEmail(email) {
   if (typeof email !== "string" || !email.includes("@")) {
@@ -60,16 +62,38 @@ function getAdminDisplayName(email) {
 }
 
 function getRouteStatus(id) {
-  if (["institutions", "tutors", "finance", "ai-operations"].includes(id)) {
+  if (id === "institutions") {
     return {
       label: "Placeholder",
       badgeClass: "edc-admin-status-unknown",
     };
   }
   return {
-    label: "Operational",
+    label: "Client Demo",
     badgeClass: "edc-admin-status-approved",
   };
+}
+
+function getStorageDiagnostics() {
+  try {
+    return {
+      sessionEntries: window.sessionStorage.length,
+      localEntries: window.localStorage.length,
+      error: "",
+    };
+  } catch {
+    return {
+      sessionEntries: null,
+      localEntries: null,
+      error: "Browser storage diagnostics are unavailable in this environment.",
+    };
+  }
+}
+
+function formatActivityTimestamp(value) {
+  if (typeof value !== "string" || !value.trim()) return "Not provided";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "Not provided" : date.toLocaleString();
 }
 
 function AdminSecurity({ email, onLogout }) {
@@ -82,6 +106,8 @@ function AdminSecurity({ email, onLogout }) {
   const [rememberedEmail, setRememberedEmail] = useState(() =>
     window.localStorage.getItem("educonnect.rememberedEmail") || "",
   );
+  const [storageDiagnostics, setStorageDiagnostics] = useState(getStorageDiagnostics);
+  const [securityActivityState, setSecurityActivityState] = useState(getAdminActivityLog);
   const [feedback, setFeedback] = useState(null);
 
   const refreshState = useCallback(() => {
@@ -94,6 +120,8 @@ function AdminSecurity({ email, onLogout }) {
     setRememberedEmail(
       window.localStorage.getItem("educonnect.rememberedEmail") || "",
     );
+    setStorageDiagnostics(getStorageDiagnostics());
+    setSecurityActivityState(getAdminActivityLog());
   }, [email]);
 
   useEffect(() => {
@@ -110,6 +138,25 @@ function AdminSecurity({ email, onLogout }) {
   const hasActiveSession = Boolean(sessionRole === "Admin" && sessionEmail);
   const maskedSessionEmail = maskEmail(sessionEmail);
   const maskedRememberedEmail = maskEmail(rememberedEmail);
+  const securityActivity = [...securityActivityState.records]
+    .filter((record) => record.category === "security")
+    .sort((first, second) =>
+      new Date(second.timestamp || 0).getTime() -
+      new Date(first.timestamp || 0).getTime(),
+    )
+    .slice(0, 8);
+  const routeCounts = ADMIN_SECTIONS.reduce(
+    (counts, item) => {
+      if (getRouteStatus(item.id).label === "Placeholder") counts.placeholders += 1;
+      else counts.clientDemo += 1;
+      return counts;
+    },
+    { clientDemo: 0, placeholders: 0 },
+  );
+
+  function scrollToSection(sectionId) {
+    document.getElementById(sectionId)?.scrollIntoView({ block: "start" });
+  }
 
   function handleClearRememberedEmail() {
     setFeedback(null);
@@ -209,7 +256,7 @@ function AdminSecurity({ email, onLogout }) {
     <div className="edc-admin-security">
       {/* Overview Stat Cards */}
       <section className="edc-admin-stat-grid" aria-label="Security summary">
-        <article className="edc-admin-stat-card">
+        <button type="button" className="edc-admin-stat-card edc-admin-ops-card" onClick={() => scrollToSection("security-authentication")}>
           <span className="edc-admin-stat-icon" aria-hidden="true">
             <ShieldCheck size={19} />
           </span>
@@ -217,9 +264,9 @@ function AdminSecurity({ email, onLogout }) {
           <strong style={{ fontSize: "19px" }}>
             {hasActiveSession ? "Active Demo Session" : "Inactive"}
           </strong>
-        </article>
+        </button>
 
-        <article className="edc-admin-stat-card">
+        <button type="button" className="edc-admin-stat-card edc-admin-ops-card" onClick={() => scrollToSection("security-session-information")}>
           <span className="edc-admin-stat-icon" aria-hidden="true">
             <UserCheck size={19} />
           </span>
@@ -227,9 +274,9 @@ function AdminSecurity({ email, onLogout }) {
           <strong style={{ fontSize: "20px" }}>
             {sessionRole || "None"}
           </strong>
-        </article>
+        </button>
 
-        <article className="edc-admin-stat-card">
+        <button type="button" className="edc-admin-stat-card edc-admin-ops-card" onClick={() => scrollToSection("security-limitations")}>
           <span className="edc-admin-stat-icon" aria-hidden="true">
             <KeyRound size={19} />
           </span>
@@ -237,21 +284,21 @@ function AdminSecurity({ email, onLogout }) {
           <strong style={{ fontSize: "18px" }}>
             Client Storage (Demo)
           </strong>
-        </article>
+        </button>
 
-        <article className="edc-admin-stat-card">
+        <button type="button" className="edc-admin-stat-card edc-admin-ops-card" onClick={() => scrollToSection("security-route-protection")}>
           <span className="edc-admin-stat-icon" aria-hidden="true">
             <Layers size={19} />
           </span>
           <p>Guarded Admin Routes</p>
           <strong>{ADMIN_SECTIONS.length}</strong>
-        </article>
+        </button>
       </section>
 
       {/* Primary Grid Layout */}
       <div className="edc-admin-overview-grid">
         {/* Section A: Authentication Status */}
-        <section className="edc-admin-panel">
+        <section className="edc-admin-panel" id="security-authentication">
           <div className="edc-admin-panel-heading">
             <div>
               <h3>Authentication Status</h3>
@@ -303,7 +350,7 @@ function AdminSecurity({ email, onLogout }) {
         </section>
 
         {/* Section B: Session Information */}
-        <section className="edc-admin-panel">
+        <section className="edc-admin-panel" id="security-session-information">
           <div className="edc-admin-panel-heading">
             <div>
               <h3>Session Information</h3>
@@ -315,6 +362,14 @@ function AdminSecurity({ email, onLogout }) {
             <div>
               <dt>Storage Type</dt>
               <dd><code>window.sessionStorage</code></dd>
+            </div>
+            <div>
+              <dt>Session Storage Entries</dt>
+              <dd>{storageDiagnostics.sessionEntries ?? "Unavailable"} (count only; values hidden)</dd>
+            </div>
+            <div>
+              <dt>Browser Local Storage Entries</dt>
+              <dd>{storageDiagnostics.localEntries ?? "Unavailable"} (count only; values hidden)</dd>
             </div>
             <div>
               <dt>Session Scope</dt>
@@ -351,6 +406,11 @@ function AdminSecurity({ email, onLogout }) {
               </dd>
             </div>
           </dl>
+          {storageDiagnostics.error && (
+            <p className="edc-admin-feedback edc-admin-feedback-error" role="status">
+              {storageDiagnostics.error}
+            </p>
+          )}
 
           <p className="edc-admin-security-note">
             Session data is held in browser <code>sessionStorage</code> and bound to this tab session.
@@ -359,7 +419,7 @@ function AdminSecurity({ email, onLogout }) {
         </section>
 
         {/* Section C: Access Control Overview */}
-        <section className="edc-admin-panel" style={{ gridColumn: "1 / -1" }}>
+        <section className="edc-admin-panel" id="security-route-protection" style={{ gridColumn: "1 / -1" }}>
           <div className="edc-admin-panel-heading">
             <div>
               <h3>Access Control &amp; Route Protection Overview</h3>
@@ -403,7 +463,7 @@ function AdminSecurity({ email, onLogout }) {
           </div>
 
           <h4 className="edc-admin-security-subtitle">
-            Protected Admin Route Allowlist (17 routes: 13 Operational, 4 Placeholders)
+            Admin Route Allowlist ({ADMIN_SECTIONS.length} routes: {routeCounts.clientDemo} Client Demo, {routeCounts.placeholders} Placeholder)
           </h4>
           <div className="edc-admin-security-route-grid">
             {ADMIN_SECTIONS.map((item) => {
@@ -439,8 +499,56 @@ function AdminSecurity({ email, onLogout }) {
           </div>
         </section>
 
+        <section className="edc-admin-panel" id="security-activity" style={{ gridColumn: "1 / -1" }}>
+          <div className="edc-admin-panel-heading">
+            <div>
+              <h3>Security Activity</h3>
+              <p>Recent records from the existing browser-local Admin activity log.</p>
+            </div>
+            <Link className="edc-admin-export-link" to="/admin/audit-logs">
+              Open Audit Logs
+            </Link>
+          </div>
+
+          {securityActivityState.error && (
+            <p className="edc-admin-feedback edc-admin-feedback-error" role="alert">
+              {securityActivityState.error}
+            </p>
+          )}
+          {!securityActivityState.error && securityActivity.length === 0 && (
+            <p className="edc-admin-security-note" role="status">
+              No security-category activity records are stored in this browser.
+            </p>
+          )}
+          {!securityActivityState.error && securityActivity.length > 0 && (
+            <div className="edc-admin-table-wrap">
+              <table className="edc-admin-activity-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Timestamp</th>
+                    <th scope="col">Action</th>
+                    <th scope="col">Result</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {securityActivity.map((record, index) => (
+                    <tr key={record.id || `${record.timestamp}-${index}`}>
+                      <td>{formatActivityTimestamp(record.timestamp)}</td>
+                      <td>{typeof record.action === "string" ? record.action : "Security activity"}</td>
+                      <td>{typeof record.result === "string" ? record.result : "Not recorded"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <p className="edc-admin-applications-count">
+            Showing {securityActivity.length} recent security record{securityActivity.length === 1 ? "" : "s"}.
+          </p>
+        </section>
+
         {/* Section D: Security & Architecture Limitations */}
-        <section className="edc-admin-panel" style={{ gridColumn: "1 / -1" }}>
+        <section className="edc-admin-panel" id="security-limitations" style={{ gridColumn: "1 / -1" }}>
           <div className="edc-admin-panel-heading">
             <div>
               <h3>Honest Security &amp; Architecture Limitations</h3>
