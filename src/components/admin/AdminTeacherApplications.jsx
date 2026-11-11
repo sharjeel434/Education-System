@@ -171,7 +171,10 @@ function AdminTeacherApplications() {
         category: "teacher-applications",
         entityType: "Teacher Application",
         entityId: application.email,
+        targetId: application.email,
         targetName: teacherName(application),
+        previousValue: application.status || "Not set",
+        newValue: nextStatus,
         description: nextStatus === "approved"
           ? "Teacher application approved"
           : "Teacher application rejected",

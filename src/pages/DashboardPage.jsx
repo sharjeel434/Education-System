@@ -17,6 +17,7 @@ import {
   ADMIN_PATH_REDIRECTS,
   ADMIN_ROUTES,
 } from "../components/admin/adminNavigation";
+import { appendAdminActivityRecord } from "../components/admin/adminData";
 import StudentDashboard from "./dashboards/StudentDashboard";
 import TeacherDashboard from "./dashboards/TeacherDashboard";
 import AdminLayout from "../components/admin/AdminLayout";
@@ -40,10 +41,52 @@ function DashboardPage() {
   const email = window.sessionStorage.getItem(
     "educonnect.demoEmail"
   );
+  const isBlockedAdminRoute = Boolean(
+    email && role && role !== "Admin" && location.pathname.startsWith("/admin/"),
+  );
 
   useEffect(() => {
     window.scrollTo(0, 0);
   }, []);
+
+  useEffect(() => {
+    if (!isBlockedAdminRoute) return;
+
+    const dedupeKey = "educonnect.audit.lastBlockedAdminRoute";
+    const now = Date.now();
+    try {
+      const previous = JSON.parse(window.sessionStorage.getItem(dedupeKey) || "null");
+      if (
+        previous?.role === role &&
+        previous?.path === location.pathname &&
+        now - Number(previous.timestamp || 0) < 1500
+      ) return;
+      window.sessionStorage.setItem(dedupeKey, JSON.stringify({ role, path: location.pathname, timestamp: now }));
+    } catch {
+      // Continue to record the access attempt if session storage is unavailable.
+    }
+
+    try {
+      appendAdminActivityRecord({
+        actor: email,
+        actorRole: role,
+        action: "Unauthorized Admin Route Access Blocked",
+        category: "security",
+        module: "Security & Access",
+        entityType: "Admin Route",
+        entityId: location.pathname,
+        targetId: location.pathname,
+        targetName: location.pathname,
+        previousValue: role,
+        newValue: "Blocked",
+        description: `${role} account attempted to open an Admin route and was redirected. No session token or credential data was recorded.`,
+        result: "Blocked",
+        status: "Blocked",
+      });
+    } catch {
+      // A local audit write failure must not interfere with the role redirect.
+    }
+  }, [email, isBlockedAdminRoute, location.pathname, role]);
 
   if (
     !email ||

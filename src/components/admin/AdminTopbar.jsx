@@ -1,28 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { Bell, LogOut, Menu } from "lucide-react";
 import { Link } from "react-router-dom";
-import { ADMIN_USERS_KEY, readAdminArray } from "./adminData";
 import { formatAdminNotificationTimestamp } from "./adminNotificationData";
 
-function getAdminName(email) {
-  const adminUser = readAdminArray(ADMIN_USERS_KEY).find(
-    (user) => user.role === "Admin" && user.email === email,
-  );
-
-  return typeof adminUser?.name === "string" && adminUser.name.trim()
-    ? adminUser.name.trim()
-    : "Admin";
-}
-
 function AdminTopbar({
-  email,
+  sectionTitle,
   isMenuOpen,
   onMenuClick,
   onLogout,
   notifications,
   notificationErrors,
 }) {
-  const displayName = getAdminName(email);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const notificationMenuRef = useRef(null);
   const notificationButtonRef = useRef(null);
@@ -69,19 +57,12 @@ function AdminTopbar({
           <Menu size={21} />
         </button>
         <div>
-          <span className="edc-admin-topbar-eyebrow">EduConnect AI</span>
-          <h1>Admin Panel</h1>
+          <span className="edc-admin-topbar-eyebrow">Admin Workspace</span>
+          <h1>{sectionTitle || "Admin Panel"}</h1>
         </div>
       </div>
 
       <div className="edc-admin-account">
-        <span className="edc-admin-account-avatar" aria-hidden="true">
-          {displayName.slice(0, 1).toUpperCase()}
-        </span>
-        <span className="edc-admin-account-copy">
-          <strong>{displayName}</strong>
-          <small>{email || "Admin"} · Admin</small>
-        </span>
         <div className="edc-admin-notification-menu" ref={notificationMenuRef}>
           <button
             ref={notificationButtonRef}
@@ -163,7 +144,7 @@ function AdminTopbar({
           )}
         </div>
         <button
-          className="edc-admin-logout"
+          className="edc-admin-logout edc-dashboard-logout"
           type="button"
           onClick={onLogout}
         >

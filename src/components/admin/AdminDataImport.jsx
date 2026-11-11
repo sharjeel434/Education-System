@@ -7,7 +7,7 @@ import {
   commitImport,
   parseCsv,
   validateImport,
-} from "./adminImportUtils";
+} from "./adminCsvUtils";
 
 const PREVIEW_ROW_LIMIT = 10;
 const PREVIEW_COLUMN_LIMIT = 8;

@@ -34,7 +34,6 @@ import {
   getAdminTutorProfiles,
   readAdminOperationsSettings,
 } from "./adminOperationsData";
-import "./AdminOperations.css";
 
 function uniqueUsers(users) {
   const byEmail = new Map();

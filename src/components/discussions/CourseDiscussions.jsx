@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { MessageCircle, Search, Send, ThumbsUp, CheckCircle2, Reply, Trash2 } from "lucide-react";
 import { courseDiscussionKey, makeDiscussionId, readDiscussions, saveDiscussions, subscribeDiscussions } from "../../utils/courseDiscussions";
+import { isModerationVisible } from "../../utils/moderationVisibility";
+import ReportAction from "../moderation/ReportAction";
 import "./CourseDiscussions.css";
 
 export default function CourseDiscussions({ role, email = "", courses = [] }) {
@@ -14,12 +16,17 @@ export default function CourseDiscussions({ role, email = "", courses = [] }) {
   const [replies, setReplies] = useState({});
   const [message, setMessage] = useState("");
 
-  useEffect(() => subscribeDiscussions(() => setItems(readDiscussions())), []);
+  useEffect(() => {
+    const refresh = () => setItems(readDiscussions());
+    const unsubscribe = subscribeDiscussions(refresh);
+    window.addEventListener("educonnect:moderation-visibility-changed", refresh);
+    return () => { unsubscribe(); window.removeEventListener("educonnect:moderation-visibility-changed", refresh); };
+  }, []);
   const owned = useMemo(() => courses.map(course => ({
     course, key: courseDiscussionKey(course),
   })), [courses]);
   const allowed = new Set(owned.map(entry => entry.key));
-  const visible = items.filter(item => allowed.has(item.courseKey) && (courseId === "all" || item.courseKey === courseId))
+  const visible = items.filter(item => !item.moderated && isModerationVisible("comment", item.id) && allowed.has(item.courseKey) && (courseId === "all" || item.courseKey === courseId))
     .filter(item => [item.title, item.body, item.lessonTitle, item.reply?.text].join(" ").toLowerCase().includes(search.trim().toLowerCase()))
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
@@ -89,6 +96,8 @@ export default function CourseDiscussions({ role, email = "", courses = [] }) {
             {!teacher && <button type="button" onClick={()=>vote(item)} aria-pressed={(item.votes || []).includes(normalizedEmail)}><ThumbsUp size={15}/> Helpful ({(item.votes || []).length})</button>}
             {teacher && <button type="button" onClick={()=>resolve(item)}><CheckCircle2 size={15}/> {item.resolved ? "Reopen" : "Mark resolved"}</button>}
             {(!teacher && item.studentEmail === normalizedEmail) && <button type="button" onClick={()=>remove(item)}><Trash2 size={15}/> Delete my question</button>}
+            {(teacher || item.reply?.text || item.studentEmail !== normalizedEmail) && <ReportAction reporterEmail={email} reporterName={email} reporterRole={teacher ? "Teacher" : "Student"} target={{ reportType: "content", targetType: "comment", targetId: String(item.id), targetTitle: !teacher && item.reply?.text ? `Instructor answer: ${item.title}` : `Question: ${item.title}`, targetOwnerEmail: teacher ? item.studentEmail : item.reply?.teacherEmail || item.studentEmail, targetRole: teacher ? "Student" : item.reply?.text ? "Teacher" : "Student" }} />}
+            {teacher && item.studentEmail && <ReportAction label="Report student" reporterEmail={email} reporterName={email} reporterRole="Teacher" target={{ reportType: "user", targetType: "user", targetId: item.studentEmail, targetTitle: item.studentEmail, targetRole: "Student", targetOwnerEmail: item.studentEmail }} />}
           </div>
           {teacher && <div className="edc-qa-reply-form"><textarea rows={2} value={replies[item.id] ?? ""} onChange={e=>setReplies(prev=>({...prev,[item.id]:e.target.value}))} placeholder={item.reply ? "Update your answer" : "Write an answer"} maxLength={3000}/>
             <button type="button" onClick={()=>answer(item)}><Send size={15}/> {item.reply ? "Update Reply" : "Send Reply"}</button></div>}

@@ -1,6 +1,8 @@
 
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { appendAdminActivityRecord } from "../../components/admin/adminData";
+import { getStudentAcademicContext, getStudentAcademicSubjects, getProgramGroupsForDegreeLevel, INTERMEDIATE_STREAMS, isAcademicProfileComplete, ONLINE_COURSES } from "../../utils/studentRecommendations";
 import {
   BookOpen,
   MessageCircle,
@@ -23,6 +25,9 @@ import {
   ArrowRight,
   UserRound,
   LogOut,
+  ShieldAlert,
+  LifeBuoy,
+  Bell,
 } from "lucide-react";
 
 import { lessonVideoKey, saveLessonVideo, deleteLessonVideo } from "../../utils/lessonVideos";
@@ -32,6 +37,11 @@ import InstructorAnalytics from "../../components/analytics/InstructorAnalytics"
 import CourseQuizzes from "../../components/quizzes/CourseQuizzes";
 import CourseAssignments from "../../components/assignments/CourseAssignments";
 import CurriculumBuilder from "../../components/curriculum/CurriculumBuilder";
+import TeacherBooks from "../../components/books/TeacherBooks";
+import UserModerationAppeals, { UserSupportCenter } from "../../components/moderation/UserModerationAppeals";
+import NotificationsCenter from "../../components/notifications/NotificationsCenter";
+import { NOTIFICATIONS_EVENT } from "../../utils/demoNotifications";
+import "../../components/notifications/NotificationsCenter.css";
 
 const purple = "#6d28d9";
 
@@ -108,7 +118,11 @@ const navigation = [
   ["quizzes", "Course Quizzes", ListChecks],
   ["course-assignments", "Course Assignments", ClipboardList],
   ["curriculum", "Curriculum Builder", ListTree],
+  ["books", "My PDF/eBooks", BookOpen],
   ["profile", "My Profile", UserRound],
+  ["help-support", "Help & Support", LifeBuoy],
+  ["notifications", "Notifications", Bell],
+  ["appeals", "Moderation & Appeals", ShieldAlert],
 ];
 
 function TeacherDashboard({ email = "teacher@example.com" }) {
@@ -116,6 +130,7 @@ function TeacherDashboard({ email = "teacher@example.com" }) {
   const navigate = useNavigate();
   const courseKey = `educonnect.teacher.${email}.courses`;
   const profileKey = `educonnect.teacher.${email}.profile`;
+  const teacherNotificationKey = `educonnect.teacher.${String(email || "").trim().toLowerCase()}.notifications`;
 
   function signOut() {
     window.sessionStorage.removeItem("educonnect.demoEmail");
@@ -147,7 +162,30 @@ const [earningsPeriod, setEarningsPeriod] = useState("6months");
 const [transactionSearch, setTransactionSearch] = useState("");
 const [showWithdrawalForm, setShowWithdrawalForm] = useState(false);
 const [withdrawalAmount, setWithdrawalAmount] = useState("");
+const [notifications, setNotifications] = useState(() => readSaved(teacherNotificationKey, []));
+const unreadNotifications = notifications.filter((item) => !item.read).length;
 const [demoWithdrawalRequests, setDemoWithdrawalRequests] = useState([]);
+
+useEffect(() => {
+  const refresh = () => setNotifications(readSaved(teacherNotificationKey, []));
+  const refreshIfMatched = (event) => { if (!event.detail?.key || event.detail.key === teacherNotificationKey) refresh(); };
+  const refreshStorage = (event) => { if (!event.key || event.key === teacherNotificationKey) refresh(); };
+  window.addEventListener(NOTIFICATIONS_EVENT, refreshIfMatched);
+  window.addEventListener("storage", refreshStorage);
+  return () => {
+    window.removeEventListener(NOTIFICATIONS_EVENT, refreshIfMatched);
+    window.removeEventListener("storage", refreshStorage);
+  };
+}, [teacherNotificationKey]);
+
+useEffect(() => {
+  try { localStorage.setItem(teacherNotificationKey, JSON.stringify(notifications)); }
+  catch (error) { console.error("Could not save teacher notifications", error); }
+}, [notifications, teacherNotificationKey]);
+
+function markNotificationRead(id) { setNotifications((current) => current.map((item) => item.id === id ? { ...item, read: true } : item)); }
+function markAllNotificationsRead() { setNotifications((current) => current.map((item) => item.read ? item : { ...item, read: true })); }
+function deleteNotification(id) { setNotifications((current) => current.filter((item) => item.id !== id)); }
 
 const demoRevenue = [
   { month: "Jun", revenue: 12000 },
@@ -675,6 +713,44 @@ function moveLesson(courseId, lessonId, direction) {
 const teacherProfileImage = profile.avatar || "";
 const teacherExpertise = profile.expertise || "";
 const teacherDisplayName = profile.name || "Instructor";
+const teacherTeachingProfile = {
+  educationLevel: profile.teachingEducationLevel || "",
+  classNumber: profile.teachingClassNumber || "",
+  intermediateYear: profile.teachingIntermediateYear || "",
+  stream: profile.teachingStream || "",
+  degreeLevel: profile.teachingDegreeLevel || "",
+  programChoice: profile.teachingProgramChoice || "",
+  program: profile.teachingProgram || "",
+};
+const teacherFocusComplete = isAcademicProfileComplete(teacherTeachingProfile);
+const teacherFocusContext = getStudentAcademicContext(teacherTeachingProfile);
+const teacherFocusSubjects = teacherFocusComplete ? getStudentAcademicSubjects(teacherTeachingProfile) : [];
+const teacherFocusLabel = teacherFocusComplete
+  ? `${teacherFocusContext.title}${teacherTeachingProfile.degreeLevel ? ` · ${teacherTeachingProfile.degreeLevel.toUpperCase()}` : ""}`
+  : "Choose a level and area of expertise";
+
+function updateTeacherTeachingProfile(field, value) {
+  setProfileSaved(false);
+  setProfile((previous) => {
+    const next = { ...previous, [field]: value };
+    if (field === "teachingEducationLevel") {
+      next.teachingClassNumber = "";
+      next.teachingIntermediateYear = "";
+      next.teachingStream = "";
+      next.teachingDegreeLevel = "";
+      next.teachingProgramChoice = "";
+      next.teachingProgram = "";
+    }
+    if (field === "teachingDegreeLevel") {
+      next.teachingProgramChoice = "";
+      next.teachingProgram = "";
+    }
+    if (field === "teachingProgramChoice") {
+      next.teachingProgram = value === "Other" ? "" : value;
+    }
+    return next;
+  });
+}
 
 function handleTeacherProfileImage(event) {
   const file = event.target.files?.[0];
@@ -753,7 +829,68 @@ function handleDemoWithdrawal(event) {
       )
     );
 
+    try {
+      appendAdminActivityRecord({
+        actor: email,
+        actorRole: "Teacher",
+        action: "Course Submitted",
+        category: "course-review",
+        module: "Course Review",
+        entityType: "Course",
+        entityId: String(course.id),
+        targetId: String(course.id),
+        targetName: course.title || "Course",
+        previousValue: course.status || "Draft",
+        newValue: "Pending Approval",
+        description: "Teacher submitted a course for Admin review.",
+        result: "Success",
+      });
+    } catch {
+      // A local audit write error must not block course submission.
+    }
+
     alert("Course marked as Pending Approval in this demo.");
+  }
+
+  function publishApprovedCourse(courseId) {
+    const course = courses.find((item) => item.id === courseId);
+    if (!course || course.status !== "Approved") return;
+
+    if (!(course.lessons || []).length) {
+      alert("Add at least one lesson before publishing.");
+      navigateTo("lessons");
+      return;
+    }
+
+    setCourses((previous) =>
+      previous.map((item) =>
+        item.id === courseId
+          ? { ...item, status: "Published", publishedAt: new Date().toISOString() }
+          : item
+      )
+    );
+
+    try {
+      appendAdminActivityRecord({
+        actor: email,
+        actorRole: "Teacher",
+        action: "Course Published",
+        category: "course-review",
+        module: "Course Review",
+        entityType: "Course",
+        entityId: String(course.id),
+        targetId: String(course.id),
+        targetName: course.title || "Course",
+        previousValue: "Approved",
+        newValue: "Published",
+        description: "Teacher published an Admin-approved course.",
+        result: "Success",
+      });
+    } catch {
+      // A local audit write error must not block course publishing.
+    }
+
+    alert("Course published. It is now available in Explore Courses.");
   }
 
   const statCards = [
@@ -993,6 +1130,7 @@ function handleDemoWithdrawal(event) {
             >
               <Icon size={19} />
               <span>{label}</span>
+              {id === "notifications" && unreadNotifications > 0 && <span className="edc-notification-count" aria-label={`${unreadNotifications} unread`}>{unreadNotifications > 99 ? "99+" : unreadNotifications}</span>}
             </button>
           ))}
         </nav>
@@ -1332,8 +1470,12 @@ function handleDemoWithdrawal(event) {
     return {...c,lessons:[...picked,...remaining]};
   }))}
 />}
+{tab === "books" && <TeacherBooks email={email} profile={profile} />}
 {tab === "reviews" && <CourseReviews role="teacher" email={email} courses={courses} />}
 {tab === "discussions" && <CourseDiscussions role="teacher" email={email} courses={courses.map(course => ({ ...course, teacherEmail: email }))} />}
+{tab === "appeals" && <UserModerationAppeals email={email} name={profile.fullName || profile.name || "Teacher"} role="Teacher" />}
+{tab === "help-support" && <UserSupportCenter email={email} name={profile.fullName || profile.name || "Teacher"} role="Teacher" />}
+{tab === "notifications" && <NotificationsCenter notifications={notifications} onRead={markNotificationRead} onReadAll={markAllNotificationsRead} onDelete={deleteNotification} onNavigate={navigateTo} audience="teacher" />}
 
 {tab === "courses" && (
   <div style={{ display: "grid", gap: 20 }}>
@@ -1521,6 +1663,12 @@ function handleDemoWithdrawal(event) {
             }
             placeholder="Explain what students will learn..."
           />
+        </div>
+
+        <div className="edc-course-editor-field edc-course-audience">
+          <span>Recommended student audience</span>
+          <strong>{teacherFocusLabel}</strong>
+          <p>Published courses and video lectures use the teaching focus saved in My Profile to appear in related student recommendations.</p>
         </div>
 
         <div className="edc-course-editor-field">
@@ -1754,9 +1902,19 @@ function handleDemoWithdrawal(event) {
 
                 <button
                   type="button"
+                  disabled={course.status !== "Approved"}
+                  onClick={() => publishApprovedCourse(course.id)}
+                >
+                  <CheckCircle2 size={15} />
+                  Publish
+                </button>
+
+                <button
+                  type="button"
                   disabled={
                     course.status === "Pending Approval" ||
-                    course.status === "Approved"
+                    course.status === "Approved" ||
+                    course.status === "Published"
                   }
                   onClick={() =>
                     submitForApproval(course.id)
@@ -2660,6 +2818,7 @@ function handleDemoWithdrawal(event) {
                     event.preventDefault();
                     try {
                       localStorage.setItem(profileKey, JSON.stringify(profile));
+                      window.dispatchEvent(new Event("educonnect:teacher-profile-changed"));
                       setProfileSaved(true);
                     } catch {
                       setProfileSaved(false);
@@ -2730,16 +2889,93 @@ function handleDemoWithdrawal(event) {
                     />
                   </div>
                   <div className="edc-profile-field">
-                    <label htmlFor="edc-profile-expertise">Expertise</label>
+                    <label htmlFor="edc-profile-expertise">Additional Expertise</label>
                     <input
                       id="edc-profile-expertise"
                       value={teacherExpertise}
-                      placeholder="React, JavaScript, UI/UX"
+                      placeholder="Extra skills, e.g. React, JavaScript, UI/UX"
                       onChange={(event) => {
                         setProfileSaved(false);
                         setProfile((previous) => ({ ...previous, expertise: event.target.value }));
                       }}
                     />
+                  </div>
+                  <div className="edc-profile-field">
+                    <label htmlFor="edc-profile-qualification">Qualification</label>
+                    <input id="edc-profile-qualification" value={profile.qualification || ""} placeholder="Degree or professional qualification" onChange={(event) => { setProfileSaved(false); setProfile((previous) => ({ ...previous, qualification: event.target.value })); }} />
+                  </div>
+                  <div className="edc-profile-field">
+                    <label htmlFor="edc-profile-experience">Teaching Experience</label>
+                    <input id="edc-profile-experience" value={profile.experience || ""} placeholder="e.g. 5 years" onChange={(event) => { setProfileSaved(false); setProfile((previous) => ({ ...previous, experience: event.target.value })); }} />
+                  </div>
+                  <div className="edc-profile-field">
+                    <label htmlFor="edc-teacher-teaching-level">Teaching Level</label>
+                    <select id="edc-teacher-teaching-level" value={teacherTeachingProfile.educationLevel} onChange={(event) => updateTeacherTeachingProfile("teachingEducationLevel", event.target.value)}>
+                      <option value="">Select a teaching level</option>
+                      <option value="school">School</option>
+                      <option value="intermediate">College / Intermediate</option>
+                      <option value="university">University</option>
+                      <option value="online">Interest / Online Courses</option>
+                    </select>
+                  </div>
+                  {teacherTeachingProfile.educationLevel === "school" && <div className="edc-profile-field">
+                    <label htmlFor="edc-teacher-class">Class</label>
+                    <select id="edc-teacher-class" value={teacherTeachingProfile.classNumber} onChange={(event) => updateTeacherTeachingProfile("teachingClassNumber", event.target.value)}>
+                      <option value="">Select a class</option>
+                      {Array.from({ length: 10 }, (_, index) => <option key={index + 1} value={String(index + 1)}>Class {index + 1}</option>)}
+                    </select>
+                  </div>}
+                  {teacherTeachingProfile.educationLevel === "intermediate" && <>
+                    <div className="edc-profile-field">
+                      <label htmlFor="edc-teacher-intermediate-year">Year</label>
+                      <select id="edc-teacher-intermediate-year" value={teacherTeachingProfile.intermediateYear} onChange={(event) => updateTeacherTeachingProfile("teachingIntermediateYear", event.target.value)}>
+                        <option value="">Select a year</option><option value="1">1st Year</option><option value="2">2nd Year</option>
+                      </select>
+                    </div>
+                    <div className="edc-profile-field">
+                      <label htmlFor="edc-teacher-intermediate-stream">College Program / Group</label>
+                      <select id="edc-teacher-intermediate-stream" value={teacherTeachingProfile.stream} onChange={(event) => updateTeacherTeachingProfile("teachingStream", event.target.value)}>
+                        <option value="">Select a group</option>{INTERMEDIATE_STREAMS.map(([value, label]) => <option value={value} key={value}>{label}</option>)}
+                      </select>
+                    </div>
+                  </>}
+                  {teacherTeachingProfile.educationLevel === "university" && <>
+                    <div className="edc-profile-field">
+                      <label htmlFor="edc-teacher-degree-level">Degree Level</label>
+                      <select id="edc-teacher-degree-level" value={teacherTeachingProfile.degreeLevel} onChange={(event) => updateTeacherTeachingProfile("teachingDegreeLevel", event.target.value)}>
+                        <option value="">Select a degree level</option><option value="bs">BS / Bachelor's</option><option value="masters">Master's</option><option value="phd">PhD</option>
+                      </select>
+                    </div>
+                    {teacherTeachingProfile.degreeLevel && <div className="edc-profile-field">
+                      <label htmlFor="edc-teacher-program">{teacherTeachingProfile.degreeLevel === "bs" ? "BS / Bachelor's Program" : teacherTeachingProfile.degreeLevel === "masters" ? "Master's Program" : "PhD Program"}</label>
+                      <select id="edc-teacher-program" value={teacherTeachingProfile.programChoice} onChange={(event) => updateTeacherTeachingProfile("teachingProgramChoice", event.target.value)}>
+                        <option value="">Select a program</option>{getProgramGroupsForDegreeLevel(teacherTeachingProfile.degreeLevel).map((group) => <optgroup key={group.label} label={group.label}>{group.programs.map((program) => <option key={program} value={program}>{program}</option>)}</optgroup>)}<option value="Other">Other</option>
+                      </select>
+                    </div>}
+                    {teacherTeachingProfile.programChoice === "Other" && <div className="edc-profile-field">
+                      <label htmlFor="edc-teacher-custom-program">Enter Program</label>
+                      <input id="edc-teacher-custom-program" maxLength={100} value={teacherTeachingProfile.program} onChange={(event) => updateTeacherTeachingProfile("teachingProgram", event.target.value)} placeholder="Type the program name" />
+                    </div>}
+                  </>}
+                  {teacherTeachingProfile.educationLevel === "online" && <>
+                    <div className="edc-profile-field">
+                      <label htmlFor="edc-teacher-online-interest">Interest / Course Area</label>
+                      <select id="edc-teacher-online-interest" value={teacherTeachingProfile.programChoice} onChange={(event) => updateTeacherTeachingProfile("teachingProgramChoice", event.target.value)}>
+                        <option value="">Select an interest</option>{ONLINE_COURSES.map((course) => <option key={course} value={course}>{course}</option>)}
+                      </select>
+                    </div>
+                    {teacherTeachingProfile.programChoice === "Other" && <div className="edc-profile-field">
+                      <label htmlFor="edc-teacher-custom-interest">Enter Course Area</label>
+                      <input id="edc-teacher-custom-interest" maxLength={100} value={teacherTeachingProfile.program} onChange={(event) => updateTeacherTeachingProfile("teachingProgram", event.target.value)} placeholder="Type the course area" />
+                    </div>}
+                  </>}
+                  <div className="edc-profile-subject-preview">
+                    <strong>Subjects and courses you teach</strong>
+                    <p>{teacherFocusSubjects.length ? teacherFocusSubjects.join(" · ") : teacherFocusComplete ? (teacherExpertise || "Add additional expertise above.") : "Select your teaching level and specialization to see related subjects."}</p>
+                  </div>
+                  <div className="edc-profile-field">
+                    <label htmlFor="edc-profile-availability">Availability</label>
+                    <select id="edc-profile-availability" value={profile.availability || "Available"} onChange={(event) => { setProfileSaved(false); setProfile((previous) => ({ ...previous, availability: event.target.value })); }}><option>Available</option><option>Busy</option><option>Unavailable</option></select>
                   </div>
                   <div className="edc-profile-field">
                     <label htmlFor="edc-profile-bio">About Me</label>
@@ -2792,6 +3028,14 @@ function handleDemoWithdrawal(event) {
                     <strong>Expertise</strong>
                     <p>{teacherExpertise || "Add your expertise"}</p>
                   </div>
+                  <div className="edc-profile-preview-detail">
+                    <strong>Teaching Focus</strong>
+                    <p>{teacherFocusLabel}</p>
+                  </div>
+                  {teacherFocusSubjects.length > 0 && <div className="edc-profile-preview-detail">
+                    <strong>Subjects You Teach</strong>
+                    <p>{teacherFocusSubjects.join(" · ")}</p>
+                  </div>}
                   <div className="edc-profile-preview-detail">
                     <strong>About Instructor</strong>
                     <p>{profile.bio || "Your instructor biography will appear here."}</p>

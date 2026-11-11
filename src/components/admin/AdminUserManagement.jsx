@@ -8,7 +8,6 @@ import {
   UsersRound,
 } from "lucide-react";
 import { ADMIN_DATA_CHANGED_EVENT, readAdminUsersState } from "./adminData";
-import "./AdminOperations.css";
 
 function formatDate(value) {
   if (typeof value !== "string" || !value.trim()) {

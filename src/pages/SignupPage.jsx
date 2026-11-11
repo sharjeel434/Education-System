@@ -18,6 +18,7 @@ import {
   bytesToHex,
   utf8ToBytes,
 } from "@noble/hashes/utils.js";
+import { appendAdminActivityRecord } from "../components/admin/adminData";
 import "./SignupPage.css";
 
 const USERS_KEY = "educonnect.registeredUsers";
@@ -167,6 +168,25 @@ function SignupPage() {
           "This email is already registered. Please log in."
         );
         return;
+      }
+
+      try {
+        appendAdminActivityRecord({
+          actor: email,
+          actorRole: role,
+          action: "Account Created",
+          category: "user-activity",
+          module: "User Management",
+          entityType: "User Account",
+          entityId: email,
+          targetId: email,
+          targetName: name,
+          newValue: role,
+          description: `${role} account created successfully. Password and credential values were not recorded.`,
+          result: "Success",
+        });
+      } catch {
+        // Registration remains successful if local audit storage is unavailable.
       }
 
       navigate("/login", {

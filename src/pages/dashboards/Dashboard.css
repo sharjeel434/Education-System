@@ -3891,8 +3891,8 @@ body:has(.edc-teacher-shell) .dashboard-container {
 .edc-profile-upload-actions small{width:100%;color:#93899f;font-size:11px}
 .edc-profile-field{display:grid;gap:9px;min-width:0}
 .edc-profile-field label{color:#302344;font-size:13px;font-weight:700}
-.edc-profile-field input,.edc-profile-field textarea{width:100%;box-sizing:border-box;padding:13px 15px;border:1px solid #e5def0;border-radius:10px;outline:none;background:white;color:#302344;font:inherit;font-size:13px}
-.edc-profile-field input:focus,.edc-profile-field textarea:focus{border-color:#7042d8}
+.edc-profile-field input,.edc-profile-field select,.edc-profile-field textarea{width:100%;box-sizing:border-box;padding:13px 15px;border:1px solid #e5def0;border-radius:10px;outline:none;background:white;color:#302344;font:inherit;font-size:13px}
+.edc-profile-field input:focus,.edc-profile-field select:focus,.edc-profile-field textarea:focus{border-color:#7042d8}
 .edc-profile-field input:disabled{background:#f7f5fa;color:#93899f}
 .edc-profile-field textarea{resize:vertical;line-height:1.6}
 .edc-profile-form-footer{display:flex;align-items:center;gap:15px;flex-wrap:wrap}
@@ -4114,7 +4114,9 @@ body:has(.edc-teacher-shell) .dashboard-container {
 .edc-student-profile-fields{display:grid;grid-template-columns:1fr 1fr;gap:17px}
 .edc-student-profile-form label:not(.edc-student-photo-button){display:flex;flex-direction:column;gap:8px;font-size:13px;font-weight:700;color:#4d405f;min-width:0}
 .edc-student-profile-form input:not([type=file]),.edc-student-profile-form textarea{box-sizing:border-box;width:100%;padding:12px 14px;border:1px solid #ddd4ed;border-radius:11px;background:#fff;color:#2d2440;font:inherit;font-weight:400;outline:none}
+.edc-student-profile-form select{box-sizing:border-box;width:100%;padding:12px 14px;border:1px solid #ddd4ed;border-radius:11px;background:#fff;color:#2d2440;font:inherit;font-weight:400;outline:none}
 .edc-student-profile-form input:focus,.edc-student-profile-form textarea:focus{border-color:#8055df;box-shadow:0 0 0 3px rgba(128,85,223,.12)}
+.edc-student-profile-form select:focus{border-color:#8055df;box-shadow:0 0 0 3px rgba(128,85,223,.12)}
 .edc-student-profile-form input[readonly]{background:#f6f3fa;color:#716782}
 .edc-student-profile-form textarea{resize:vertical;min-height:110px}
 .edc-student-profile-about-label small{text-align:right;color:#82778f;font-weight:400}
@@ -4129,5 +4131,22 @@ body:has(.edc-teacher-shell) .dashboard-container {
 .edc-student-profile-hint{font-size:12px;line-height:1.7;color:#81778f;margin:8px 0}
 .edc-student-profile-header-button{border:0;padding:0;background:transparent;cursor:pointer;border-radius:50%}
 .edc-sidebar-profile .edc-student-profile-avatar-small{width:47px;height:47px}
+.edc-profile-subject-preview{grid-column:1/-1;padding:14px 16px;border-radius:12px;background:#f6f2ff;border:1px solid #e8defa;color:#4c367b}
+.edc-profile-subject-preview p{margin:7px 0 0;color:#665a76;font-size:13px;line-height:1.6}
+.edc-course-audience{padding:14px 16px;border:1px solid #e8defa;border-radius:12px;background:#f6f2ff;color:#4c367b}
+.edc-course-audience span{font-size:12px;font-weight:700}
+.edc-course-audience strong{font-size:14px}
+.edc-course-audience p{margin:0;color:#665a76;font-size:12px;line-height:1.6}
+.edc-academic-recommendations{margin:22px 0}
+.edc-recommendation-subheading{margin:22px 0 12px;color:#35264f;font-size:16px}
+.edc-recommendation-chips{display:flex;flex-wrap:wrap;gap:8px}
+.edc-recommendation-chips span{padding:7px 11px;border:1px solid #e5dcf4;border-radius:999px;background:#faf8ff;color:#5a4385;font-size:12px;font-weight:700}
+.edc-recommendation-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}
+.edc-recommendation-item{display:flex;align-items:flex-start;gap:11px;min-width:0;padding:14px;border:1px solid #ece6f6;border-radius:13px;background:#fff}
+.edc-recommendation-item>svg{flex:none;color:#7653cb}
+.edc-recommendation-item strong{display:block;color:#35264f;font-size:13px;line-height:1.45;overflow-wrap:anywhere}
+.edc-recommendation-item p{margin:5px 0 0;color:#81778f;font-size:12px;line-height:1.5}
+.edc-recommendation-rating{display:block;margin-top:7px;color:#9b6900;font-size:12px;font-weight:700}
+.edc-recommendation-empty{padding:13px 15px;border-radius:11px;background:#faf8ff;color:#756987;font-size:13px}
 @media(max-width:900px){.edc-student-profile-grid{grid-template-columns:1fr}}
-@media(max-width:600px){.edc-student-profile-cover{padding:20px}.edc-student-profile-identity{gap:12px}.edc-student-profile-avatar-large{width:74px;height:74px}.edc-student-profile-fields,.edc-student-profile-readonly{grid-template-columns:1fr}.edc-student-profile-about{grid-column:auto}.edc-student-profile-actions .edc-btn{flex:1;justify-content:center}}
+@media(max-width:600px){.edc-student-profile-cover{padding:20px}.edc-student-profile-identity{gap:12px}.edc-student-profile-avatar-large{width:74px;height:74px}.edc-student-profile-fields,.edc-student-profile-readonly{grid-template-columns:1fr}.edc-student-profile-about,.edc-profile-subject-preview{grid-column:auto}.edc-student-profile-actions .edc-btn{flex:1;justify-content:center}}

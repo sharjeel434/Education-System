@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { courseReviewKey, getReviews, removeReview, REVIEW_EVENT, saveReview } from "../../utils/courseReviews";
+import ReportAction from "../moderation/ReportAction";
 
 const shell = { background: "white", padding: 22, borderRadius: 16, border: "1px solid #e5e7eb", marginBottom: 16 };
 const btn = { padding: "9px 15px", background: "#6d28d9", color: "white", border: 0, borderRadius: 8, cursor: "pointer" };
@@ -71,11 +72,12 @@ export default function CourseReviews({ role, email, courses = [] }) {
         return <article style={shell} key={course.reviewKey}>
           <h3 style={{ marginTop: 0 }}>{course.title}</h3>
           <p style={{ color: "#6d28d9", fontWeight: 600 }}>{average ? `★ ${average}/5 · ${items.length} review(s)` : "No ratings yet"}</p>
-          {items.length === 0 ? <p style={{ color: "#6b7280" }}>Abhi koi review nahi hai.</p> : items.map(r => <div key={r.studentEmail} style={{ borderTop: "1px solid #e5e7eb", paddingTop: 12, marginTop: 12 }}>
+          {items.length === 0 ? <p style={{ color: "#6b7280" }}>Abhi koi review nahi hai.</p> : items.map(r => <div key={r.id || r.studentEmail} style={{ borderTop: "1px solid #e5e7eb", paddingTop: 12, marginTop: 12 }}>
             <strong>{r.studentEmail === studentEmail && role === "student" ? "Your review" : r.studentEmail}</strong>
             <span style={{ marginLeft: 12, color: "#d97706" }}>{"★".repeat(Math.min(5, Math.max(1, Number(r.rating))))} ({r.rating}/5)</span>
             <p style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", marginBottom: 4 }}>{r.comment}</p>
             <small style={{ color: "#6b7280" }}>{new Date(r.updatedAt).toLocaleDateString()}</small>
+            {!(role === "student" && r.studentEmail === studentEmail) && <ReportAction reporterEmail={email} reporterName={email} reporterRole={role === "teacher" ? "Teacher" : "Student"} target={{ reportType: "content", targetType: "review", targetId: String(r.id || `${r.courseKey}:${r.studentEmail}`), targetTitle: `Review for ${course.title}`, targetOwnerEmail: course.teacherEmail, targetRole: "Teacher" }} />}
           </div>)}
         </article>;
       })}

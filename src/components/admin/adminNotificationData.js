@@ -1,9 +1,10 @@
-import { Bell, BookOpenCheck, ClipboardCheck } from "lucide-react";
+import { Bell, BookOpenCheck, ClipboardCheck, LifeBuoy } from "lucide-react";
 import {
   ADMIN_DATA_CHANGED_EVENT,
   getAdminKnowledgeStorageState,
   getAdminTeachers,
   readAdminUsersState,
+  readAdminSupportRequestsState,
 } from "./adminData";
 
 function isRecord(value) {
@@ -160,6 +161,30 @@ export function getAdminNotifications() {
       timestamp: getTimestamp(proposal, ["submittedAt"]),
       path: "/admin/knowledge",
       icon: Bell,
+    });
+  });
+
+  const supportState = readAdminSupportRequestsState();
+  if (supportState.error) errors.push(supportState.error);
+  supportState.records.forEach((request) => {
+    if (request.legacyImported) return;
+    const lastResponse = Array.isArray(request.responses) ? request.responses.at(-1) : null;
+    const userReplied = lastResponse && ["Student", "Teacher"].includes(lastResponse.authorRole)
+      && lastResponse.createdAt === request.updatedAt;
+    const newRequest = !lastResponse && ["Open", "Submitted"].includes(request.status);
+    if (!newRequest && !userReplied) return;
+    const role = request.requesterRole || "User";
+    const isAppeal = request.category === "Moderation & Appeal";
+    notifications.push({
+      id: `support:${request.id}:${request.updatedAt || request.createdAt}`,
+      category: "support",
+      categoryLabel: isAppeal ? "Appeal" : `${role} support`,
+      title: isAppeal ? "Appeal submitted" : userReplied ? "Requester replied to a ticket" : "New support ticket",
+      description: `${request.subject || "Support request"} · ${request.requesterName || request.requesterEmail || role}`,
+      related: request.subject || request.id,
+      timestamp: request.updatedAt || request.createdAt || null,
+      path: "/admin/support",
+      icon: LifeBuoy,
     });
   });
 

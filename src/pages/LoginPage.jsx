@@ -19,9 +19,30 @@ import {
   bytesToHex,
   utf8ToBytes,
 } from "@noble/hashes/utils.js";
+import { appendAdminActivityRecord } from "../components/admin/adminData";
 import "./AuthPages.css";
 
 const USERS_KEY = "educonnect.registeredUsers";
+
+function recordAdminLoginAttempt(email, success, description) {
+  try {
+    appendAdminActivityRecord({
+      actor: email,
+      actorRole: "Admin",
+      action: success ? "Admin Login" : "Admin Login Failed",
+      category: "security",
+      module: "Security & Access",
+      entityType: "Admin Session",
+      entityId: email,
+      targetId: email,
+      targetName: "Admin sign-in",
+      description,
+      result: success ? "Success" : "Failed",
+    });
+  } catch {
+    // Sign-in remains available if browser audit storage is unavailable.
+  }
+}
 
 function findSavedAccount(email) {
   try {
@@ -134,6 +155,11 @@ function LoginPage() {
 
     if (isConfiguredAdminEmail) {
       if (password !== adminPassword) {
+        recordAdminLoginAttempt(
+          normalizedEmail,
+          false,
+          "An Admin sign-in attempt failed its credential check. No password or credential value was stored.",
+        );
         setError("That password does not match this account.");
         return;
       }
@@ -144,6 +170,11 @@ function LoginPage() {
         registeredAccount &&
         registeredAccount.role !== "Admin"
       ) {
+        recordAdminLoginAttempt(
+          normalizedEmail,
+          false,
+          "An Admin sign-in attempt was blocked because the saved account does not have the Admin role.",
+        );
         setError("This account does not have Admin access.");
         return;
       }
@@ -163,6 +194,13 @@ function LoginPage() {
       }
 
       if (!(await checkPassword(user, password))) {
+        if (user.role === "Admin") {
+          recordAdminLoginAttempt(
+            normalizedEmail,
+            false,
+            "An Admin sign-in attempt failed its credential check. No password or credential value was stored.",
+          );
+        }
         setError(
           "That password does not match this account."
         );
@@ -170,6 +208,14 @@ function LoginPage() {
       }
 
       authenticatedUser = user;
+    }
+
+    if (authenticatedUser.role === "Admin") {
+      recordAdminLoginAttempt(
+        authenticatedUser.email,
+        true,
+        "Admin signed in successfully. No password or session token was stored.",
+      );
     }
 
     if (rememberMe) {

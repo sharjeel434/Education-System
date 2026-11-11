@@ -193,7 +193,8 @@ section[id] {
 }
 
 .login-btn,
-.signup-btn {
+.signup-btn,
+.cart-nav-btn {
   padding: 11px 19px;
   border-radius: 9px;
   font-size: 13px;
@@ -208,6 +209,22 @@ section[id] {
 }
 
 .login-btn:hover {
+  background: var(--purple-light);
+}
+
+.cart-nav-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid #ded5fa;
+  background: #fff;
+  color: var(--purple);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.cart-nav-btn:hover {
   background: var(--purple-light);
 }
 
@@ -2746,8 +2763,11 @@ section[id] {
   }
 
   .nav-actions .login-btn,
-  .nav-actions .signup-btn {
+  .nav-actions .signup-btn,
+  .nav-actions .cart-nav-btn {
     flex: 1;
+    padding: 10px 9px;
+    font-size: 12px;
   }
 
   .hero-section {

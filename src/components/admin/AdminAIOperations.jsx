@@ -16,7 +16,6 @@ import {
   updateAiFeatureFlag,
   updateAiIncidentStatus,
 } from "./adminOperationsData";
-import "./AdminOperations.css";
 
 const SECTIONS = [
   ["models", "Models & prompts"],

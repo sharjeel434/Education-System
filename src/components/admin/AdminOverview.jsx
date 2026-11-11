@@ -1,19 +1,24 @@
 import { useEffect, useState } from "react";
 import {
+  ArrowRight,
   ArrowUpRight,
   BookOpen,
   CheckCircle2,
+  ClipboardCheck,
   GraduationCap,
+  ShieldCheck,
   UsersRound,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import {
+  ADMIN_USERS_KEY,
   ADMIN_DATA_CHANGED_EVENT,
   getAdminActivityLog,
   getAdminOverviewData,
+  readAdminArray,
 } from "./adminData";
 
-function AdminOverview() {
+function AdminOverview({ email }) {
   const [overview, setOverview] = useState(getAdminOverviewData);
   const recentActivity = getAdminActivityLog()
     .records.slice()
@@ -38,40 +43,12 @@ function AdminOverview() {
     };
   }, []);
 
+  const adminName = readAdminArray(ADMIN_USERS_KEY).find((user) => user.role === "Admin" && String(user.email).toLowerCase() === String(email || "").toLowerCase())?.name?.trim() || "Admin";
   const stats = [
-    { label: "Total Students", value: overview.studentCount, icon: GraduationCap },
-    { label: "Total Teachers", value: overview.teacherCount, icon: UsersRound },
-    { label: "Total Courses", value: overview.courseCount, icon: BookOpen },
-    {
-      label: "Pending Teacher Applications",
-      value: overview.pendingTeacherCount,
-      icon: UsersRound,
-    },
-    {
-      label: "Pending Course Approvals",
-      value: overview.pendingCourseCount,
-      icon: BookOpen,
-    },
-    {
-      label: "Published Courses",
-      value: overview.publishedCourseCount,
-      icon: CheckCircle2,
-    },
-    {
-      label: "Pending Knowledge Review",
-      value: overview.pendingKnowledgeProposalCount,
-      icon: BookOpen,
-    },
-    {
-      label: "Approved for Processing",
-      value: overview.approvedKnowledgeProposalCount,
-      icon: CheckCircle2,
-    },
-    {
-      label: "Rejected Knowledge Proposals",
-      value: overview.rejectedKnowledgeProposalCount,
-      icon: BookOpen,
-    },
+    { label: "Total Students", value: overview.studentCount, icon: GraduationCap, path: "/admin/users" },
+    { label: "Total Teachers", value: overview.teacherCount, icon: UsersRound, path: "/admin/teachers" },
+    { label: "Total Courses", value: overview.courseCount, icon: BookOpen, path: "/admin/courses" },
+    { label: "Items Pending Review", value: overview.pendingTeacherCount + overview.pendingCourseCount + overview.pendingKnowledgeProposalCount, icon: ClipboardCheck, path: "/admin/notifications" },
   ];
 
   const pendingTasks = [
@@ -97,15 +74,29 @@ function AdminOverview() {
 
   return (
     <div className="edc-admin-overview">
+      <section className="edc-admin-overview-hero">
+        <div>
+          <span>ADMIN OVERVIEW</span>
+          <h2>Welcome back, {adminName}!</h2>
+          <p>Review applications, manage learning content, and keep the platform running smoothly.</p>
+          <Link to="/admin/teachers"><UsersRound size={16} /> Review Applications <ArrowRight size={16} /></Link>
+        </div>
+        <ShieldCheck size={66} aria-hidden="true" />
+      </section>
       <section className="edc-admin-stat-grid" aria-label="Platform summary">
-        {stats.map(({ label, value, icon: Icon }) => (
-          <article className="edc-admin-stat-card" key={label}>
+        {stats.map(({ label, value, icon: Icon, path }) => (
+          <Link
+            className="edc-admin-stat-card edc-admin-stat-card-link"
+            key={label}
+            to={path}
+            aria-label={`${label}: ${value}. Open related admin section.`}
+          >
             <span className="edc-admin-stat-icon" aria-hidden="true">
               <Icon size={19} />
             </span>
             <p>{label}</p>
             <strong>{value}</strong>
-          </article>
+          </Link>
         ))}
       </section>
 

@@ -1,6 +1,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { appendAdminActivityRecord } from "../../components/admin/adminData";
 import {
   LayoutDashboard,
   BookOpen,
@@ -41,6 +42,7 @@ import {
   Video,
   LockKeyhole,
   ArrowRight,
+  Download,
   RotateCcw,
   ChevronLeft,
   UserRound,
@@ -50,12 +52,14 @@ import {
   Mail,
   MapPin,
   Phone,
-  LogOut,
+  ShieldAlert,
+  LifeBuoy,
 } from "lucide-react";
 import "./Dashboard.css";
 import "../../components/notifications/NotificationsCenter.css";
 import CourseReviews from "../../components/reviews/CourseReviews";
 import NotificationsCenter from "../../components/notifications/NotificationsCenter";
+import { NOTIFICATIONS_EVENT } from "../../utils/demoNotifications";
 import CourseDiscussions from "../../components/discussions/CourseDiscussions";
 import CourseNotes from "../../components/notes/CourseNotes";
 import LearningAnalytics from "../../components/analytics/LearningAnalytics";
@@ -66,6 +70,16 @@ import CurriculumBuilder from "../../components/curriculum/CurriculumBuilder";
 import { readDiscussions, subscribeDiscussions } from "../../utils/courseDiscussions";
 import { getPublishedTeacherCourses } from "../../utils/teacherCourses";
 import { lessonVideoKey, loadLessonVideo } from "../../utils/lessonVideos";
+import { getReviews } from "../../utils/courseReviews";
+import { getStudentAcademicSubjects, INTERMEDIATE_STREAMS, ONLINE_COURSES, getProgramGroupsForDegreeLevel, loadCurriculumResource, getPublishedPdfResources, getRelatedPublishedCourses, isAcademicProfileComplete } from "../../utils/studentRecommendations";
+import PersonalizedDashboardSections from "../../components/student/PersonalizedDashboardSections";
+import BookTeacherHub from "../../components/books/BookTeacherHub";
+import { getPublishedBooks, isBookPurchased } from "../../utils/books";
+import { loadBookFile } from "../../utils/books";
+import ReportAction from "../../components/moderation/ReportAction";
+import UserModerationAppeals, { UserSupportCenter } from "../../components/moderation/UserModerationAppeals";
+import { isModerationVisible } from "../../utils/moderationVisibility";
+import "../../components/books/books.css";
 
 const COURSES = [
   {
@@ -74,7 +88,7 @@ const COURSES = [
     category: "Development",
     instructor: "EduConnect Demo",
     lessons: 10,
-    icon: "⚛️",
+    icon: "âš›ï¸",
     color: "purple",
   },
   {
@@ -83,7 +97,7 @@ const COURSES = [
     category: "Programming",
     instructor: "EduConnect Demo",
     lessons: 12,
-    icon: "🐍",
+    icon: "ðŸ",
     color: "blue",
   },
   {
@@ -92,7 +106,7 @@ const COURSES = [
     category: "Design",
     instructor: "EduConnect Demo",
     lessons: 8,
-    icon: "🎨",
+    icon: "ðŸŽ¨",
     color: "pink",
   },
 ];
@@ -147,18 +161,21 @@ const MENU = [
   { id: "course-assignments", label: "Course Assignments", icon: ClipboardList },
   { id: "learning-paths", label: "Learning Paths", icon: Route },
   { id: "curriculum", label: "Course Curriculum", icon: ListTree },
+  { id: "books", label: "Books & Teachers", icon: BookOpen },
   { id: "planner", label: "Study Planner", icon: CalendarDays },
   { id: "assignments", label: "Assignments & Grades", icon: ClipboardList },
   { id: "mastery", label: "Topic Mastery", icon: Brain },
   { id: "ai", label: "AI Tutor", icon: Bot },
-  { id: "tutors", label: "Hire a Tutor", icon: Users },
   { id: "wishlist", label: "Wishlist", icon: Heart },
   { id: "cart", label: "Shopping Cart", icon: ShoppingCart },
   { id: "orders", label: "My Purchases", icon: ReceiptText },
+  { id: "ebooks", label: "My eBooks", icon: BookOpen },
   { id: "notifications", label: "Notifications", icon: Bell },
   { id: "portfolio", label: "Certificates & Portfolio", icon: Award },
   { id: "research", label: "Research Workspace", icon: Microscope },
   { id: "profile", label: "My Profile", icon: UserRound },
+  { id: "help-support", label: "Help & Support", icon: LifeBuoy },
+  { id: "appeals", label: "Moderation & Appeals", icon: ShieldAlert },
 ];
 
 function readStorage(key, fallback) {
@@ -213,17 +230,12 @@ export default function StudentDashboard({ email = "student" }) {
   const location = useLocation();
   const navigate = useNavigate();
 
-  function signOut() {
-    window.sessionStorage.removeItem("educonnect.demoEmail");
-    window.sessionStorage.removeItem("educonnect.demoRole");
-    navigate("/login", { replace: true });
-  }
-
   const [activeTab, setActiveTab] = useState("overview");
   const [mobileMenu, setMobileMenu] = useState(false);
   const [search, setSearch] = useState("");
   const [playerCourseId, setPlayerCourseId] = useState(null);
   const [playerLessonIndex, setPlayerLessonIndex] = useState(0);
+  const [previewCourse, setPreviewCourse] = useState(null);
   const lessonVideoRef = useRef(null);
   const [lessonVideoTime, setLessonVideoTime] = useState(0);
   const [pendingVideoSeek, setPendingVideoSeek] = useState(null);
@@ -299,16 +311,17 @@ export default function StudentDashboard({ email = "student" }) {
 
   const [studentProfile, setStudentProfile] = useState(() =>
     readStorage(`${baseKey}.profile`, {
-      fullName: "", phone: "", city: "", about: "", avatar: "",
+      fullName: "", phone: "", city: "", about: "", avatar: "", educationLevel: "", classNumber: "", intermediateYear: "", stream: "PreEngineering", degreeLevel: "", programChoice: "", program: "",
     })
   );
   const [profileDraft, setProfileDraft] = useState(() =>
     readStorage(`${baseKey}.profile`, {
-      fullName: "", phone: "", city: "", about: "", avatar: "",
+      fullName: "", phone: "", city: "", about: "", avatar: "", educationLevel: "", classNumber: "", intermediateYear: "", stream: "PreEngineering", degreeLevel: "", programChoice: "", program: "",
     })
   );
   const [editingProfile, setEditingProfile] = useState(false);
   const [profileNotice, setProfileNotice] = useState("");
+  const [resourceNotice, setResourceNotice] = useState("");
   const profileDisplayName = studentProfile.fullName?.trim() || "Student";
 
   useEffect(() => {
@@ -338,9 +351,17 @@ export default function StudentDashboard({ email = "student" }) {
       city: profileDraft.city.trim().slice(0, 80),
       about: profileDraft.about.trim().slice(0, 500),
       avatar: profileDraft.avatar || "",
+      educationLevel: profileDraft.educationLevel || "",
+      classNumber: profileDraft.educationLevel === "school" ? profileDraft.classNumber : "",
+      intermediateYear: profileDraft.educationLevel === "intermediate" ? profileDraft.intermediateYear : "",
+      stream: profileDraft.stream || "PreEngineering",
+      degreeLevel: profileDraft.educationLevel === "university" ? profileDraft.degreeLevel : "",
+      programChoice: ["university", "online"].includes(profileDraft.educationLevel) ? profileDraft.programChoice : "",
+      program: ["university", "online"].includes(profileDraft.educationLevel) ? profileDraft.program.trim().slice(0, 100) : "",
     });
     setEditingProfile(false);
     setProfileNotice("Profile saved in this browser.");
+    navigateTo("overview");
   }
 
   function uploadStudentAvatar(event) {
@@ -386,8 +407,21 @@ export default function StudentDashboard({ email = "student" }) {
   const [cart, setCart] = useState(() => readStorage(`${baseKey}.cart`, []));
   const [cartNotice, setCartNotice] = useState("");
   const [orders, setOrders] = useState(() => readStorage(`${baseKey}.orders`, []));
+  const [bookPurchases, setBookPurchases] = useState(() => readStorage(`${baseKey}.bookPurchases`, []));
   const [orderNotice, setOrderNotice] = useState("");
   const [notifications, setNotifications] = useState(() => readStorage(`${baseKey}.notifications`, []));
+  useEffect(() => {
+    const notificationKey = `${baseKey}.notifications`;
+    const refresh = () => setNotifications(readStorage(notificationKey, []));
+    const refreshIfMatched = (event) => { if (!event.detail?.key || event.detail.key === notificationKey) refresh(); };
+    const refreshStorage = (event) => { if (!event.key || event.key === notificationKey) refresh(); };
+    window.addEventListener(NOTIFICATIONS_EVENT, refreshIfMatched);
+    window.addEventListener("storage", refreshStorage);
+    return () => {
+      window.removeEventListener(NOTIFICATIONS_EVENT, refreshIfMatched);
+      window.removeEventListener("storage", refreshStorage);
+    };
+  }, [baseKey]);
   const unreadNotifications = notifications.filter(item => !item.read).length;
   const [discussionRevision, setDiscussionRevision] = useState(0);
   useEffect(() => subscribeDiscussions(() => setDiscussionRevision(v => v + 1)), []);
@@ -532,7 +566,7 @@ export default function StudentDashboard({ email = "student" }) {
       <p>This demo record recognizes</p><div class="name">${escapeHtml(name)}</div>
       <p>for completing all sample lessons in</p><div class="course">${escapeHtml(course.title)}</div>
       <p>Completion progress: 100%</p><p>Completion date: ${escapeHtml(certificate.date)}</p>
-      <p>Certificate ID: ${escapeHtml(certificate.id)}</p><p class="disclaimer">Frontend demonstration only · Not an accredited or verified certificate</p>
+      <p>Certificate ID: ${escapeHtml(certificate.id)}</p><p class="disclaimer">Frontend demonstration only Â· Not an accredited or verified certificate</p>
       </main></body></html>`);
     popup.document.close();
     setPortfolioMessage("Certificate preview opened. Choose Print / Save as PDF in the new tab.");
@@ -608,14 +642,14 @@ export default function StudentDashboard({ email = "student" }) {
   function demoTutorReply(topic, mode) {
     const subject = topic.trim().slice(0, 140);
     if (mode === "Explain Simply")
-      return `Demo learning guide for “${subject}”:\n1. Write a one-sentence definition of this topic.\n2. Identify its main purpose.\n3. Find one beginner-friendly example in your course notes.\n4. Explain it back in your own words.\n\nThis is a general study template, not an AI-generated explanation of your specific question.`;
+      return `Demo learning guide for â€œ${subject}â€:\n1. Write a one-sentence definition of this topic.\n2. Identify its main purpose.\n3. Find one beginner-friendly example in your course notes.\n4. Explain it back in your own words.\n\nThis is a general study template, not an AI-generated explanation of your specific question.`;
     if (mode === "Step-by-Step")
-      return `Demo step-by-step plan for “${subject}”:\nStep 1: List what you already know.\nStep 2: Break the topic into 3 small parts.\nStep 3: Study one example for each part.\nStep 4: Try an exercise without notes.\nStep 5: Review mistakes and repeat.\n\nSpecific topic guidance will be available after AI integration.`;
+      return `Demo step-by-step plan for â€œ${subject}â€:\nStep 1: List what you already know.\nStep 2: Break the topic into 3 small parts.\nStep 3: Study one example for each part.\nStep 4: Try an exercise without notes.\nStep 5: Review mistakes and repeat.\n\nSpecific topic guidance will be available after AI integration.`;
     if (mode === "Practice Mode")
-      return `Demo practice for “${subject}”:\nQ1. How would you define this topic?\nQ2. Where might you use it?\nQ3. Can you give an example?\n\nWrite your answers in a notebook and compare them with your course material. Automatic answer checking is not connected yet.`;
+      return `Demo practice for â€œ${subject}â€:\nQ1. How would you define this topic?\nQ2. Where might you use it?\nQ3. Can you give an example?\n\nWrite your answers in a notebook and compare them with your course material. Automatic answer checking is not connected yet.`;
     if (mode === "Exam Preparation")
-      return `Demo exam revision for “${subject}”:\n• Review key terms and definitions.\n• Make 5 flashcards.\n• Practice 3 questions without notes.\n• Revisit the concepts you missed.\n• Test yourself again tomorrow.\n\nThis is a study checklist, not a generated exam answer.`;
-    return `Demo study roadmap for “${subject}”:\nDay 1: Learn the core definitions.\nDay 2: Study examples.\nDay 3: Complete practice exercises.\nDay 4: Review mistakes.\nDay 5: Take a short self-test.\n\nCustomize this plan to your course and available study time.`;
+      return `Demo exam revision for â€œ${subject}â€:\nâ€¢ Review key terms and definitions.\nâ€¢ Make 5 flashcards.\nâ€¢ Practice 3 questions without notes.\nâ€¢ Revisit the concepts you missed.\nâ€¢ Test yourself again tomorrow.\n\nThis is a study checklist, not a generated exam answer.`;
+    return `Demo study roadmap for â€œ${subject}â€:\nDay 1: Learn the core definitions.\nDay 2: Study examples.\nDay 3: Complete practice exercises.\nDay 4: Review mistakes.\nDay 5: Take a short self-test.\n\nCustomize this plan to your course and available study time.`;
   }
 
   function sendAiMessage(event) {
@@ -818,6 +852,7 @@ export default function StudentDashboard({ email = "student" }) {
       `${baseKey}.enrollments`,
       JSON.stringify(enrollments)
     );
+    window.dispatchEvent(new Event("educonnect:student-data-changed"));
   }, [baseKey, enrollments]);
 
   useEffect(() => {
@@ -834,7 +869,13 @@ export default function StudentDashboard({ email = "student" }) {
 
   useEffect(() => {
     localStorage.setItem(`${baseKey}.orders`, JSON.stringify(orders));
+    window.dispatchEvent(new Event("educonnect:student-data-changed"));
   }, [baseKey, orders]);
+
+  useEffect(() => {
+    localStorage.setItem(`${baseKey}.bookPurchases`, JSON.stringify(bookPurchases));
+    window.dispatchEvent(new Event("educonnect:student-data-changed"));
+  }, [baseKey, bookPurchases]);
 
   useEffect(() => {
     localStorage.setItem(`${baseKey}.cart`, JSON.stringify(cart));
@@ -877,10 +918,24 @@ export default function StudentDashboard({ email = "student" }) {
     window.addEventListener("storage", refresh);
     window.addEventListener("focus", refresh);
     window.addEventListener("educonnect:teacher-courses-changed", refresh);
+    window.addEventListener("educonnect:teacher-profile-changed", refresh);
+    window.addEventListener("educonnect:admin-data-changed", refresh);
+    window.addEventListener("educonnect:curriculum-updated", refresh);
+    window.addEventListener("educonnect:books-changed", refresh);
+    window.addEventListener("educonnect:reviews-changed", refresh);
+    window.addEventListener("educonnect:student-data-changed", refresh);
+    window.addEventListener("educonnect:moderation-visibility-changed", refresh);
     return () => {
       window.removeEventListener("storage", refresh);
       window.removeEventListener("focus", refresh);
       window.removeEventListener("educonnect:teacher-courses-changed", refresh);
+      window.removeEventListener("educonnect:teacher-profile-changed", refresh);
+      window.removeEventListener("educonnect:admin-data-changed", refresh);
+      window.removeEventListener("educonnect:curriculum-updated", refresh);
+      window.removeEventListener("educonnect:books-changed", refresh);
+      window.removeEventListener("educonnect:reviews-changed", refresh);
+      window.removeEventListener("educonnect:student-data-changed", refresh);
+      window.removeEventListener("educonnect:moderation-visibility-changed", refresh);
     };
   }, []);
   const latestPublishedCourses = useMemo(() => getPublishedTeacherCourses(), [courseRevision]);
@@ -930,11 +985,20 @@ export default function StudentDashboard({ email = "student" }) {
               : 0,
           };
         })
-        .filter(Boolean),
+        .filter((course) => course && isModerationVisible("course", `${String(course.teacherEmail || course.instructorEmail || "demo").toLowerCase()}::${course.id}`)),
     [enrollments, latestPublishedCourses]
   );
 
-  const playerCourse = enrolledCourses.find(c => String(c.id) === String(playerCourseId));
+  const enrolledPlayerCourse = enrolledCourses.find(c => String(c.id) === String(playerCourseId));
+  const playerCourse = enrolledPlayerCourse || (previewCourse && String(previewCourse.id) === String(playerCourseId) ? {
+    ...previewCourse,
+    instructor: previewCourse.instructorName || previewCourse.instructor || "Instructor",
+    lessons: Array.isArray(previewCourse.lessons) ? previewCourse.lessons.length : 0,
+    lessonItems: Array.isArray(previewCourse.lessons) ? previewCourse.lessons : [],
+    completedLessons: 0,
+    progress: 0,
+  } : null);
+  const playerPreviewOnly = Boolean(playerCourse && !enrolledPlayerCourse);
   const playerLesson = playerCourse?.lessonItems?.[playerLessonIndex];
   useEffect(() => {
     let cancelled = false;
@@ -1058,15 +1122,16 @@ export default function StudentDashboard({ email = "student" }) {
       ...c,
       instructor: c.instructorName || c.instructor || "Instructor",
       price: Math.max(0, Number(c.price) || 0),
-      icon: "📚", color: "blue",
+      icon: "ðŸ“š", color: "blue",
     })),
   ];
-  const shopKey = (c) => `${String(c.teacherEmail || "demo").toLowerCase()}::${String(c.id)}`;
+  const shopKey = (c) => `${c.itemType === "book" ? "book" : "course"}::${String(c.teacherEmail || "demo").toLowerCase()}::${String(c.id)}`;
   const alreadyEnrolled = (c) => enrollments.some(e =>
     String(e.id) === String(c.id) &&
     String(e.teacherEmail || "").toLowerCase() === String(c.teacherEmail || "").toLowerCase()
   );
   function addCart(course) {
+    if (course.itemType === "book") return addBookToCart(course);
     if (alreadyEnrolled(course)) { setCartNotice("Already enrolled. Open My Learning."); return; }
     if (cart.some(c => shopKey(c) === shopKey(course))) { setCartNotice("Course already in cart."); return; }
     setCart(prev => [...prev, {
@@ -1078,24 +1143,30 @@ export default function StudentDashboard({ email = "student" }) {
     }]);
     setCartNotice("Added to shopping cart.");
   }
+  function addBookToCart(book) {
+    if (isBookPurchased(email, book.id) || bookPurchases.some((item) => String(item.id) === String(book.id))) { setCartNotice("This eBook is already in My eBooks."); return; }
+    if (cart.some((item) => item.itemType === "book" && shopKey(item) === shopKey(book))) { setCartNotice("This eBook is already in your cart."); return; }
+    setCart((previous) => [...previous, { itemType: "book", id: String(book.id), teacherEmail: String(book.teacherEmail || "").toLowerCase(), title: book.title, instructor: book.teacherName || book.author || "Teacher", category: book.subject || "PDF eBook", price: Math.max(0, Number(book.price) || 0), pdfFileId: book.pdfFileId, previewFileId: book.previewFileId, fileName: book.fileName, downloadAllowed: Boolean(book.downloadAllowed), coverFileId: book.coverFileId, educationLevel: book.educationLevel, classOrProgram: book.classOrProgram, semester: book.semester }]);
+    setCartNotice("eBook added to cart.");
+  }
   function removeCart(course) {
     setCart(prev => prev.filter(c => shopKey(c) !== shopKey(course)));
     setCartNotice("Removed from cart.");
   }
   function checkoutCart() {
-    const available = cart.filter(c => !alreadyEnrolled(c));
-    if (!available.length) { setCartNotice("Cart is empty or courses are already enrolled."); return; }
+    const available = cart.filter(c => c.itemType === "book" ? !bookPurchases.some((item) => String(item.id) === String(c.id)) : !alreadyEnrolled(c));
+    if (!available.length) { setCartNotice("Cart is empty or all items are already owned."); return; }
     const total = available.reduce((sum,c) => sum + Math.max(0, Number(c.price) || 0), 0);
-    if (!window.confirm(`Demo checkout: ${available.length} course(s), total $${total.toFixed(2)}. No real payment will be charged. Continue?`)) return;
+    if (!window.confirm(`Demo checkout: ${available.length} course(s), total PKR ${total.toLocaleString()}. No real payment will be charged. Continue?`)) return;
     const purchasedAt = new Date().toISOString();
     const order = {
       id: `EDC-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
       purchasedAt,
       status: "Demo completed",
-      paymentMethod: "Demo checkout — no real payment",
-      currency: "USD",
+      paymentMethod: "Demo checkout â€” no real payment",
+      currency: "PKR",
       items: available.map(c => ({
-        id: String(c.id), teacherEmail: String(c.teacherEmail || ""),
+        itemType: c.itemType || "course", id: String(c.id), teacherEmail: String(c.teacherEmail || ""),
         title: String(c.title || "Untitled Course"),
         instructor: String(c.instructor || "Instructor"),
         price: Math.max(0, Number(c.price) || 0),
@@ -1104,12 +1175,35 @@ export default function StudentDashboard({ email = "student" }) {
     };
     // Snapshot the order at checkout so later course edits don't change receipts.
     setOrders(prev => [order, ...prev]);
+    try {
+      appendAdminActivityRecord({
+        actor: email,
+        actorRole: "Student",
+        action: "Demo Checkout Completed",
+        category: "financial-management",
+        module: "Financial Management",
+        entityType: "Demo Order",
+        entityId: String(order.id),
+        targetId: String(order.id),
+        targetName: `Demo order (${available.length} item${available.length === 1 ? "" : "s"})`,
+        previousValue: "Cart",
+        newValue: "Demo completed",
+        description: "Student completed a demo course/book checkout. No real payment was processed and no payment credentials were stored.",
+        result: "Success",
+        status: "Completed",
+      });
+    } catch {
+      // Keep checkout successful when local audit storage is unavailable.
+    }
     notify({ id: `purchase:${order.id}`, type: "purchase", title: "Demo purchase completed",
-      message: `${available.length} course(s) added to My Learning — $${total.toFixed(2)} USD (demo only).`, link: "orders" });
-    setEnrollments(prev => [...prev, ...available.map(c => ({ ...c, completedLessons: 0, progress: 0, enrolledAt: purchasedAt }))]);
+      message: `${available.length} item(s) purchased â€” PKR ${total.toLocaleString()} (demo only).`, link: "orders" });
+    const purchasedCourses = available.filter((c) => c.itemType !== "book");
+    const purchasedBooksNow = available.filter((c) => c.itemType === "book");
+    if (purchasedCourses.length) setEnrollments(prev => [...prev, ...purchasedCourses.map(c => ({ ...c, completedLessons: 0, progress: 0, enrolledAt: purchasedAt }))]);
+    if (purchasedBooksNow.length) setBookPurchases((previous) => [...previous, ...purchasedBooksNow.map((book) => ({ ...book, purchasedAt }))]);
     setCart([]);
-    setCartNotice("Demo checkout complete! Courses added to My Learning.");
-    setActiveTab("learning");
+    setCartNotice("Demo checkout complete. Purchased books are in My eBooks.");
+    setActiveTab(purchasedCourses.length ? "learning" : "ebooks");
   }
 
   function enrollCourse(id) {
@@ -1123,6 +1217,28 @@ export default function StudentDashboard({ email = "student" }) {
       { id, completedLessons: 0 },
     ]);
 
+    setActiveTab("learning");
+  }
+
+  function enrollPublishedCourse(course) {
+    if (alreadyEnrolled(course)) { setActiveTab("learning"); return; }
+    if (Number(course.price) > 0 && !hasCourseAccess(course)) {
+      addCart(course);
+      setActiveTab("cart");
+      return;
+    }
+    const lessons = Array.isArray(course.lessons) ? course.lessons : [];
+    setEnrollments((previous) => [...previous, {
+      ...course,
+      instructor: course.instructorName || course.instructor || "Instructor",
+      teacherEmail: course.teacherEmail || "",
+      lessons: lessons.length,
+      lessonItems: lessons,
+      completedLessons: 0,
+      progress: 0,
+      enrolledAt: new Date().toISOString(),
+    }]);
+    setPreviewCourse(null);
     setActiveTab("learning");
   }
 
@@ -1155,11 +1271,97 @@ export default function StudentDashboard({ email = "student" }) {
       (item) => String(item.id) === String(courseId)
     );
     if (!enrollment) return;
+    setPreviewCourse(null);
     setPlayerCourseId(courseId);
     const total = enrolledCourses.find((course) => String(course.id) === String(courseId))?.lessons || 0;
     setPlayerLessonIndex(Math.max(0, Math.min(Math.max(0, total - 1), Number(enrollment.completedLessons) || 0)));
     setActiveTab("player");
     setMobileMenu(false);
+  }
+
+  function openPublishedLesson(course, lesson) {
+    const lessonIndex = (course.lessons || []).findIndex((item) => String(item.id) === String(lesson.id));
+    if (lessonIndex < 0) return;
+    if (!hasCourseAccess(course) && !lesson.isFreePreview) {
+      setResourceNotice("Enroll in or purchase this course to watch this lecture.");
+      return;
+    }
+    if (hasCourseAccess(course)) {
+      if (!alreadyEnrolled(course)) {
+        const lessons = Array.isArray(course.lessons) ? course.lessons : [];
+        setEnrollments((previous) => [...previous, { ...course, instructor: course.instructorName || course.instructor || "Instructor", lessons: lessons.length, lessonItems: lessons, completedLessons: 0, progress: 0, enrolledAt: new Date().toISOString() }]);
+      }
+      setPreviewCourse(null);
+      setPlayerCourseId(course.id);
+      setPlayerLessonIndex(lessonIndex);
+      setActiveTab("player");
+      setMobileMenu(false);
+      return;
+    }
+    setPreviewCourse(course);
+    setPlayerCourseId(course.id);
+    setPlayerLessonIndex(lessonIndex);
+    setActiveTab("player");
+    setMobileMenu(false);
+  }
+
+  function hasCourseAccess(course) {
+    const ownerEmail = String(course.teacherEmail || course.instructorEmail || "").trim().toLowerCase();
+    const enrolled = enrollments.some((item) => String(item.id) === String(course.id) &&
+      String(item.teacherEmail || "").trim().toLowerCase() === ownerEmail);
+    const purchased = orders.some((order) => ["completed", "demo completed"].includes(String(order.status || "").toLowerCase()) &&
+      (order.items || []).some((item) => item.itemType !== "book" && String(item.id) === String(course.id) &&
+        String(item.teacherEmail || "").trim().toLowerCase() === ownerEmail));
+    return enrolled || purchased;
+  }
+
+  function goToPublishedCourse(course) {
+    if (alreadyEnrolled(course)) { openCoursePlayer(course.id); return; }
+    if (hasCourseAccess(course)) enrollPublishedCourse(course);
+  }
+
+  async function openPdfResource(book, download = false) {
+    const resourceTargetId = `${String(book.teacherEmail || book.course?.teacherEmail || "").toLowerCase()}::${book.course?.id || ""}::${book.id}`;
+    if (!isModerationVisible("pdf", resourceTargetId)) { setResourceNotice("This PDF is temporarily unavailable while it is reviewed."); return; }
+    if (book.course && !hasCourseAccess(book.course)) { setResourceNotice("Enroll in or purchase this course before opening its PDF materials."); return; }
+    const readingTab = download ? null : window.open("about:blank", "_blank");
+    if (readingTab) readingTab.opener = null;
+    try {
+      const file = await loadCurriculumResource(book.id);
+      const url = URL.createObjectURL(file);
+      if (download) {
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = book.name || "ebook.pdf";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      } else {
+        if (readingTab) readingTab.location.href = url;
+        else setResourceNotice("Allow pop-ups to read this PDF online.");
+      }
+      window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (error) {
+      readingTab?.close();
+      setResourceNotice(error.message || "PDF could not be opened.");
+    }
+  }
+
+  async function openStudentBook(book, download = false, preview = false) {
+    if (!isModerationVisible("pdf", book.id)) { setResourceNotice("This eBook is temporarily unavailable while it is reviewed."); return; }
+    const accessible = Boolean(book.isFree || bookPurchases.some((item) => String(item.id) === String(book.id)) || isBookPurchased(email, book.id));
+    if (!accessible && !preview) { setResourceNotice("Purchase this eBook before opening the full PDF."); return; }
+    if (download && !book.downloadAllowed) { setResourceNotice("The teacher has not allowed PDF downloads."); return; }
+    const readingTab = download ? null : window.open("about:blank", "_blank");
+    if (readingTab) readingTab.opener = null;
+    try {
+      const file = await loadBookFile(preview ? book.previewFileId : book.pdfFileId);
+      if (!file) throw new Error("This PDF is not available in this browser.");
+      const url = URL.createObjectURL(file);
+      if (download) { const anchor = document.createElement("a"); anchor.href = url; anchor.download = `${book.title || "ebook"}.pdf`; anchor.click(); }
+      else if (readingTab) readingTab.location.href = url;
+      window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (error) { if (readingTab) readingTab.close(); setResourceNotice(error.message); }
   }
 
   function completePlayerLesson() {
@@ -1231,6 +1433,8 @@ export default function StudentDashboard({ email = "student" }) {
   }
 
   function CourseCard({ course }) {
+    const courseTargetId = `${String(course.teacherEmail || course.instructorEmail || "demo").toLowerCase()}::${course.id}`;
+    if (!isModerationVisible("course", courseTargetId)) return null;
     const isEnrolled = enrollments.some(
       (item) => item.id === course.id
     );
@@ -1277,6 +1481,7 @@ export default function StudentDashboard({ email = "student" }) {
             >
               <Heart size={18} fill={isSaved ? "currentColor" : "none"} />
             </button>
+            <ReportAction reporterEmail={email} reporterName={studentProfile.fullName || "Student"} target={{ reportType: "content", targetType: "course", targetId: courseTargetId, targetTitle: course.title, targetOwnerEmail: course.teacherEmail || course.instructorEmail || "", targetOwnerName: course.instructor || course.instructorName || "", targetRole: "Teacher" }} />
           </div>
         </div>
       </article>
@@ -1438,15 +1643,13 @@ export default function StudentDashboard({ email = "student" }) {
 
             {enrolledCourses.length ? (
               <div className="edc-learning-list">
-                {enrolledCourses.slice(0, 2).map((course) => (
+                {enrolledCourses.map((course) => (
                   <LearningCard key={course.id} course={course} />
                 ))}
               </div>
             ) : (
-              <EmptyState
-                title="Your learning starts here"
-                description="Enroll in a demo course below to begin."
-              />
+              <div><EmptyState title="No courses to continue yet" description="Enroll in a free course or purchase a published course to start learning." />
+                <button type="button" className="edc-btn edc-btn-light" onClick={() => navigate("/courses")}>Explore Courses <ArrowRight size={15} /></button></div>
             )}
           </div>
 
@@ -1487,18 +1690,30 @@ export default function StudentDashboard({ email = "student" }) {
           </div>
         </section>
 
-        <section className="edc-panel">
-          <SectionHeading
-            eyebrow="EXPLORE"
-            title="Recommended Demo Courses"
-            description="Try the sample learning experience."
-          />
+        <PersonalizedDashboardSections
+          studentName={studentProfile.fullName || profileDisplayName}
+          email={email}
+          notice={resourceNotice}
+          profile={studentProfile}
+          courses={latestPublishedCourses}
+          reviews={getReviews()}
+          enrollments={enrollments}
+          orders={orders}
+          onEditProfile={() => navigateTo("profile")}
+          onOpenEbooks={() => navigateTo("ebooks")}
+          onBrowseCourses={() => navigate("/courses")}
+          onEnrollFree={enrollPublishedCourse}
+          onAddToCart={(course) => { addCart(course); navigateTo("cart"); }}
+          onGoToCourse={goToPublishedCourse}
+          onPreviewLesson={openPublishedLesson}
+          onOpenLesson={openPublishedLesson}
+          onOpenPdf={openPdfResource}
+          canPlayLesson={(lesson) => Boolean(getLessonMedia(lesson))}
+        />
 
-          <div className="edc-course-grid">
-            {COURSES.map((course) => (
-              <CourseCard key={course.id} course={course} />
-            ))}
-          </div>
+        <section className="edc-panel" id="books-and-teachers">
+          <SectionHeading eyebrow="PERSONALIZED LIBRARY" title="Books & Teachers" description="Browse published PDFs and registered teacher profiles related to your saved education profile." action={<button type="button" className="edc-text-btn" onClick={() => navigateTo("books")}>Open Library <ArrowRight size={15} /></button>} />
+          <BookTeacherHub email={email} profile={studentProfile} courses={latestPublishedCourses} cart={cart} purchasedBooks={bookPurchases} onAddBookToCart={(book) => { addBookToCart(book); navigateTo("cart"); }} onOpenEbooks={() => navigateTo("ebooks")} recommendedOnly />
         </section>
 
         <section className="edc-feature-banner">
@@ -1579,7 +1794,7 @@ export default function StudentDashboard({ email = "student" }) {
   }
 
   function LearningPlayer() {
-    const course = enrolledCourses.find((item) => item.id === playerCourseId);
+    const course = playerCourse;
     if (!course) {
       return (
         <div className="edc-tab-content edc-panel">
@@ -1590,8 +1805,11 @@ export default function StudentDashboard({ email = "student" }) {
     }
     const index = Math.max(0, Math.min(course.lessons - 1, playerLessonIndex));
     const lesson = course.lessonItems?.[index];
-    const lessonTitle = lesson?.title || `Lesson ${index + 1} — ${course.title}`;
-    const media = localVideoUrl ? { type: "video", src: localVideoUrl } : getLessonMedia(lesson);
+    const lessonTitle = lesson?.title || `Lesson ${index + 1} â€” ${course.title}`;
+    const videoReportTargetId = `${String(course.teacherEmail || course.instructorEmail || "demo").toLowerCase()}::${course.id}::${String(lesson?.id ?? index)}`;
+    const videoVisible = isModerationVisible("video", videoReportTargetId);
+    const media = videoVisible ? (localVideoUrl ? { type: "video", src: localVideoUrl } : getLessonMedia(lesson)) : null;
+    const previewOnly = playerPreviewOnly;
     const isCompleted = index < course.completedLessons;
     const isNext = index === course.completedLessons;
     const notesCourse = { ...course, teacherEmail: course.teacherEmail || course.instructorEmail || "demo" };
@@ -1601,7 +1819,7 @@ export default function StudentDashboard({ email = "student" }) {
           <ChevronLeft size={17} /> Back to My Learning
         </button>
         <SectionHeading eyebrow="COURSE LEARNING PLAYER" title={course.title}
-          description={`By ${course.instructor} · ${course.lessons} sample lessons`} />
+          description={`By ${course.instructor} Â· ${previewOnly ? "Free preview" : `${course.lessons} lessons`}`} />
         <div className="edc-player-layout">
           <section className="edc-panel edc-player-main">
             <div className="edc-player-screen edc-player-screen-premium">
@@ -1636,41 +1854,42 @@ export default function StudentDashboard({ email = "student" }) {
               <div className="edc-player-screen-caption">
                 <span>LESSON {String(index + 1).padStart(2, "0")} / {String(course.lessons).padStart(2, "0")}</span>
                 <h3>{lessonTitle}</h3>
-                <p>{lesson?.description || `Part ${index + 1} · Learning preview`}</p>
+                <p>{lesson?.description || `Part ${index + 1} Â· Learning preview`}</p>
               </div>
-              <div className="edc-player-screen-bottom"><span><Video size={14} /> {media ? "Lesson video" : "Video coming soon"}</span><span>Course preview</span></div>
+              <div className="edc-player-screen-bottom"><span><Video size={14} /> {media ? "Lesson video" : "Video coming soon"}</span><span>{previewOnly ? "Free preview Â· progress is not saved" : "Course learning"}</span></div>
             </div>
             <div className="edc-player-details edc-player-details-premium">
               <div className="edc-player-lesson-heading">
                 <div><span className="edc-player-eyebrow">CURRENT LESSON</span><h3>{lessonTitle}</h3></div>
                 <span className={`edc-player-state ${isCompleted ? "is-done" : ""}`}>{isCompleted ? "Completed" : "In progress"}</span>
               </div>
-              <div className="edc-player-inline-note"><Video size={18} /><span>{media ? "Watch the lesson, then mark it complete to save your progress." : "No video has been attached to this lesson yet. You can explore the demo lesson flow meanwhile."}</span></div>
+              <div className="edc-player-inline-note"><Video size={18} /><span>{!videoVisible ? "This lecture is temporarily unavailable while it is reviewed." : previewOnly ? "This is a free preview lecture. Enroll or purchase the course to continue the full curriculum." : media ? "Watch the lesson, then mark it complete to save your progress." : "No video has been attached to this lesson yet."}</span></div>
               <div className="edc-player-actions">
-                <button type="button" className="edc-btn edc-btn-light" disabled={index === 0}
+                <ReportAction reporterEmail={email} reporterName={studentProfile.fullName || "Student"} target={{ reportType: "content", targetType: "video", targetId: videoReportTargetId, targetTitle: `${course.title}: ${lessonTitle}`, targetOwnerEmail: course.teacherEmail || course.instructorEmail || "", targetOwnerName: course.instructor || course.instructorName || "", targetRole: "Teacher" }} />
+                <button type="button" className="edc-btn edc-btn-light" disabled={previewOnly || index === 0}
                   onClick={() => setPlayerLessonIndex(index - 1)}>Previous Lesson</button>
-                <button type="button" className="edc-btn edc-btn-primary"
+                {!previewOnly && <button type="button" className="edc-btn edc-btn-primary"
                   disabled={!isNext || course.completedLessons >= course.lessons}
                   onClick={completePlayerLesson}>
                   <CheckCircle2 size={17} /> {isCompleted ? "Already Completed" : course.progress === 100 ? "Course Completed" : "Mark Lesson Complete"}
-                </button>
-                <button type="button" className="edc-btn edc-btn-light" disabled={index >= course.lessons - 1 || index >= course.completedLessons}
+                </button>}
+                <button type="button" className="edc-btn edc-btn-light" disabled={previewOnly || index >= course.lessons - 1 || index >= course.completedLessons}
                   onClick={() => setPlayerLessonIndex(index + 1)}>Next Lesson</button>
               </div>
-              <CourseNotes email={email} courses={[notesCourse]} activeCourse={notesCourse}
+              {!previewOnly && <CourseNotes email={email} courses={[notesCourse]} activeCourse={notesCourse}
                 activeLessonIndex={index} currentTime={lessonVideoTime}
                 canTimestamp={media?.type === "video"}
-                onJump={jumpToNote} compact />
+                onJump={jumpToNote} compact />}
             </div>
           </section>
           <aside className="edc-panel edc-player-sidebar">
             <h3>Course Content</h3>
-            <p>{course.completedLessons} / {course.lessons} lessons completed · {course.progress}%</p>
-            <ProgressBar value={course.progress} />
+            <p>{previewOnly ? "Free preview lesson" : `${course.completedLessons} / ${course.lessons} lessons completed Â· ${course.progress}%`}</p>
+            {!previewOnly && <ProgressBar value={course.progress} />}
             <div className="edc-player-lessons">
-              {Array.from({ length: course.lessons }, (_, lessonIndex) => {
+              {(previewOnly ? [index] : Array.from({ length: course.lessons }, (_, lessonIndex) => lessonIndex)).map((lessonIndex) => {
                 const done = lessonIndex < course.completedLessons;
-                const locked = lessonIndex > course.completedLessons;
+                const locked = !previewOnly && lessonIndex > course.completedLessons;
                 return (
                   <button type="button" key={lessonIndex}
                     className={`edc-player-lesson ${index === lessonIndex ? "active" : ""}`}
@@ -1726,7 +1945,7 @@ export default function StudentDashboard({ email = "student" }) {
                   {profileDraft.avatar && <button type="button" className="edc-btn edc-btn-light"
                     onClick={() => setProfileDraft((prev) => ({ ...prev, avatar: "" }))}>Remove Photo</button>}
                 </div>
-                <p className="edc-student-profile-hint">JPG, PNG or WebP · Maximum 1 MB</p>
+                <p className="edc-student-profile-hint">JPG, PNG or WebP Â· Maximum 1 MB</p>
                 <div className="edc-student-profile-fields">
                   <label>Full Name *<input required maxLength={80} value={profileDraft.fullName}
                     onChange={(e) => setProfileDraft((prev) => ({ ...prev, fullName: e.target.value }))}
@@ -1738,6 +1957,57 @@ export default function StudentDashboard({ email = "student" }) {
                   <label>City<input maxLength={80} value={profileDraft.city}
                     onChange={(e) => setProfileDraft((prev) => ({ ...prev, city: e.target.value }))}
                     placeholder="Your city" /></label>
+                  <label>Education Level
+                    <select value={profileDraft.educationLevel || ""} onChange={(e) => setProfileDraft((prev) => ({ ...prev, educationLevel: e.target.value }))}>
+                      <option value="">Select your education level</option>
+                      <option value="school">School</option>
+                      <option value="intermediate">College / Intermediate</option>
+                      <option value="university">University</option>
+                      <option value="online">Interest</option>
+                    </select>
+                  </label>
+                  {profileDraft.educationLevel === "school" && <label>Class
+                    <select value={profileDraft.classNumber || ""} onChange={(e) => setProfileDraft((prev) => ({ ...prev, classNumber: e.target.value }))}>
+                      <option value="">Select your class</option>
+                      {Array.from({ length: 10 }, (_, index) => <option key={index + 1} value={String(index + 1)}>Class {index + 1}</option>)}
+                    </select>
+                  </label>}
+                  {profileDraft.educationLevel === "intermediate" && <>
+                    <label>Year
+                      <select value={profileDraft.intermediateYear || ""} onChange={(e) => setProfileDraft((prev) => ({ ...prev, intermediateYear: e.target.value }))}>
+                        <option value="">Select your year</option><option value="1">1st Year</option><option value="2">2nd Year</option>
+                      </select>
+                    </label>
+                    <label>College Program / Group
+                      <select value={profileDraft.stream || "PreEngineering"} onChange={(e) => setProfileDraft((prev) => ({ ...prev, stream: e.target.value }))}>
+                        {INTERMEDIATE_STREAMS.map(([value, label]) => <option value={value} key={value}>{label}</option>)}
+                      </select>
+                    </label>
+                  </>}
+                  {profileDraft.educationLevel === "university" && <>
+                    <label>Degree Level
+                      <select value={profileDraft.degreeLevel || ""} onChange={(e) => setProfileDraft((prev) => ({ ...prev, degreeLevel: e.target.value, programChoice: "", program: "" }))}>
+                        <option value="">Select degree</option><option value="bs">BS / Bachelor's</option><option value="masters">Master's</option><option value="phd">PhD</option>
+                      </select>
+                    </label>
+                    {profileDraft.degreeLevel && <label>{profileDraft.degreeLevel === "bs" ? "BS / Bachelor's Program" : profileDraft.degreeLevel === "masters" ? "Master's Program" : "PhD Program"}
+                      <select value={profileDraft.programChoice || ""} onChange={(e) => setProfileDraft((prev) => ({ ...prev, programChoice: e.target.value, program: e.target.value === "Other" ? "" : e.target.value }))}>
+                        <option value="">Select a program</option>{getProgramGroupsForDegreeLevel(profileDraft.degreeLevel).map((group) => <optgroup key={group.label} label={group.label}>{group.programs.map((program) => <option key={program} value={program}>{program}</option>)}</optgroup>)}<option value="Other">Other</option>
+                      </select>
+                    </label>}
+                    {profileDraft.programChoice === "Other" && <label>Enter Your Program<input maxLength={100} value={profileDraft.program || ""} onChange={(e) => setProfileDraft((prev) => ({ ...prev, program: e.target.value }))} placeholder="Type your degree program" /></label>}
+                  </>}
+                  {profileDraft.educationLevel === "online" && <>
+                    <label>Interest
+                      <select value={profileDraft.programChoice || ""} onChange={(e) => setProfileDraft((prev) => ({ ...prev, programChoice: e.target.value, program: e.target.value === "Other" ? "" : e.target.value }))}>
+                        <option value="">Choose a course</option>{ONLINE_COURSES.map((course) => <option key={course} value={course}>{course}</option>)}
+                      </select>
+                    </label>
+                    {profileDraft.programChoice === "Other" && <label>Enter Course Name<input maxLength={100} value={profileDraft.program || ""} onChange={(e) => setProfileDraft((prev) => ({ ...prev, program: e.target.value }))} placeholder="Type the course name" /></label>}
+                  </>}
+                  {getStudentAcademicSubjects(profileDraft).length > 0 && <div className="edc-profile-subject-preview">
+                    <strong>Subjects shown on Overview</strong><p>{getStudentAcademicSubjects(profileDraft).join(" Â· ")}</p>
+                  </div>}
                 </div>
                 <label className="edc-student-profile-about-label">About Me<textarea rows={5} maxLength={500}
                   value={profileDraft.about} onChange={(e) => setProfileDraft((prev) => ({ ...prev, about: e.target.value }))}
@@ -1756,6 +2026,8 @@ export default function StudentDashboard({ email = "student" }) {
                 <div><Mail size={18} /><span>Email</span><strong>{email}</strong></div>
                 <div><Phone size={18} /><span>Phone</span><strong>{studentProfile.phone || "Not added yet"}</strong></div>
                 <div><MapPin size={18} /><span>City</span><strong>{studentProfile.city || "Not added yet"}</strong></div>
+                <div><GraduationCap size={18} /><span>Education</span><strong>{studentProfile.educationLevel === "school" ? `Class ${studentProfile.classNumber || "not selected"}` : studentProfile.educationLevel === "intermediate" ? `${studentProfile.intermediateYear === "2" ? "2nd" : studentProfile.intermediateYear === "1" ? "1st" : "Year not selected"} Year Â· ${INTERMEDIATE_STREAMS.find(([value]) => value === studentProfile.stream)?.[1] || "Intermediate"}` : studentProfile.educationLevel === "university" ? `${studentProfile.degreeLevel ? `${studentProfile.degreeLevel.toUpperCase()} Â· ` : ""}${studentProfile.program || "Program not added"}` : studentProfile.educationLevel === "online" ? `Interest Â· ${studentProfile.program || "Not selected"}` : "Not selected"}</strong></div>
+                {getStudentAcademicSubjects(studentProfile).length > 0 && <div className="edc-student-profile-about"><span>Related Subjects</span><p>{getStudentAcademicSubjects(studentProfile).join(" Â· ")}</p></div>}
                 <div className="edc-student-profile-about"><span>About Me</span><p>{studentProfile.about || "Add a short introduction about yourself."}</p></div>
               </div>
             )}
@@ -1929,7 +2201,7 @@ export default function StudentDashboard({ email = "student" }) {
     const escapeHtml = value => String(value ?? "").replace(/[&<>"']/g, ch => ({
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
     })[ch]);
-    const money = value => `$${Math.max(0, Number(value) || 0).toFixed(2)}`;
+    const money = value => `PKR ${Math.max(0, Number(value) || 0).toLocaleString()}`;
     const win = window.open("", "_blank", "width=850,height=700");
     if (!win) { setOrderNotice("Please allow pop-ups to print the demo invoice."); return; }
     const rows = (order.items || []).map(item => `<tr><td>${escapeHtml(item.title)}</td><td>${escapeHtml(item.instructor)}</td><td style="text-align:right">${money(item.price)}</td></tr>`).join("");
@@ -1938,15 +2210,15 @@ export default function StudentDashboard({ email = "student" }) {
       <style>body{font-family:Arial,sans-serif;max-width:780px;margin:42px auto;color:#17223b;padding:0 20px}h1{margin-bottom:4px}p{line-height:1.6}table{border-collapse:collapse;width:100%;margin:25px 0}th,td{border-bottom:1px solid #ddd;padding:12px;text-align:left}th{background:#f5f7fa}.total{text-align:right;font-size:20px;font-weight:bold}.note{padding:15px;background:#fff6df;border-radius:8px}@media print{button{display:none}}</style>
       </head><body><h1>EduConnect AI</h1><p>Demo Purchase Receipt</p>
       <p><b>Order:</b> ${escapeHtml(order.id)}<br/><b>Date:</b> ${escapeHtml(new Date(order.purchasedAt).toLocaleString())}<br/><b>Status:</b> ${escapeHtml(order.status)}<br/><b>Payment:</b> ${escapeHtml(order.paymentMethod)}</p>
-      <table><thead><tr><th>Course</th><th>Instructor</th><th style="text-align:right">Price (USD)</th></tr></thead><tbody>${rows}</tbody></table>
-      <p class="total">Total: ${money(order.total)} USD</p><p class="note">DEMO ONLY — No payment was collected. This is not a tax invoice or proof of a real purchase.</p>
+      <table><thead><tr><th>Course</th><th>Instructor</th><th style="text-align:right">Price (PKR)</th></tr></thead><tbody>${rows}</tbody></table>
+      <p class="total">Total: ${money(order.total)}</p><p class="note">DEMO ONLY â€” No payment was collected. This is not a tax invoice or proof of a real purchase.</p>
       <button onclick="window.print()">Print / Save as PDF</button></body></html>`);
     win.document.close();
     win.focus();
   }
 
   function OrdersPage() {
-    const money = value => `$${Math.max(0, Number(value) || 0).toFixed(2)}`;
+    const money = value => `PKR ${Math.max(0, Number(value) || 0).toLocaleString()}`;
     return <div className="edc-tab-content">
       <SectionHeading eyebrow="PURCHASE HISTORY" title="My Purchases"
         description="Demo checkout orders saved in this browser. No real payments are processed." />
@@ -1956,8 +2228,8 @@ export default function StudentDashboard({ email = "student" }) {
       <div style={{display:"grid",gap:18}}>{orders.map(order =>
         <section key={order.id} className="edc-panel" style={{padding:22}}>
           <div style={{display:"flex",justifyContent:"space-between",gap:16,flexWrap:"wrap"}}>
-            <div><strong>Order {order.id}</strong><p>{new Date(order.purchasedAt).toLocaleString()}</p><p>{order.status || "Demo completed"} · No real payment</p></div>
-            <div><strong>{money(order.total)} USD</strong><p>{(order.items || []).length} course(s)</p></div>
+            <div><strong>Order {order.id}</strong><p>{new Date(order.purchasedAt).toLocaleString()}</p><p>{order.status || "Demo completed"} Â· No real payment</p></div>
+            <div><strong>{money(order.total)}</strong><p>{(order.items || []).length} course(s)</p></div>
           </div>
           <div style={{borderTop:"1px solid #e5e7eb",marginTop:12,paddingTop:12}}>
             {(order.items || []).map((item,index) => <div key={`${item.teacherEmail || "demo"}-${item.id}-${index}`}
@@ -1975,23 +2247,36 @@ export default function StudentDashboard({ email = "student" }) {
     </div>;
   }
 
+  function MyEbooksPage() {
+    const publicFreeBooks = getPublishedBooks().filter((book) => book.isFree);
+    const byId = new Map([...publicFreeBooks, ...bookPurchases.filter((book) => isModerationVisible("pdf", book.id))].map((book) => [String(book.id), book]));
+    const curriculumBooks = getPublishedPdfResources(latestPublishedCourses).filter((book) => hasCourseAccess(book.course));
+    const resources = [...byId.values(), ...curriculumBooks];
+    return <div className="edc-tab-content" id="my-ebooks">
+      <SectionHeading eyebrow="YOUR LIBRARY" title="My eBooks & PDFs" description="Free Admin-approved PDFs and eBooks purchased through demo checkout." />
+      {resourceNotice && <p className="edc-student-profile-notice" role="status">{resourceNotice}</p>}
+      {resources.length ? <div className="edc-books-grid">{resources.map((book) => book.course ? <article className="edc-public-book-card" key={`curriculum-${book.teacherEmail}-${book.course.id}-${book.id}`}><div className="edc-public-book-body"><span className="edc-book-status">Course material</span><h3>{String(book.name || "PDF eBook").replace(/\.pdf$/i, "")}</h3><p>{book.course.title} Â· {book.instructorName}</p>{book.semester && <p>Semester: {book.semester}</p>}<div className="edc-book-actions"><button type="button" onClick={() => openPdfResource(book)}>Read Online</button><button className="edc-book-clear" type="button" onClick={() => openPdfResource(book, true)}><Download size={14} /> Download PDF</button><ReportAction reporterEmail={email} reporterName={studentProfile.fullName || "Student"} target={{ reportType: "content", targetType: "pdf", targetId: `${String(book.teacherEmail || book.course.teacherEmail).toLowerCase()}::${book.course.id}::${book.id}`, targetTitle: book.name || "Course PDF eBook", targetOwnerEmail: book.teacherEmail || book.course.teacherEmail, targetOwnerName: book.instructorName, targetRole: "Teacher" }} /></div></div></article> : <article className="edc-public-book-card" key={`book-${book.id}`}><div className="edc-public-book-body"><span className="edc-book-status">{book.isFree ? "Free" : "Purchased"}</span><h3>{book.title}</h3><p>{book.author || book.teacherName || book.instructor}</p><p>{book.subject}{book.educationLevel ? ` Â· ${book.educationLevel}` : ""}{book.classOrProgram ? ` Â· ${book.classOrProgram}` : ""}{book.semester ? ` Â· ${book.semester}` : ""}</p><div className="edc-book-actions"><button type="button" onClick={() => openStudentBook(book)}>Read Online</button>{book.downloadAllowed && <button className="edc-book-clear" type="button" onClick={() => openStudentBook(book, true)}><Download size={14} /> Download PDF</button>}<ReportAction reporterEmail={email} reporterName={studentProfile.fullName || "Student"} target={{ reportType: "content", targetType: "pdf", targetId: String(book.id), targetTitle: book.title || "PDF eBook", targetOwnerEmail: book.teacherEmail, targetOwnerName: book.teacherName || book.author, targetRole: "Teacher" }} /></div></div></article>)}</div>
+        : <div className="edc-panel"><EmptyState icon={BookOpen} title="No eBooks in your library yet" description="Free published PDFs and books you purchase will appear here." /><button className="edc-btn edc-btn-light" type="button" onClick={() => navigateTo("books")}>Browse Books <ArrowRight size={16} /></button></div>}
+    </div>;
+  }
+
   function ShoppingCartPage() {
-    const visible = cart.filter(c => !alreadyEnrolled(c));
+    const visible = cart.filter(c => c.itemType === "book" ? !bookPurchases.some((item) => String(item.id) === String(c.id)) : !alreadyEnrolled(c));
     const total = visible.reduce((sum, c) => sum + Math.max(0, Number(c.price) || 0), 0);
     return <div className="edc-tab-content">
       <SectionHeading eyebrow="DEMO CHECKOUT" title="Shopping Cart"
-        description="Add multiple courses and enroll together. No real payment is collected." />
+        description="Add courses and PDF eBooks together. This demo checkout does not collect payment." />
       {cartNotice && <p role="status">{cartNotice}</p>}
       {visible.length ? <>
         <div className="edc-panel">
           {visible.map(course => <div key={shopKey(course)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:16,padding:"16px 0",borderBottom:"1px solid #e5e7eb",flexWrap:"wrap"}}>
-            <div><strong>{course.title}</strong><p>By {course.instructor} · {course.category}</p></div>
-            <div style={{display:"flex",alignItems:"center",gap:12}}><strong>${Number(course.price || 0).toFixed(2)}</strong>
+            <div><strong>{course.title}</strong><p>{course.itemType === "book" ? "PDF eBook" : "Course"} Â· By {course.instructor} Â· {course.category}</p></div>
+            <div style={{display:"flex",alignItems:"center",gap:12}}><strong>PKR {Math.max(0, Number(course.price) || 0).toLocaleString()}</strong>
               <button type="button" className="edc-btn edc-btn-light" onClick={() => removeCart(course)}><Trash2 size={15}/> Remove</button>
             </div>
           </div>)}
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,paddingTop:20,flexWrap:"wrap"}}>
-            <strong>Total ({visible.length} courses): ${total.toFixed(2)}</strong>
+            <strong>Total ({visible.length} items): PKR {total.toLocaleString()}</strong>
             <button type="button" className="edc-btn edc-btn-primary" onClick={checkoutCart}><ShoppingCart size={17}/> Complete Demo Checkout</button>
           </div>
         </div>
@@ -2001,7 +2286,7 @@ export default function StudentDashboard({ email = "student" }) {
         <article className="edc-course-card" key={shopKey(course)}>
           <div className="edc-course-body"><span className="edc-category">{course.category}</span>
             <h3>{course.title}</h3><p>By {course.instructor}</p>
-            <p><strong>${Math.max(0, Number(course.price) || 0).toFixed(2)}</strong> {Number(course.price) ? "" : "· Free"}</p>
+            <p><strong>PKR {Math.max(0, Number(course.price) || 0).toLocaleString()}</strong> {Number(course.price) ? "" : "Â· Free"}</p>
             <button type="button" className="edc-btn edc-btn-primary" onClick={() => addCart(course)}
               disabled={cart.some(c => shopKey(c) === shopKey(course))}>
               <ShoppingCart size={16}/> {cart.some(c => shopKey(c) === shopKey(course)) ? "In Cart" : "Add to Cart"}
@@ -2099,10 +2384,10 @@ export default function StudentDashboard({ email = "student" }) {
                 {completedCourses.map((course) => (
                   <article className="edc-portfolio-certificate" key={course.id}>
                     <div className="edc-portfolio-seal"><Award size={38} /></div>
-                    <span className="edc-portfolio-overline">EduConnect AI · Demo Record</span>
+                    <span className="edc-portfolio-overline">EduConnect AI Â· Demo Record</span>
                     <h3>{course.title}</h3>
                     <p>All {course.lessons} lessons completed</p>
-                    <p>{certificateInfo(course).date} · {certificateInfo(course).id}</p>
+                    <p>{certificateInfo(course).date} Â· {certificateInfo(course).id}</p>
                     <span className="edc-portfolio-verified"><CheckCircle2 size={16} /> Demo Completion</span>
                     <button type="button" className="edc-btn edc-btn-primary" onClick={() => printDemoCertificate(course)}>
                       Preview / Save PDF <ArrowRight size={16} />
@@ -2148,7 +2433,7 @@ export default function StudentDashboard({ email = "student" }) {
               {portfolioProjects.map((project) => <article className="edc-portfolio-project" key={project.id}>
                 <h3>{project.title}</h3><p>{project.description}</p>
                 <div className="edc-portfolio-skill-list">{project.skills.map((skill) => <span key={skill}>{skill}</span>)}</div>
-                {project.url && <a href={project.url} target="_blank" rel="noopener noreferrer">Open Project Link ↗</a>}
+                {project.url && <a href={project.url} target="_blank" rel="noopener noreferrer">Open Project Link â†—</a>}
                 <div className="edc-portfolio-actions">
                   <button type="button" className="edc-btn edc-btn-light" onClick={() => editPortfolioProject(project)}>Edit</button>
                   <button type="button" className="edc-icon-btn edc-danger" aria-label={`Delete ${project.title}`} onClick={() => deletePortfolioProject(project.id)}><Trash2 size={17} /></button>
@@ -2163,7 +2448,7 @@ export default function StudentDashboard({ email = "student" }) {
             <SectionHeading title="Portfolio Showcase" description="A live preview of your student portfolio." />
             <div className="edc-portfolio-showcase">
               <div className="edc-portfolio-showcase-hero"><GraduationCap size={38} />
-                <div><h3>{portfolioName.trim() || "Your Name"}</h3><p>Student · EduConnect AI</p></div>
+                <div><h3>{portfolioName.trim() || "Your Name"}</h3><p>Student Â· EduConnect AI</p></div>
               </div>
               <h3>Skills</h3>
               {portfolioSkills.length ? <div className="edc-portfolio-skill-list">{portfolioSkills.map((skill) => <span key={skill}>{skill}</span>)}</div>
@@ -2172,7 +2457,7 @@ export default function StudentDashboard({ email = "student" }) {
               {portfolioProjects.length ? <div className="edc-portfolio-project-grid">
                 {portfolioProjects.map((project) => <article className="edc-portfolio-project" key={project.id}>
                   <h4>{project.title}</h4><p>{project.description}</p>
-                  {project.url && <a href={project.url} target="_blank" rel="noopener noreferrer">View Project ↗</a>}
+                  {project.url && <a href={project.url} target="_blank" rel="noopener noreferrer">View Project â†—</a>}
                 </article>)}
               </div> : <p className="edc-muted">Your projects will appear here after you add them.</p>}
               <h3>Completed Demo Courses</h3>
@@ -2306,7 +2591,7 @@ export default function StudentDashboard({ email = "student" }) {
       items: assessedMastery.map(({ quiz, course, result }) => ({
         id: quiz.id,
         title: quiz.title,
-        detail: `${course?.title || "Course"} · ${result.correct}/${result.total} correct · ${new Date(result.completedAt).toLocaleString()}`,
+        detail: `${course?.title || "Course"} Â· ${result.correct}/${result.total} correct Â· ${new Date(result.completedAt).toLocaleString()}`,
         status: `${result.percentage}%`,
         actionLabel: "Practice again",
         action: () => reviewMasteryQuiz(quiz.id),
@@ -2321,7 +2606,7 @@ export default function StudentDashboard({ email = "student" }) {
       items: assessedMastery.map(({ quiz, course, result }) => ({
         id: quiz.id,
         title: quiz.title,
-        detail: `${course?.title || "Course"} · ${result.correct}/${result.total} correct`,
+        detail: `${course?.title || "Course"} Â· ${result.correct}/${result.total} correct`,
         status: `${result.percentage}%`,
         actionLabel: "Review quiz",
         action: () => reviewMasteryQuiz(quiz.id),
@@ -2334,7 +2619,7 @@ export default function StudentDashboard({ email = "student" }) {
       items: topicsToRevise.map((topic) => ({
         id: `${topic.quizId}-${topic.title}`,
         title: `Revise ${topic.title}`,
-        detail: `${topic.course} · ${topic.question}`,
+        detail: `${topic.course} Â· ${topic.question}`,
         status: "Needs revision",
         actionLabel: "Practice topic",
         action: () => reviewMasteryQuiz(topic.quizId),
@@ -2372,7 +2657,7 @@ export default function StudentDashboard({ email = "student" }) {
       items: portfolioProjects.map((project) => ({
         id: project.id,
         title: project.title,
-        detail: `${project.description}${project.url ? ` · ${project.url}` : ""}`,
+        detail: `${project.description}${project.url ? ` Â· ${project.url}` : ""}`,
         status: `${project.skills.length} ${project.skills.length === 1 ? "skill" : "skills"}`,
         actionLabel: "Edit project",
         action: () => {
@@ -2392,7 +2677,7 @@ export default function StudentDashboard({ email = "student" }) {
         return {
           id: quiz.id,
           title: quiz.title,
-          detail: `${course?.title || "Course"} · ${result.correct}/${result.total} correct · ${new Date(result.completedAt).toLocaleString()}`,
+          detail: `${course?.title || "Course"} Â· ${result.correct}/${result.total} correct Â· ${new Date(result.completedAt).toLocaleString()}`,
           status: `${result.percentage}%`,
           actionLabel: "Practice again",
           action: () => reviewMasteryQuiz(quiz.id),
@@ -2560,7 +2845,7 @@ export default function StudentDashboard({ email = "student" }) {
       items: availableQuizzes.filter((quiz) => quizResults[quiz.id]).map((quiz) => ({
         id: quiz.id,
         title: quiz.title,
-        detail: `${COURSES.find((course) => course.id === quiz.courseId)?.title || "Course"} · ${quizResults[quiz.id].correct}/${quizResults[quiz.id].total} correct · ${new Date(quizResults[quiz.id].completedAt).toLocaleString()}`,
+        detail: `${COURSES.find((course) => course.id === quiz.courseId)?.title || "Course"} Â· ${quizResults[quiz.id].correct}/${quizResults[quiz.id].total} correct Â· ${new Date(quizResults[quiz.id].completedAt).toLocaleString()}`,
         status: `${quizResults[quiz.id].percentage}%`,
         actionLabel: "View grades",
         action: () => {
@@ -2694,13 +2979,12 @@ export default function StudentDashboard({ email = "student" }) {
               aria-label="Open my profile" onClick={() => navigateTo("profile")}>
               <ProfileAvatar image={studentProfile.avatar} size="small" />
             </button>
-            <button type="button" className="edc-dashboard-logout" onClick={signOut}>
-              <LogOut size={17} /> Log out
-            </button>
           </div>
         </div>
 {activeTab === "overview" && Overview()}
 {activeTab === "learning" && Learning()}
+          {activeTab === "appeals" && <UserModerationAppeals email={email} name={studentProfile.fullName || studentProfile.name || "Student"} role="Student" />}
+          {activeTab === "help-support" && <UserSupportCenter email={email} name={studentProfile.fullName || studentProfile.name || "Student"} role="Student" />}
           {activeTab === "reviews" && <CourseReviews role="student" email={email} courses={enrolledCourses} />}
           {activeTab === "discussions" && <CourseDiscussions role="student" email={email} courses={enrolledCourses} />}
           {activeTab === "notes" && <CourseNotes email={email} courses={enrolledCourses} onJump={jumpToNote} />}
@@ -2723,7 +3007,7 @@ export default function StudentDashboard({ email = "student" }) {
                 { label: "Assignments", value: availableAssignments.length, icon: ClipboardList, color: "purple" },
                 { label: "Submitted", value: submittedCount, icon: CheckCircle2, color: "green" },
                 { label: "Pending", value: availableAssignments.length - submittedCount, icon: Clock3, color: "pink" },
-                { label: "Average Quiz Score", value: averageQuizScore === null ? "—" : `${averageQuizScore}%`, icon: Award, color: "blue" },
+                { label: "Average Quiz Score", value: averageQuizScore === null ? "â€”" : `${averageQuizScore}%`, icon: Award, color: "blue" },
               ].map((stat) => {
                 const Icon = stat.icon;
                 return (
@@ -2768,7 +3052,7 @@ export default function StudentDashboard({ email = "student" }) {
                   <div className="edc-assignment-detail">
                     <button type="button" className="edc-text-btn"
                       onClick={() => { setSelectedAssignment(null); setAcademicMessage(""); }}>
-                      ← Back to Assignments
+                      â† Back to Assignments
                     </button>
                     {DEMO_ASSIGNMENTS.filter((task) => task.id === selectedAssignment).map((task) => (
                       <div key={task.id}>
@@ -2835,7 +3119,7 @@ export default function StudentDashboard({ email = "student" }) {
                 {selectedQuiz ? (
                   <div className="edc-quiz-area">
                     <button type="button" className="edc-text-btn" onClick={() => { setSelectedQuiz(null); setAcademicMessage(""); }}>
-                      ← Back to Quizzes
+                      â† Back to Quizzes
                     </button>
                     {DEMO_QUIZZES.filter((quiz) => quiz.id === selectedQuiz).map((quiz) => (
                       <form key={quiz.id} onSubmit={submitQuiz}>
@@ -2886,14 +3170,14 @@ export default function StudentDashboard({ email = "student" }) {
                 <div className="edc-academic-results">
                   {availableQuizzes.map((quiz) => (
                     <div className="edc-academic-result" key={quiz.id}>
-                      <div><strong>{quiz.title}</strong><p>{COURSES.find((course) => course.id === quiz.courseId)?.title} · Quiz</p></div>
+                      <div><strong>{quiz.title}</strong><p>{COURSES.find((course) => course.id === quiz.courseId)?.title} Â· Quiz</p></div>
                       <span className="edc-academic-status">{quizResults[quiz.id] ? `${quizResults[quiz.id].percentage}%` : "Not Attempted"}</span>
                     </div>
                   ))}
                   {availableAssignments.map((task) => (
                     <div className="edc-academic-result" key={task.id}>
-                      <div><strong>{task.title}</strong><p>{COURSES.find((course) => course.id === task.courseId)?.title} · Assignment</p></div>
-                      <span className="edc-academic-status">{submissions[task.id] ? "Submitted · Not Graded" : "Pending"}</span>
+                      <div><strong>{task.title}</strong><p>{COURSES.find((course) => course.id === task.courseId)?.title} Â· Assignment</p></div>
+                      <span className="edc-academic-status">{submissions[task.id] ? "Submitted Â· Not Graded" : "Pending"}</span>
                     </div>
                   ))}
                   {availableAssignments.length === 0 && availableQuizzes.length === 0 &&
@@ -2927,7 +3211,7 @@ export default function StudentDashboard({ email = "student" }) {
               {[
                 { label: "Enrolled Courses", value: enrolledCourses.length, icon: BookOpen, color: "purple" },
                 { label: "Quizzes Attempted", value: assessedMastery.length, icon: ClipboardList, color: "blue" },
-                { label: "Average Quiz Score", value: masteryAverage === null ? "—" : `${masteryAverage}%`, icon: TrendingUp, color: "green" },
+                { label: "Average Quiz Score", value: masteryAverage === null ? "â€”" : `${masteryAverage}%`, icon: TrendingUp, color: "green" },
                 { label: "Topics to Revise", value: topicsToRevise.length, icon: Target, color: "pink" },
               ].map((stat) => {
                 const Icon = stat.icon;
@@ -2971,7 +3255,7 @@ export default function StudentDashboard({ email = "student" }) {
                       <article className="edc-mastery-course" key={quiz.id}>
                         <div className="edc-mastery-course-top">
                           <div className={`edc-learning-icon edc-cover-${course?.color || "purple"}`}>
-                            {course?.icon || "📘"}
+                            {course?.icon || "ðŸ“˜"}
                           </div>
                           <div><strong>{course?.title || quiz.title}</strong><span>{quiz.title}</span></div>
                         </div>
@@ -3016,7 +3300,7 @@ export default function StudentDashboard({ email = "student" }) {
                       {topicsToRevise.map((topic) => (
                         <div className="edc-mastery-revision" key={`${topic.quizId}-${topic.title}`}>
                           <div className="edc-mastery-revision-icon"><Target size={19} /></div>
-                          <div><strong>Revise {topic.title}</strong><p>{topic.course} · Review: {topic.question}</p></div>
+                          <div><strong>Revise {topic.title}</strong><p>{topic.course} Â· Review: {topic.question}</p></div>
                           <button type="button" className="edc-btn edc-btn-light" onClick={() => reviewMasteryQuiz(topic.quizId)}>
                             Practice <ArrowRight size={15} />
                           </button>
@@ -3036,7 +3320,8 @@ export default function StudentDashboard({ email = "student" }) {
           </div>
         )}
 
-        {activeTab === "ai" && (
+        {activeTab === "ai" && <div className="edc-tab-content edc-ai-page"><SectionHeading eyebrow="PERSONALIZED LEARNING" title="AI Learning Help" description="Ask education-level questions, get guided explanations, and discover relevant materials." /><div className="edc-ai-notice"><Bot size={20} /><span><strong>AI integration pending.</strong> No AI service is connected, so this page does not generate answers. Browse published books and courses or send a help request to Admin from a teacher profile.</span></div><button type="button" className="edc-btn edc-btn-light" onClick={() => navigateTo("books")}>Browse Books & Teachers <ArrowRight size={16} /></button></div>}
+        {activeTab === "ai-demo-disabled" && (
           <div className="edc-tab-content edc-ai-page">
             <SectionHeading
               eyebrow="PERSONALIZED LEARNING"
@@ -3076,7 +3361,7 @@ export default function StudentDashboard({ email = "student" }) {
               <section className="edc-panel edc-ai-chat" aria-label="Tutor chat demo">
                 <div className="edc-ai-chat-header">
                   <div className="edc-ai-chat-heading"><span className="edc-ai-bot-icon"><Bot size={20} /></span>
-                    <div><strong>EduConnect Study Assistant</strong><small>Demo Mode · {aiMode}</small></div>
+                    <div><strong>EduConnect Study Assistant</strong><small>Demo Mode Â· {aiMode}</small></div>
                   </div>
                   <span className="edc-status-pill">Template replies</span>
                 </div>
@@ -3110,7 +3395,7 @@ export default function StudentDashboard({ email = "student" }) {
           </div>
         )}
 
-        {activeTab === "tutors" && (
+        {activeTab === "tutors-demo-disabled" && (
           <div className="edc-tab-content edc-tutors-page">
             <SectionHeading eyebrow="PERSONAL LEARNING SUPPORT" title="Hire a Personal Tutor"
               description="Browse fictional tutor profiles and try a sample booking workflow." />
@@ -3176,7 +3461,7 @@ export default function StudentDashboard({ email = "student" }) {
                 {tutorBookings.length ? <div className="edc-tutor-session-list">{[...tutorBookings].reverse().map((booking) => {
                   const tutor = DEMO_TUTORS.find((item) => item.id === booking.tutorId);
                   return <article key={booking.id} className="edc-tutor-session">
-                    <div><strong>{tutor?.name || "Demo Tutor"}</strong><p>{tutor?.subject || "Subject"} · {booking.slot}</p>
+                    <div><strong>{tutor?.name || "Demo Tutor"}</strong><p>{tutor?.subject || "Subject"} Â· {booking.slot}</p>
                       {booking.note && <p>Study topic: {booking.note}</p>}
                       <small>Requested: {new Date(booking.createdAt).toLocaleString()}</small></div>
                     <div className="edc-tutor-session-actions"><span className="edc-tutor-demo-label">{booking.status}</span>
@@ -3193,6 +3478,9 @@ export default function StudentDashboard({ email = "student" }) {
         {activeTab === "wishlist" && Wishlist()}
         {activeTab === "cart" && ShoppingCartPage()}
         {activeTab === "orders" && OrdersPage()}
+        {activeTab === "ebooks" && MyEbooksPage()}
+        {activeTab === "books" && <div className="edc-tab-content"><SectionHeading eyebrow="LIBRARY & DIRECTORY" title="Books & Teachers" description="Search approved PDF/eBooks and real registered teacher profiles." /><BookTeacherHub email={email} profile={studentProfile} courses={latestPublishedCourses} cart={cart} purchasedBooks={bookPurchases} onAddBookToCart={(book) => { addBookToCart(book); navigateTo("cart"); }} onOpenEbooks={() => navigateTo("ebooks")} /></div>}
+        {activeTab === "tutors" && <div className="edc-tab-content"><SectionHeading eyebrow="TEACHER DIRECTORY" title="Find Teachers" description="Browse registered teacher profiles and request Admin help when they are unavailable." /><BookTeacherHub email={email} profile={studentProfile} courses={latestPublishedCourses} cart={cart} purchasedBooks={bookPurchases} defaultTab="teachers" onAddBookToCart={addBookToCart} onOpenEbooks={() => navigateTo("ebooks")} /></div>}
         {activeTab === "notifications" && <NotificationsCenter notifications={notifications}
           onRead={markNotificationRead} onReadAll={markAllNotificationsRead}
           onDelete={deleteNotification} onNavigate={navigateTo} />}
@@ -3259,7 +3547,7 @@ export default function StudentDashboard({ email = "student" }) {
         )}
 
         <div className="edc-footer-note">
-          EduConnect AI · Student Workspace · Frontend Demo
+          EduConnect AI Â· Student Workspace Â· Frontend Demo
         </div>
       </div>
     </div>

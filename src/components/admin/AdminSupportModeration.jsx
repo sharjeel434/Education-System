@@ -1,9 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   AlertTriangle,
+  ArrowLeft,
+  BookOpen,
   CheckCircle2,
   Clock3,
+  CreditCard,
   Eye,
+  Filter,
   LifeBuoy,
   Lock,
   MessageSquare,
@@ -12,829 +17,389 @@ import {
   Search,
   Send,
   ShieldAlert,
+  Trash2,
+  UserRound,
+  Users,
   X,
 } from "lucide-react";
 import {
   ADMIN_DATA_CHANGED_EVENT,
+  MODERATION_APPEAL_STATUSES,
+  SUPPORT_FAQ_CATEGORIES,
   SUPPORT_REQUEST_CATEGORIES,
   SUPPORT_REQUEST_PRIORITIES,
   SUPPORT_REQUEST_STATUSES,
   addAdminSupportResponse,
-  createAdminSupportRequest,
+  deleteAdminHelpFaq,
+  getAdminHelpFaqs,
+  importLegacyStudentHelpRequests,
+  readAdminHelpFaqsState,
   readAdminSupportRequestsState,
+  saveAdminHelpFaq,
+  updateAdminSupportRequestAssignment,
+  updateAdminSupportRequestPriority,
   updateAdminSupportRequestStatus,
 } from "./adminData";
+import { getStudentHelpRequests } from "../../utils/books";
+
+const PAGE_SIZE = 15;
+const ALL_REQUEST_STATUSES = [...new Set([...SUPPORT_REQUEST_STATUSES, ...MODERATION_APPEAL_STATUSES])];
+const APPEAL_STATUSES_OPEN = new Set(["Submitted", "Under Review", "More Information Required"]);
+const TABS = [
+  ["overview", "Overview", LifeBuoy], ["tickets", "Support Tickets", MessageSquare],
+  ["students", "Student Help", UserRound], ["teachers", "Teacher Help", Users],
+  ["appeals", "Appeals", ShieldAlert], ["payments", "Payment Support", CreditCard],
+  ["assignments", "Assignments", CheckCircle2], ["messages", "Messages", MessageSquare],
+  ["faqs", "Help Center & FAQs", BookOpen], ["reports", "Reports & Analytics", Clock3],
+];
 
 function formatTimestamp(value) {
-  if (typeof value !== "string" || !value.trim()) {
-    return "Not available";
-  }
-
+  if (typeof value !== "string" || !value.trim()) return "Not available";
   const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? value
-    : new Intl.DateTimeFormat(undefined, {
-        dateStyle: "medium",
-        timeStyle: "short",
-      }).format(date);
+  return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
 }
 
-function getPriorityBadgeClass(priority) {
-  switch (String(priority || "").toLowerCase()) {
-    case "urgent":
-      return "edc-admin-status-rejected";
-    case "high":
-      return "edc-admin-priority-high";
-    case "medium":
-      return "edc-admin-priority-medium";
-    case "low":
-    default:
-      return "edc-admin-status-unknown";
-  }
+function badgeClass(status) {
+  const value = String(status || "").toLowerCase();
+  if (["open", "submitted"].includes(value)) return "edc-admin-status-pending";
+  if (["in progress", "under review", "waiting for user", "more information required"].includes(value)) return "edc-admin-status-changes";
+  if (["resolved", "accepted"].includes(value)) return "edc-admin-status-approved";
+  if (["rejected", "urgent"].includes(value)) return "edc-admin-status-rejected";
+  return "edc-admin-status-unknown";
 }
 
-function getStatusBadgeClass(status) {
-  switch (String(status || "").toLowerCase()) {
-    case "open":
-      return "edc-admin-status-pending";
-    case "in progress":
-      return "edc-admin-status-changes";
-    case "resolved":
-      return "edc-admin-status-approved";
-    case "closed":
-      return "edc-admin-status-unknown";
-    default:
-      return "edc-admin-status-unknown";
-  }
+function priorityClass(priority) {
+  if (String(priority).toLowerCase() === "urgent") return "edc-admin-status-rejected";
+  if (String(priority).toLowerCase() === "high") return "edc-admin-priority-high";
+  if (String(priority).toLowerCase() === "medium") return "edc-admin-priority-medium";
+  return "edc-admin-status-unknown";
 }
 
-function AdminSupportModeration({ email, moderationOnly = false }) {
+function isAppeal(record) {
+  return record.category === "Moderation & Appeal";
+}
+
+function isPayment(record) {
+  return ["Payment Failed", "Payment Completed but Course Locked", "Duplicate Payment", "Incorrect Purchase Status", "Payment Problem", "Refund Request", "Transaction Not Found", "Billing & Payment"].includes(record.category);
+}
+
+function isPending(record) {
+  return !["Resolved", "Closed", "Accepted", "Rejected"].includes(record.status);
+}
+
+function AdminSupportModeration({ email, moderationOnly = false, initialView = "overview", detailPage = false }) {
   const adminActor = email || window.sessionStorage.getItem("educonnect.demoEmail") || "Admin";
-
   const [requests, setRequests] = useState(() => readAdminSupportRequestsState().records);
   const [storeError, setStoreError] = useState(() => readAdminSupportRequestsState().error || "");
+  const [faqs, setFaqs] = useState(getAdminHelpFaqs);
+  const [faqError, setFaqError] = useState(() => readAdminHelpFaqsState().error || "");
+  const [activeView, setActiveView] = useState(moderationOnly ? "appeals" : initialView);
+  const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
-
+  const [roleFilter, setRoleFilter] = useState("all");
+  const [assignedFilter, setAssignedFilter] = useState("all");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [page, setPage] = useState(1);
   const [selectedRequest, setSelectedRequest] = useState(null);
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [feedback, setFeedback] = useState(null);
-
-  // Create form state
-  const [newSubject, setNewSubject] = useState("");
-  const [newCategory, setNewCategory] = useState(SUPPORT_REQUEST_CATEGORIES[0]);
-  const [newPriority, setNewPriority] = useState("Medium");
-  const [newDescription, setNewDescription] = useState("");
-  const [newRequesterName, setNewRequesterName] = useState("Demo Student");
-  const [newRequesterEmail, setNewRequesterEmail] = useState("student.demo@example.com");
-  const [createError, setCreateError] = useState("");
-
-  // Response form state (inside details modal)
+  const [assignment, setAssignment] = useState("");
+  const [priorityDraft, setPriorityDraft] = useState("Medium");
+  const [decisionReason, setDecisionReason] = useState("");
   const [responseMessage, setResponseMessage] = useState("");
-  const [responseType, setResponseType] = useState("response"); // "response" | "internal_note"
+  const [responseType, setResponseType] = useState("response");
+  const [feedback, setFeedback] = useState(null);
   const [responseError, setResponseError] = useState("");
+  const [faqSearch, setFaqSearch] = useState("");
+  const [faqCategory, setFaqCategory] = useState("all");
+  const [faqDraft, setFaqDraft] = useState({ id: "", category: SUPPORT_FAQ_CATEGORIES[0], question: "", answer: "", published: true });
+  const [faqFormError, setFaqFormError] = useState("");
+  const [reportNow] = useState(() => new Date());
 
   const refreshRequests = useCallback(() => {
     const state = readAdminSupportRequestsState();
     setRequests(state.records);
     setStoreError(state.error || "");
+    setSelectedRequest((current) => current ? state.records.find((item) => String(item.id) === String(current.id)) || null : null);
+  }, []);
 
-    setSelectedRequest((current) => {
-      if (!current) return null;
-      return state.records.find((item) => String(item.id) === String(current.id)) || null;
-    });
+  const refreshFaqs = useCallback(() => {
+    const state = readAdminHelpFaqsState();
+    setFaqs(state.records);
+    setFaqError(state.error || "");
   }, []);
 
   useEffect(() => {
     window.addEventListener("storage", refreshRequests);
     window.addEventListener(ADMIN_DATA_CHANGED_EVENT, refreshRequests);
-
-    function handleKeyDown(event) {
-      if (event.key === "Escape") {
-        setSelectedRequest(null);
-        setIsCreateOpen(false);
-      }
-    }
-    window.addEventListener("keydown", handleKeyDown);
-
+    window.addEventListener("storage", refreshFaqs);
+    window.addEventListener(ADMIN_DATA_CHANGED_EVENT, refreshFaqs);
     return () => {
       window.removeEventListener("storage", refreshRequests);
       window.removeEventListener(ADMIN_DATA_CHANGED_EVENT, refreshRequests);
-      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("storage", refreshFaqs);
+      window.removeEventListener(ADMIN_DATA_CHANGED_EVENT, refreshFaqs);
     };
-  }, [refreshRequests]);
+  }, [refreshFaqs, refreshRequests]);
 
-  const hasActiveFilters =
-    Boolean(search.trim()) ||
-    statusFilter !== "all" ||
-    categoryFilter !== "all" ||
-    priorityFilter !== "all";
+  useEffect(() => {
+    try {
+      importLegacyStudentHelpRequests(getStudentHelpRequests());
+    } catch (error) {
+      window.setTimeout(() => setFeedback({ type: "error", message: error instanceof Error ? error.message : "Earlier student help requests could not be imported." }), 0);
+    }
+  }, []);
 
-  const viewRequests = useMemo(
-    () =>
-      moderationOnly
-        ? requests.filter((item) => item.category === "Moderation & Appeal")
-        : requests,
-    [moderationOnly, requests],
-  );
+  useEffect(() => {
+    function closeOnEscape(event) {
+      if (event.key === "Escape") setSelectedRequest(null);
+    }
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, []);
 
-  function handleResetFilters() {
-    setSearch("");
-    setStatusFilter("all");
-    setCategoryFilter("all");
-    setPriorityFilter("all");
-  }
+  const scopedRequests = useMemo(() => {
+    if (moderationOnly) return requests.filter(isAppeal);
+    if (activeView === "pending") return requests.filter((item) => !isAppeal(item) && isPending(item));
+    if (activeView === "resolved") return requests.filter((item) => !isAppeal(item) && (item.status === "Resolved" || (item.status === "Closed" && item.resolvedAt)));
+    if (activeView === "open-appeals") return requests.filter((item) => isAppeal(item) && APPEAL_STATUSES_OPEN.has(item.status));
+    if (activeView === "tickets") return requests.filter((item) => !isAppeal(item));
+    if (activeView === "students") return requests.filter((item) => item.requesterRole === "Student" && !isAppeal(item));
+    if (activeView === "teachers") return requests.filter((item) => item.requesterRole === "Teacher" && !isAppeal(item));
+    if (activeView === "appeals") return requests.filter(isAppeal);
+    if (activeView === "payments") return requests.filter((item) => isPayment(item) && !isAppeal(item));
+    if (activeView === "assignments") return requests.filter((item) => !isAppeal(item));
+    if (activeView === "messages") return requests.filter((item) => Array.isArray(item.responses) && item.responses.some((response) => response.type !== "internal_note"));
+    return requests.filter((item) => !isAppeal(item));
+  }, [activeView, moderationOnly, requests]);
 
   const filteredRequests = useMemo(() => {
     const query = search.trim().toLowerCase();
-
-    return viewRequests.filter((item) => {
+    return scopedRequests.filter((item) => {
+      const role = String(item.requesterRole || "Unknown");
       const matchesStatus = statusFilter === "all" || item.status === statusFilter;
       const matchesCategory = categoryFilter === "all" || item.category === categoryFilter;
       const matchesPriority = priorityFilter === "all" || item.priority === priorityFilter;
+      const matchesRole = roleFilter === "all" || role === roleFilter;
+      const matchesAssigned = assignedFilter === "all" || (assignedFilter === "unassigned" ? !item.assignedStaff : item.assignedStaff === assignedFilter);
+      const timestamp = new Date(item.createdAt || 0).getTime();
+      const matchesFrom = !fromDate || (Number.isFinite(timestamp) && new Date(timestamp).toISOString().slice(0, 10) >= fromDate);
+      const matchesTo = !toDate || (Number.isFinite(timestamp) && new Date(timestamp).toISOString().slice(0, 10) <= toDate);
+      if (!(matchesStatus && matchesCategory && matchesPriority && matchesRole && matchesAssigned && matchesFrom && matchesTo)) return false;
+      if (!query) return true;
+      return [item.id, item.subject, item.description, item.requesterName, item.requesterEmail, role, item.category, item.priority, item.status, item.assignedStaff, item.relatedRecordId, item.appealType]
+        .filter(Boolean).join(" ").toLowerCase().includes(query);
+    }).sort((first, second) => new Date(second.updatedAt || second.createdAt || 0) - new Date(first.updatedAt || first.createdAt || 0));
+  }, [assignedFilter, categoryFilter, fromDate, priorityFilter, roleFilter, scopedRequests, search, statusFilter, toDate]);
 
-      if (!matchesStatus || !matchesCategory || !matchesPriority) {
-        return false;
-      }
+  const totalTickets = requests.filter((item) => !isAppeal(item)).length;
+  const pendingTickets = requests.filter((item) => !isAppeal(item) && isPending(item)).length;
+  const resolvedTickets = requests.filter((item) => !isAppeal(item) && (item.status === "Resolved" || (item.status === "Closed" && item.resolvedAt))).length;
+  const openAppeals = requests.filter((item) => isAppeal(item) && APPEAL_STATUSES_OPEN.has(item.status)).length;
+  const unassigned = requests.filter((item) => !isAppeal(item) && isPending(item) && !item.assignedStaff);
+  const urgent = requests.filter((item) => item.priority === "Urgent" && isPending(item));
+  const recentTickets = requests.filter((item) => !isAppeal(item)).slice().sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).slice(0, 5);
+  const recentAppeals = requests.filter(isAppeal).slice().sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).slice(0, 5);
+  const pageCount = Math.max(1, Math.ceil(filteredRequests.length / PAGE_SIZE));
+  const visiblePage = Math.min(page, pageCount);
+  const pageRequests = filteredRequests.slice((visiblePage - 1) * PAGE_SIZE, visiblePage * PAGE_SIZE);
+  const assignedStaffOptions = [...new Set(requests.map((item) => item.assignedStaff).filter(Boolean))].sort((a, b) => a.localeCompare(b));
 
-      if (!query) {
-        return true;
-      }
-
-      const searchableText = [
-        item.subject,
-        item.description,
-        item.requesterName,
-        item.requesterEmail,
-        item.category,
-        item.priority,
-        item.status,
-        item.id,
-      ]
-        .filter((val) => typeof val === "string")
-        .join(" ")
-        .toLowerCase();
-
-      return searchableText.includes(query);
-    });
-  }, [categoryFilter, priorityFilter, search, statusFilter, viewRequests]);
-
-  function handleOpenCreateModal() {
-    setCreateError("");
-    setNewSubject("");
-    setNewDescription("");
-    setNewCategory(SUPPORT_REQUEST_CATEGORIES[0]);
-    setNewPriority("Medium");
-    setNewRequesterName("Demo Student");
-    setNewRequesterEmail("student.demo@example.com");
-    setIsCreateOpen(true);
-  }
-
-  function handleCreateSubmit(event) {
-    event.preventDefault();
-    setCreateError("");
-
-    try {
-      const created = createAdminSupportRequest({
-        subject: newSubject,
-        description: newDescription,
-        category: newCategory,
-        priority: newPriority,
-        requesterName: newRequesterName,
-        requesterEmail: newRequesterEmail,
-        actor: adminActor,
-      });
-
-      setIsCreateOpen(false);
-      setFeedback({
-        type: "success",
-        message: `Demo support request #${created.id} was created successfully and saved in browser storage.`,
-      });
-      refreshRequests();
-    } catch (err) {
-      setCreateError(err instanceof Error ? err.message : "Failed to create support request.");
-    }
-  }
-
-  function handleStatusChange(requestId, nextStatus) {
-    setFeedback(null);
-    try {
-      updateAdminSupportRequestStatus(requestId, nextStatus, adminActor);
-      setFeedback({
-        type: "success",
-        message: `Request status updated to "${nextStatus}".`,
-      });
-      refreshRequests();
-    } catch (err) {
-      setFeedback({
-        type: "error",
-        message: err instanceof Error ? err.message : "Failed to update request status.",
-      });
-    }
-  }
-
-  function handleAddResponseSubmit(event) {
-    event.preventDefault();
+  function openRequest(request) {
+    setSelectedRequest(request);
+    setAssignment(request.assignedStaff || "");
+    setPriorityDraft(request.priority || "Medium");
+    setDecisionReason(request.decisionReason || "");
+    setResponseMessage("");
     setResponseError("");
+    setFeedback(null);
+  }
 
-    if (!selectedRequest) return;
+  function resetFilters() {
+    setSearchInput(""); setSearch(""); setStatusFilter("all"); setCategoryFilter("all");
+    setPriorityFilter("all"); setRoleFilter("all"); setAssignedFilter("all");
+    setFromDate(""); setToDate(""); setPage(1);
+  }
 
+  function handleStatusChange(request, nextStatus) {
+    if (["Accepted", "Rejected", "Closed"].includes(nextStatus)
+      && !window.confirm(`Confirm changing ${request.id} to “${nextStatus}”?`)) return;
     try {
-      addAdminSupportResponse(selectedRequest.id, {
-        message: responseMessage,
-        type: responseType,
-        author: adminActor,
-        actor: adminActor,
-      });
+      updateAdminSupportRequestStatus(request.id, nextStatus, adminActor, decisionReason);
+      setFeedback({ type: "success", message: `${isAppeal(request) ? "Appeal" : "Ticket"} ${request.id} updated to ${nextStatus}.` });
+      refreshRequests();
+    } catch (error) {
+      setFeedback({ type: "error", message: error instanceof Error ? error.message : "Status could not be updated." });
+    }
+  }
 
+  function saveAssignment() {
+    if (!selectedRequest) return;
+    try {
+      updateAdminSupportRequestAssignment(selectedRequest.id, assignment, adminActor);
+      setFeedback({ type: "success", message: assignment.trim() ? "Ticket assignment saved." : "Ticket is now unassigned." });
+      refreshRequests();
+    } catch (error) { setFeedback({ type: "error", message: error.message || "Assignment could not be saved." }); }
+  }
+
+  function savePriority() {
+    if (!selectedRequest) return;
+    try {
+      updateAdminSupportRequestPriority(selectedRequest.id, priorityDraft, adminActor);
+      setFeedback({ type: "success", message: `Priority changed to ${priorityDraft}.` });
+      refreshRequests();
+    } catch (error) { setFeedback({ type: "error", message: error.message || "Priority could not be changed." }); }
+  }
+
+  function sendResponse(event) {
+    event.preventDefault();
+    if (!selectedRequest) return;
+    setResponseError("");
+    try {
+      addAdminSupportResponse(selectedRequest.id, { message: responseMessage, type: responseType, author: adminActor, actor: adminActor, authorRole: "Admin" });
       setResponseMessage("");
       refreshRequests();
-    } catch (err) {
-      setResponseError(err instanceof Error ? err.message : "Failed to add response.");
-    }
+      setFeedback({ type: "success", message: responseType === "internal_note" ? "Internal note saved for Admin." : "Reply sent to the requester." });
+    } catch (error) { setResponseError(error instanceof Error ? error.message : "Reply could not be sent."); }
   }
 
+  function saveFaq(event) {
+    event.preventDefault();
+    setFaqFormError("");
+    try {
+      setFaqs(saveAdminHelpFaq(faqDraft, adminActor));
+      setFaqDraft({ id: "", category: SUPPORT_FAQ_CATEGORIES[0], question: "", answer: "", published: true });
+      setFeedback({ type: "success", message: "FAQ saved." });
+    } catch (error) { setFaqFormError(error instanceof Error ? error.message : "FAQ could not be saved."); }
+  }
+
+  function toggleFaq(faq) {
+    try { setFaqs(saveAdminHelpFaq({ ...faq, published: faq.published === false }, adminActor)); }
+    catch (error) { setFeedback({ type: "error", message: error.message || "FAQ status could not be changed." }); }
+  }
+
+  function removeFaq(faq) {
+    if (!window.confirm(`Delete FAQ “${faq.question}”?`)) return;
+    try { setFaqs(deleteAdminHelpFaq(faq.id, adminActor)); setFeedback({ type: "success", message: "FAQ deleted." }); }
+    catch (error) { setFeedback({ type: "error", message: error.message || "FAQ could not be deleted." }); }
+  }
+
+  const visibleFaqs = faqs.filter((faq) => (faqCategory === "all" || faq.category === faqCategory)
+    && `${faq.category} ${faq.question} ${faq.answer}`.toLowerCase().includes(faqSearch.trim().toLowerCase()));
+
+  const resolutionHours = requests.filter((item) => !isAppeal(item) && (item.status === "Resolved" || (item.status === "Closed" && item.resolvedAt))).map((item) => {
+    const start = new Date(item.createdAt || 0).getTime();
+    const end = new Date(item.resolvedAt || item.updatedAt || 0).getTime();
+    return start > 0 && end >= start ? (end - start) / 3600000 : null;
+  }).filter((value) => value !== null);
+  const averageHours = resolutionHours.length ? resolutionHours.reduce((sum, value) => sum + value, 0) / resolutionHours.length : null;
+  const now = reportNow.getTime();
+  const dayStart = new Date(reportNow); dayStart.setHours(0, 0, 0, 0);
+  const weekStart = new Date(now - 7 * 24 * 60 * 60 * 1000);
+  const monthStart = new Date(reportNow); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
+  const ticketDates = requests.filter((item) => !isAppeal(item)).map((item) => new Date(item.createdAt || 0).getTime());
+  const dailyTickets = ticketDates.filter((date) => date >= dayStart.getTime()).length;
+  const weeklyTickets = ticketDates.filter((date) => date >= weekStart.getTime()).length;
+  const monthlyTickets = ticketDates.filter((date) => date >= monthStart.getTime()).length;
+  const commonCategories = SUPPORT_REQUEST_CATEGORIES.map((category) => ({ category, count: requests.filter((item) => !isAppeal(item) && item.category === category).length })).filter((item) => item.count).sort((a, b) => b.count - a.count).slice(0, 5);
+  const maxCommonCategory = Math.max(1, ...commonCategories.map((item) => item.count));
+  const appealAccepted = requests.filter((item) => isAppeal(item) && item.status === "Accepted").length;
+  const appealRejected = requests.filter((item) => isAppeal(item) && item.status === "Rejected").length;
+  const workload = assignedStaffOptions.map((staff) => ({ staff, count: requests.filter((item) => item.assignedStaff === staff && isPending(item)).length }));
+
   return (
-    <section className="edc-admin-support-moderation">
-      {/* Notice & Context */}
-      <div className="edc-admin-security-notice" style={{ margin: "0 0 18px" }}>
-        <LifeBuoy size={16} aria-hidden="true" />
-        <div>
-          <strong>
-            {moderationOnly
-              ? "Browser-Local Moderation & Governance View"
-              : "Browser-Local Support & Moderation Demo"}
-          </strong>
-          <p>
-            Support requests, status transitions, and notes are managed in this browser’s <code>localStorage</code>.
-            Records are simulated for administrative demo purposes and are not dispatched to an external helpdesk or ticketing service.
-          </p>
-        </div>
+    <section className="edc-admin-support-moderation edc-admin-support-workspace">
+      <div className="edc-admin-security-notice edc-admin-support-notice">
+        <LifeBuoy size={17} aria-hidden="true" />
+        <div><strong>Support &amp; Appeals</strong><p>Student and Teacher requests, replies and appeal decisions are stored in this browser. Internal notes remain visible only in this Admin workspace. Real private, cross-device support requires a backend.</p></div>
       </div>
 
-      {/* Global Feedback Banner */}
-      {feedback && (
-        <p
-          className={`edc-admin-feedback edc-admin-feedback-${feedback.type}`}
-          role={feedback.type === "error" ? "alert" : "status"}
-          style={{ marginBottom: "16px" }}
-        >
-          {feedback.message}
-        </p>
-      )}
+      {feedback && <p className={`edc-admin-feedback edc-admin-feedback-${feedback.type}`} role={feedback.type === "error" ? "alert" : "status"}>{feedback.message}</p>}
+      {storeError && <p className="edc-admin-feedback edc-admin-feedback-error" role="alert"><AlertTriangle size={15} /> {storeError} Existing data was preserved.</p>}
 
-      {/* Storage Error Warning */}
-      {storeError && (
-        <p className="edc-admin-feedback edc-admin-feedback-error" role="alert" style={{ marginBottom: "16px" }}>
-          <AlertTriangle size={16} aria-hidden="true" />
-          {storeError} Existing browser storage was preserved.
-        </p>
-      )}
+      {detailPage && <Link className="edc-admin-support-back" to="/admin/support"><ArrowLeft size={15} /> Back to Support Overview</Link>}
 
-      {/* Toolbar */}
-      <div className="edc-admin-applications-toolbar">
-        <label className="edc-admin-search edc-admin-support-search">
-          <Search size={17} aria-hidden="true" />
-          <span className="edc-admin-visually-hidden">
-            {moderationOnly ? "Search moderation requests" : "Search support requests"}
-          </span>
-          <input
-            type="search"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder={
-              moderationOnly
-                ? "Search moderation requests by subject, requester, or ID..."
-                : "Search by subject, requester, category, or ID..."
-            }
-          />
-        </label>
+      {!moderationOnly && !detailPage && <div className="edc-admin-support-stat-grid" aria-label="Support overview">
+        {[
+          ["Total Tickets", totalTickets, "/admin/support/tickets", MessageSquare],
+          ["Pending Tickets", pendingTickets, "/admin/support/pending", Clock3],
+          ["Resolved Tickets", resolvedTickets, "/admin/support/resolved", CheckCircle2],
+          ["Open Appeals", openAppeals, "/admin/support/open-appeals", ShieldAlert],
+        ].map(([label, value, path, Icon]) => <Link to={path} key={label} className="edc-admin-stat-card edc-admin-stat-card-link edc-admin-support-stat" aria-label={`Open ${label}`}>
+          <span className="edc-admin-stat-icon" aria-hidden="true"><Icon size={19} /></span><p>{label}</p><strong>{value}</strong>
+        </Link>)}
+      </div>}
 
-        <div className="edc-admin-application-filters" aria-label="Filter support records">
-          <select
-            className="edc-admin-select"
-            value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value)}
-            aria-label="Filter by status"
-          >
-            <option value="all">All statuses</option>
-            {SUPPORT_REQUEST_STATUSES.map((status) => (
-              <option key={status} value={status}>
-                {status}
-              </option>
-            ))}
-          </select>
+      {!moderationOnly && !detailPage && <nav className="edc-admin-support-tabs" aria-label="Support and appeals sections">
+        {TABS.map(([id, label, Icon]) => <button type="button" key={id} className={activeView === id ? "active" : ""} onClick={() => { setActiveView(id); setPage(1); setFeedback(null); }} aria-current={activeView === id ? "page" : undefined}><Icon size={15} />{label}</button>)}
+      </nav>}
 
-          <select
-            className="edc-admin-select"
-            value={categoryFilter}
-            onChange={(event) => setCategoryFilter(event.target.value)}
-            aria-label="Filter by category"
-          >
-            <option value="all">All categories</option>
-            {SUPPORT_REQUEST_CATEGORIES.map((cat) => (
-              <option key={cat} value={cat}>
-                {cat}
-              </option>
-            ))}
-          </select>
-
-          <select
-            className="edc-admin-select"
-            value={priorityFilter}
-            onChange={(event) => setPriorityFilter(event.target.value)}
-            aria-label="Filter by priority"
-          >
-            <option value="all">All priorities</option>
-            {SUPPORT_REQUEST_PRIORITIES.map((priority) => (
-              <option key={priority} value={priority}>
-                {priority} Priority
-              </option>
-            ))}
-          </select>
-
-          {hasActiveFilters && (
-            <button
-              type="button"
-              className="edc-admin-action-button"
-              onClick={handleResetFilters}
-              title="Reset all search and filter values"
-            >
-              <RotateCcw size={14} aria-hidden="true" />
-              Reset
-            </button>
-          )}
-
-          {!moderationOnly && (
-            <button
-              type="button"
-              className="edc-admin-action-button edc-admin-support-create-btn"
-              onClick={handleOpenCreateModal}
-            >
-              <Plus size={15} aria-hidden="true" />
-              Create Demo Request
-            </button>
-          )}
+      {activeView === "overview" && <>
+        <div className="edc-admin-support-overview-grid">
+          <section className="edc-admin-panel"><header><h3>Recent Support Tickets</h3><button type="button" className="edc-admin-text-link" onClick={() => setActiveView("tickets")}>View All Tickets</button></header>
+            {recentTickets.length ? recentTickets.map((item) => <button className="edc-admin-support-mini-row" type="button" key={item.id} onClick={() => openRequest(item)}><span><strong>{item.subject}</strong><small>{item.requesterName} · {item.requesterRole || "Role not recorded"} · {item.id}</small></span><span className={`edc-admin-status-badge ${badgeClass(item.status)}`}>{item.status}</span></button>) : <p className="edc-admin-support-empty">No support tickets have been submitted.</p>}
+          </section>
+          <section className="edc-admin-panel"><header><h3>Urgent Requests</h3><button type="button" className="edc-admin-text-link" onClick={() => { setActiveView("tickets"); setPriorityFilter("Urgent"); }}>View urgent</button></header>
+            {urgent.length ? urgent.slice(0, 5).map((item) => <button className="edc-admin-support-mini-row" type="button" key={item.id} onClick={() => openRequest(item)}><span><strong>{item.subject}</strong><small>{item.requesterName} · {formatTimestamp(item.createdAt)}</small></span><span className="edc-admin-status-badge edc-admin-status-rejected">Urgent</span></button>) : <p className="edc-admin-support-empty">No open urgent requests.</p>}
+          </section>
+          <section className="edc-admin-panel"><header><h3>Recent Appeals</h3><button type="button" className="edc-admin-text-link" onClick={() => setActiveView("appeals")}>View Appeals</button></header>
+            {recentAppeals.length ? recentAppeals.map((item) => <button className="edc-admin-support-mini-row" type="button" key={item.id} onClick={() => openRequest(item)}><span><strong>{item.subject}</strong><small>{item.requesterName} · {item.appealType || "Moderation appeal"}</small></span><span className={`edc-admin-status-badge ${badgeClass(item.status)}`}>{item.status}</span></button>) : <p className="edc-admin-support-empty">No appeals have been submitted.</p>}
+          </section>
+          <section className="edc-admin-panel"><header><h3>Unassigned Tickets</h3><button type="button" className="edc-admin-text-link" onClick={() => setActiveView("assignments")}>Assign tickets</button></header>
+            {unassigned.length ? unassigned.slice(0, 5).map((item) => <button className="edc-admin-support-mini-row" type="button" key={item.id} onClick={() => openRequest(item)}><span><strong>{item.subject}</strong><small>{item.requesterName} · {item.id}</small></span><span className="edc-admin-status-badge edc-admin-status-pending">Unassigned</span></button>) : <p className="edc-admin-support-empty">There are no unassigned pending tickets.</p>}
+            <p className="edc-admin-support-resolution">Average resolution: {averageHours === null ? "No resolved-ticket data yet" : `${averageHours.toFixed(1)} hours`}</p>
+          </section>
         </div>
-      </div>
+      </>}
 
-      {/* Empty State: No requests exist at all */}
-      {!storeError && viewRequests.length === 0 && (
-        <div className="edc-admin-applications-empty edc-admin-support-empty">
-          <span className="edc-admin-applications-empty-icon" aria-hidden="true">
-            {moderationOnly ? <ShieldAlert size={24} /> : <LifeBuoy size={24} />}
-          </span>
-          <h3>
-            {moderationOnly
-              ? "No moderation-related requests found"
-              : "No support requests found"}
-          </h3>
-          <p>
-            {moderationOnly
-              ? "Requests categorized as Moderation & Appeal will appear here. This existing category combines moderation requests and appeals."
-              : "There are currently no support requests or user appeals stored in this browser session. You can create a new demo support request to test the administrative review, status management, and note-taking workflow."}
-          </p>
-          {!moderationOnly && (
-            <button
-              type="button"
-              className="edc-admin-action-button edc-admin-support-create-btn"
-              style={{ marginTop: "14px" }}
-              onClick={handleOpenCreateModal}
-            >
-              <Plus size={15} aria-hidden="true" />
-              Create Demo Support Request
-            </button>
-          )}
-        </div>
-      )}
+      {!["overview", "faqs", "reports"].includes(activeView) && <>
+        {activeView === "payments" && <div className="edc-admin-security-notice edc-admin-support-notice"><CreditCard size={16} /><p>Payment Support records payment questions only. Verification, refund approval and transaction changes stay in the existing Financial Management workflow; this page never transfers or refunds money.</p></div>}
+        <form className="edc-admin-support-filters" onSubmit={(event) => { event.preventDefault(); setSearch(searchInput.trim()); setPage(1); }}>
+          <label className="edc-admin-support-search"><span>Search tickets &amp; appeals</span><div><Search size={15} /><input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="ID, person, title, appeal or related record" /></div></label>
+          <label>Status<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="all">All statuses</option>{ALL_REQUEST_STATUSES.map((status) => <option key={status}>{status}</option>)}</select></label>
+          <label>Category<select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}><option value="all">All categories</option>{SUPPORT_REQUEST_CATEGORIES.map((category) => <option key={category}>{category}</option>)}</select></label>
+          <label>Priority<select value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value)}><option value="all">All priorities</option>{SUPPORT_REQUEST_PRIORITIES.map((priority) => <option key={priority}>{priority}</option>)}</select></label>
+          <label>User role<select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)}><option value="all">All roles</option><option>Student</option><option>Teacher</option><option>User</option><option>Unknown</option></select></label>
+          <label>Assigned staff<select value={assignedFilter} onChange={(event) => setAssignedFilter(event.target.value)}><option value="all">All assignments</option><option value="unassigned">Unassigned</option>{assignedStaffOptions.map((staff) => <option key={staff}>{staff}</option>)}</select></label>
+          <label>From<input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} /></label>
+          <label>To<input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} /></label>
+          <div className="edc-admin-support-filter-actions"><button className="edc-admin-action-button" type="submit"><Search size={14} /> Search / Apply Filters</button><button className="edc-admin-action-button" type="button" onClick={resetFilters}><RotateCcw size={14} /> Clear Filters</button><button className="edc-admin-action-button" type="button" onClick={refreshRequests}><Filter size={14} /> Refresh</button></div>
+        </form>
+        {filteredRequests.length ? <div className="edc-admin-table-wrap"><table className="edc-admin-applications-table edc-admin-support-table"><thead><tr><th>Ticket / Appeal ID</th><th>Requester</th><th>Title</th><th>Category</th><th>Priority</th><th>Assigned Staff</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead><tbody>{pageRequests.map((item) => <tr key={item.id}>
+          <td><code>{item.id}</code></td><td><strong>{item.requesterName || "User"}</strong><small>{item.requesterRole || "Role unknown"} · {item.requesterEmail || "Email unavailable"}</small></td><td><strong>{item.subject}</strong>{item.relatedRecordId && <small>Related: {item.relatedRecordId}</small>}</td><td><span className="edc-admin-activity-tag">{item.category}</span></td><td><span className={`edc-admin-status-badge ${priorityClass(item.priority)}`}>{item.priority || "Medium"}</span></td><td>{item.assignedStaff || <span className="edc-admin-muted">Unassigned</span>}</td><td><span className={`edc-admin-status-badge ${badgeClass(item.status)}`}>{item.status}</span></td><td>{formatTimestamp(item.createdAt)}</td><td><button className="edc-admin-action-button" type="button" onClick={() => openRequest(item)}><Eye size={14} /> View Details</button></td>
+        </tr>)}</tbody></table></div> : <div className="edc-admin-applications-empty edc-admin-support-empty"><LifeBuoy size={23} /><h3>{scopedRequests.length ? "No matching records" : "No support records yet"}</h3><p>{scopedRequests.length ? "Clear or change filters to see other saved records." : "Student and Teacher requests appear here after they submit a support ticket. No sample tickets are added."}</p></div>}
+        <div className="edc-admin-activity-pagination"><p>Showing {filteredRequests.length ? (visiblePage - 1) * PAGE_SIZE + 1 : 0}–{Math.min(visiblePage * PAGE_SIZE, filteredRequests.length)} of {filteredRequests.length} record{filteredRequests.length === 1 ? "" : "s"}</p><div><button className="edc-admin-filter-button" type="button" disabled={visiblePage <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>Previous</button><span>Page {visiblePage} of {pageCount}</span><button className="edc-admin-filter-button" type="button" disabled={visiblePage >= pageCount} onClick={() => setPage((value) => Math.min(pageCount, value + 1))}>Next</button></div></div>
+      </>}
 
-      {/* Empty State: Search or filters yield zero results */}
-      {!storeError && viewRequests.length > 0 && filteredRequests.length === 0 && (
-        <div className="edc-admin-applications-empty edc-admin-support-empty">
-          <span className="edc-admin-applications-empty-icon" aria-hidden="true">
-            <Search size={24} />
-          </span>
-          <h3>
-            {moderationOnly
-              ? "No matching moderation requests"
-              : "No matching support requests"}
-          </h3>
-          <p>
-            {moderationOnly
-              ? "No Moderation & Appeal records matched your active search term or filter parameters."
-              : "No support records matched your active search term or filter parameters."}
-          </p>
-          <button
-            type="button"
-            className="edc-admin-action-button"
-            style={{ marginTop: "12px" }}
-            onClick={handleResetFilters}
-          >
-            <RotateCcw size={14} aria-hidden="true" />
-            Reset Search &amp; Filters
-          </button>
-        </div>
-      )}
+      {activeView === "faqs" && <section className="edc-admin-support-faqs">
+        <section className="edc-admin-panel"><header><div><h3>{faqDraft.id ? "Edit FAQ" : "Add FAQ"}</h3><p>Published FAQs appear in the public Help Center and Student/Teacher Help &amp; Support.</p></div></header>
+          <form className="edc-admin-support-faq-form" onSubmit={saveFaq}><label>Category<select value={faqDraft.category} onChange={(event) => setFaqDraft({ ...faqDraft, category: event.target.value })}>{SUPPORT_FAQ_CATEGORIES.map((category) => <option key={category}>{category}</option>)}</select></label><label>Question<input required minLength={5} maxLength={240} value={faqDraft.question} onChange={(event) => setFaqDraft({ ...faqDraft, question: event.target.value })} /></label><label>Answer<textarea required minLength={5} maxLength={5000} rows={4} value={faqDraft.answer} onChange={(event) => setFaqDraft({ ...faqDraft, answer: event.target.value })} /></label>{faqFormError && <p className="edc-admin-feedback edc-admin-feedback-error" role="alert">{faqFormError}</p>}<div className="edc-admin-support-filter-actions"><button className="edc-admin-settings-save" type="submit"><Plus size={14} /> Save FAQ</button>{faqDraft.id && <button className="edc-admin-action-button" type="button" onClick={() => { setFaqDraft({ id: "", category: SUPPORT_FAQ_CATEGORIES[0], question: "", answer: "", published: true }); setFaqFormError(""); }}>Cancel Edit</button>}</div></form>
+        </section>
+        <section className="edc-admin-panel"><header><div><h3>Help Center FAQs ({faqs.length})</h3><p>Search, filter, publish, edit or remove an FAQ.</p></div></header><div className="edc-admin-support-faq-filters"><label>Search<input type="search" value={faqSearch} onChange={(event) => setFaqSearch(event.target.value)} placeholder="Search FAQ question or answer" /></label><label>Category<select value={faqCategory} onChange={(event) => setFaqCategory(event.target.value)}><option value="all">All categories</option>{SUPPORT_FAQ_CATEGORIES.map((category) => <option key={category}>{category}</option>)}</select></label></div>
+          {faqError && <p className="edc-admin-feedback edc-admin-feedback-error" role="alert">{faqError}</p>}{visibleFaqs.length ? visibleFaqs.map((faq) => <article className="edc-admin-support-faq-row" key={faq.id}><div><span className="edc-admin-activity-tag">{faq.category}</span><span className={`edc-admin-status-badge ${faq.published === false ? "edc-admin-status-unknown" : "edc-admin-status-approved"}`}>{faq.published === false ? "Unpublished" : "Published"}</span><h4>{faq.question}</h4><p>{faq.answer}</p></div><div><button className="edc-admin-action-button" type="button" onClick={() => { setFaqDraft({ ...faq }); setFaqFormError(""); }}><Eye size={14} /> Edit</button><button className="edc-admin-action-button" type="button" onClick={() => toggleFaq(faq)}>{faq.published === false ? "Publish" : "Unpublish"}</button><button className="edc-admin-action-button edc-admin-danger-button" type="button" onClick={() => removeFaq(faq)}><Trash2 size={14} /> Delete</button></div></article>) : <p className="edc-admin-support-empty">No FAQs match these filters.</p>}
+        </section>
+      </section>}
 
-      {/* Requests Table */}
-      {!storeError && filteredRequests.length > 0 && (
-        <div className="edc-admin-table-wrap">
-          <table className="edc-admin-applications-table edc-admin-support-table">
-            <thead>
-              <tr>
-                <th scope="col">Subject</th>
-                <th scope="col">Requester</th>
-                <th scope="col">Category</th>
-                <th scope="col">Priority</th>
-                <th scope="col">Status</th>
-                <th scope="col">Submitted</th>
-                <th scope="col">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredRequests.map((item) => {
-                const responseCount = Array.isArray(item.responses) ? item.responses.length : 0;
-                return (
-                  <tr key={item.id}>
-                    <td>
-                      <div>
-                        <strong>{item.subject}</strong>
-                        <span title={item.id}>
-                          #{item.id}
-                          {responseCount > 0 && ` · ${responseCount} note${responseCount === 1 ? "" : "s"}`}
-                        </span>
-                      </div>
-                    </td>
-                    <td>
-                      <div>
-                        <strong>{item.requesterName}</strong>
-                        <span>{item.requesterEmail}</span>
-                      </div>
-                    </td>
-                    <td>
-                      <span className="edc-admin-activity-tag">{item.category}</span>
-                    </td>
-                    <td>
-                      <span className={`edc-admin-status-badge ${getPriorityBadgeClass(item.priority)}`}>
-                        {item.priority}
-                      </span>
-                    </td>
-                    <td>
-                      <span className={`edc-admin-status-badge ${getStatusBadgeClass(item.status)}`}>
-                        {item.status}
-                      </span>
-                    </td>
-                    <td>
-                      <span className="edc-admin-activity-meta">
-                        <Clock3 size={12} aria-hidden="true" />
-                        {formatTimestamp(item.createdAt)}
-                      </span>
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        className="edc-admin-action-button"
-                        onClick={() => setSelectedRequest(item)}
-                      >
-                        <Eye size={14} aria-hidden="true" />
-                        View details
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+      {activeView === "reports" && <section className="edc-admin-support-reports">
+        <section className="edc-admin-support-report-cards">{[["Tickets today", dailyTickets], ["Tickets last 7 days", weeklyTickets], ["Tickets this month", monthlyTickets], ["Average resolution", averageHours === null ? "—" : `${averageHours.toFixed(1)} h`], ["Student tickets", requests.filter((item) => !isAppeal(item) && item.requesterRole === "Student").length], ["Teacher tickets", requests.filter((item) => !isAppeal(item) && item.requesterRole === "Teacher").length], ["Appeals accepted", appealAccepted], ["Appeals rejected", appealRejected]].map(([label, value]) => <article className="edc-admin-panel" key={label}><span>{label}</span><strong>{value}</strong></article>)}</section>
+        <div className="edc-admin-support-overview-grid"><section className="edc-admin-panel"><h3>Most Common Problems</h3>{commonCategories.length ? commonCategories.map((item) => <div className="edc-admin-support-category-chart" key={item.category}><div className="edc-admin-support-report-row"><span>{item.category}</span><strong>{item.count}</strong></div><div className="edc-admin-support-bar-track"><span style={{ width: `${(item.count / maxCommonCategory) * 100}%` }} /></div></div>) : <p className="edc-admin-support-empty">No saved ticket data yet.</p>}</section><section className="edc-admin-panel"><h3>Staff Workload</h3>{workload.length ? workload.map((item) => <div className="edc-admin-support-report-row" key={item.staff}><span>{item.staff}</span><strong>{item.count} open</strong></div>) : <p className="edc-admin-support-empty">No staff assignments recorded.</p>}</section></div>
+      </section>}
 
-      {/* Request Count Info */}
-      {!storeError && viewRequests.length > 0 && (
-        <p className="edc-admin-applications-count" aria-live="polite">
-          Showing {filteredRequests.length} of {viewRequests.length}{" "}
-          {moderationOnly ? "moderation-related request" : "support request"}
-          {viewRequests.length === 1 ? "" : "s"}
-        </p>
-      )}
-
-      {/* CREATE SUPPORT REQUEST MODAL */}
-      {!moderationOnly && isCreateOpen && (
-        <div className="edc-admin-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="create-request-title">
-          <div className="edc-admin-details-modal edc-admin-support-modal">
-            <div className="edc-admin-details-header">
-              <div>
-                <span className="edc-admin-page-eyebrow">ADMIN DEMO WORKFLOW</span>
-                <h3 id="create-request-title">Create Demo Support Request</h3>
-              </div>
-              <button
-                type="button"
-                className="edc-admin-modal-close"
-                aria-label="Close dialog"
-                onClick={() => setIsCreateOpen(false)}
-              >
-                <X size={17} aria-hidden="true" />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateSubmit} style={{ marginTop: "16px" }}>
-              {createError && (
-                <p className="edc-admin-feedback edc-admin-feedback-error" role="alert" style={{ marginBottom: "14px" }}>
-                  {createError}
-                </p>
-              )}
-
-              <div className="edc-admin-support-form-grid">
-                <label className="edc-admin-support-form-field">
-                  <span>Subject *</span>
-                  <input
-                    type="text"
-                    required
-                    value={newSubject}
-                    onChange={(e) => setNewSubject(e.target.value)}
-                    placeholder="e.g., Unable to open course assessment"
-                  />
-                </label>
-
-                <div className="edc-admin-support-form-row">
-                  <label className="edc-admin-support-form-field">
-                    <span>Category *</span>
-                    <select
-                      value={newCategory}
-                      onChange={(e) => setNewCategory(e.target.value)}
-                    >
-                      {SUPPORT_REQUEST_CATEGORIES.map((cat) => (
-                        <option key={cat} value={cat}>
-                          {cat}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label className="edc-admin-support-form-field">
-                    <span>Priority *</span>
-                    <select
-                      value={newPriority}
-                      onChange={(e) => setNewPriority(e.target.value)}
-                    >
-                      {SUPPORT_REQUEST_PRIORITIES.map((pri) => (
-                        <option key={pri} value={pri}>
-                          {pri}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-
-                <div className="edc-admin-support-form-row">
-                  <label className="edc-admin-support-form-field">
-                    <span>Requester Name</span>
-                    <input
-                      type="text"
-                      value={newRequesterName}
-                      onChange={(e) => setNewRequesterName(e.target.value)}
-                      placeholder="e.g., Jane Student"
-                    />
-                  </label>
-
-                  <label className="edc-admin-support-form-field">
-                    <span>Requester Email</span>
-                    <input
-                      type="email"
-                      value={newRequesterEmail}
-                      onChange={(e) => setNewRequesterEmail(e.target.value)}
-                      placeholder="e.g., student@example.com"
-                    />
-                  </label>
-                </div>
-
-                <label className="edc-admin-support-form-field">
-                  <span>Description *</span>
-                  <textarea
-                    rows={4}
-                    required
-                    value={newDescription}
-                    onChange={(e) => setNewDescription(e.target.value)}
-                    placeholder="Describe the issue, user inquiry, or account moderation problem..."
-                  />
-                </label>
-              </div>
-
-              <div className="edc-admin-security-notice" style={{ margin: "16px 0 0" }}>
-                <ShieldAlert size={15} aria-hidden="true" />
-                <p>
-                  This demo request is stored in this browser’s localStorage. It is not sent to any external server or email service.
-                </p>
-              </div>
-
-              <div className="edc-admin-settings-actions" style={{ marginTop: "18px" }}>
-                <button type="submit" className="edc-admin-settings-save">
-                  <Plus size={15} aria-hidden="true" />
-                  Create Support Request
-                </button>
-                <button
-                  type="button"
-                  className="edc-admin-settings-reset"
-                  onClick={() => setIsCreateOpen(false)}
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* REQUEST DETAILS MODAL */}
-      {selectedRequest && (
-        <div className="edc-admin-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="details-request-title">
-          <div className="edc-admin-details-modal edc-admin-support-modal">
-            <div className="edc-admin-details-header">
-              <div>
-                <span className="edc-admin-page-eyebrow">
-                  {moderationOnly
-                    ? "MODERATION & GOVERNANCE DETAILS"
-                    : "SUPPORT REQUEST DETAILS"}
-                </span>
-                <h3 id="details-request-title">{selectedRequest.subject}</h3>
-                <span className="edc-admin-support-id-tag">#{selectedRequest.id}</span>
-              </div>
-              <button
-                type="button"
-                className="edc-admin-modal-close"
-                aria-label="Close details"
-                onClick={() => setSelectedRequest(null)}
-              >
-                <X size={17} aria-hidden="true" />
-              </button>
-            </div>
-
-            {/* Meta details list */}
-            <dl className="edc-admin-details-list" style={{ marginTop: "16px" }}>
-              <div className="edc-admin-detail-field">
-                <dt>Current Status</dt>
-                <dd>
-                  <span className={`edc-admin-status-badge ${getStatusBadgeClass(selectedRequest.status)}`}>
-                    {selectedRequest.status}
-                  </span>
-                </dd>
-              </div>
-
-              <div className="edc-admin-detail-field">
-                <dt>Priority Level</dt>
-                <dd>
-                  <span className={`edc-admin-status-badge ${getPriorityBadgeClass(selectedRequest.priority)}`}>
-                    {selectedRequest.priority} Priority
-                  </span>
-                </dd>
-              </div>
-
-              <div className="edc-admin-detail-field">
-                <dt>Category</dt>
-                <dd>
-                  <span className="edc-admin-activity-tag">{selectedRequest.category}</span>
-                </dd>
-              </div>
-
-              <div className="edc-admin-detail-field">
-                <dt>Requester</dt>
-                <dd>
-                  <strong>{selectedRequest.requesterName}</strong> ({selectedRequest.requesterEmail})
-                </dd>
-              </div>
-
-              <div className="edc-admin-detail-field">
-                <dt>Created Date</dt>
-                <dd>{formatTimestamp(selectedRequest.createdAt)}</dd>
-              </div>
-
-              <div className="edc-admin-detail-field">
-                <dt>Last Updated</dt>
-                <dd>{formatTimestamp(selectedRequest.updatedAt)}</dd>
-              </div>
-            </dl>
-
-            {/* Problem Description */}
-            <div className="edc-admin-support-desc-box">
-              <span className="edc-admin-support-box-label">Description</span>
-              <p>{selectedRequest.description}</p>
-            </div>
-
-            {/* Status Management */}
-            <div className="edc-admin-support-status-section">
-              <span className="edc-admin-support-box-label">Update Request Status</span>
-              <div className="edc-admin-support-status-buttons">
-                {SUPPORT_REQUEST_STATUSES.map((status) => {
-                  const isActive = selectedRequest.status === status;
-                  return (
-                    <button
-                      key={status}
-                      type="button"
-                      className={`edc-admin-action-button ${isActive ? "edc-admin-support-status-btn-active" : ""}`}
-                      onClick={() => handleStatusChange(selectedRequest.id, status)}
-                      disabled={isActive}
-                    >
-                      {status === "Resolved" && <CheckCircle2 size={13} aria-hidden="true" />}
-                      {status === "Closed" && <Lock size={13} aria-hidden="true" />}
-                      Mark as {status}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Responses & Notes Thread */}
-            <div className="edc-admin-support-thread-section">
-              <span className="edc-admin-support-box-label">
-                Responses &amp; Internal Notes ({Array.isArray(selectedRequest.responses) ? selectedRequest.responses.length : 0})
-              </span>
-
-              {(!Array.isArray(selectedRequest.responses) || selectedRequest.responses.length === 0) ? (
-                <p className="edc-admin-support-thread-empty">
-                  No responses or internal notes have been recorded for this request yet.
-                </p>
-              ) : (
-                <div className="edc-admin-support-thread-list">
-                  {selectedRequest.responses.map((resp) => {
-                    const isInternal = resp.type === "internal_note";
-                    return (
-                      <div
-                        key={resp.id}
-                        className={`edc-admin-support-thread-item ${
-                          isInternal ? "edc-admin-support-thread-internal" : "edc-admin-support-thread-response"
-                        }`}
-                      >
-                        <div className="edc-admin-support-thread-header">
-                          <span className="edc-admin-support-thread-author">
-                            {isInternal ? <Lock size={12} aria-hidden="true" /> : <MessageSquare size={12} aria-hidden="true" />}
-                            <strong>{resp.author || "Admin"}</strong>
-                            <small>({isInternal ? "Internal Note" : "Admin Response"})</small>
-                          </span>
-                          <time>{formatTimestamp(resp.createdAt)}</time>
-                        </div>
-                        <p className="edc-admin-support-thread-message">{resp.message}</p>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* Add Response / Note Form */}
-              <form onSubmit={handleAddResponseSubmit} className="edc-admin-support-add-response-form">
-                {responseError && (
-                  <p className="edc-admin-feedback edc-admin-feedback-error" role="alert" style={{ marginBottom: "10px" }}>
-                    {responseError}
-                  </p>
-                )}
-
-                <div className="edc-admin-support-response-type-row">
-                  <label className="edc-admin-support-radio-label">
-                    <input
-                      type="radio"
-                      name="responseType"
-                      value="response"
-                      checked={responseType === "response"}
-                      onChange={() => setResponseType("response")}
-                    />
-                    <span>Public Admin Response</span>
-                  </label>
-
-                  <label className="edc-admin-support-radio-label">
-                    <input
-                      type="radio"
-                      name="responseType"
-                      value="internal_note"
-                      checked={responseType === "internal_note"}
-                      onChange={() => setResponseType("internal_note")}
-                    />
-                    <span>Internal Admin Note</span>
-                  </label>
-                </div>
-
-                <textarea
-                  rows={3}
-                  required
-                  value={responseMessage}
-                  onChange={(e) => setResponseMessage(e.target.value)}
-                  placeholder={
-                    responseType === "internal_note"
-                      ? "Add an internal administrative note (visible only to admins in this demo)..."
-                      : "Type a response to this support request..."
-                  }
-                />
-
-                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "8px" }}>
-                  <button type="submit" className="edc-admin-settings-save">
-                    <Send size={14} aria-hidden="true" />
-                    {responseType === "internal_note" ? "Save Internal Note" : "Post Response"}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-      )}
+      {selectedRequest && <div className="edc-admin-modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setSelectedRequest(null)}><section className="edc-admin-details-modal edc-admin-support-modal edc-admin-support-detail" role="dialog" aria-modal="true" aria-labelledby="support-detail-title">
+        <header className="edc-admin-details-header"><div><span className="edc-admin-page-eyebrow">{isAppeal(selectedRequest) ? "APPEAL REVIEW" : "SUPPORT TICKET"}</span><h3 id="support-detail-title">{selectedRequest.subject}</h3><span className="edc-admin-support-id-tag">{selectedRequest.id}</span></div><button type="button" className="edc-admin-modal-close" onClick={() => setSelectedRequest(null)} aria-label="Close"><X size={17} /></button></header>
+        {feedback && <p className={`edc-admin-feedback edc-admin-feedback-${feedback.type}`} role={feedback.type === "error" ? "alert" : "status"}>{feedback.message}</p>}
+        <dl className="edc-admin-details-list"><div><dt>Requester</dt><dd>{selectedRequest.requesterName} · {selectedRequest.requesterRole || "Role not recorded"} · {selectedRequest.requesterEmail}</dd></div><div><dt>User ID</dt><dd>{selectedRequest.requesterId || selectedRequest.requesterEmail || "Not recorded"}</dd></div><div><dt>Submitted</dt><dd>{formatTimestamp(selectedRequest.createdAt)}</dd></div><div><dt>Last updated</dt><dd>{formatTimestamp(selectedRequest.updatedAt)}</dd></div><div><dt>Category / priority</dt><dd>{selectedRequest.category} · {selectedRequest.priority}</dd></div><div><dt>Status / assigned staff</dt><dd>{selectedRequest.status} · {selectedRequest.assignedStaff || "Unassigned"}</dd></div>{selectedRequest.assignedBy && <div><dt>Assigned by</dt><dd>{selectedRequest.assignedBy} · {formatTimestamp(selectedRequest.assignedAt)}</dd></div>}{selectedRequest.relatedRecordId && <div><dt>Related record</dt><dd>{selectedRequest.relatedRecordTitle || "Record"} · {selectedRequest.relatedRecordId}</dd></div>}{selectedRequest.appealType && <div><dt>Appeal type / original decision</dt><dd>{selectedRequest.appealType} · {selectedRequest.originalDecision || "Not recorded"}</dd></div>}{selectedRequest.decisionReason && <div><dt>Appeal decision reason</dt><dd>{selectedRequest.decisionReason}</dd></div>}{selectedRequest.moderationReportId && <div><dt>Moderation report</dt><dd>{selectedRequest.moderationReportId}</dd></div>}</dl>
+        <div className="edc-admin-support-desc-box"><span className="edc-admin-support-box-label">{isAppeal(selectedRequest) ? "Appeal reason and details" : "Problem description"}</span><p>{selectedRequest.description}</p>{selectedRequest.attachment?.dataUrl && <a href={selectedRequest.attachment.dataUrl} download={selectedRequest.attachment.name} target="_blank" rel="noreferrer">View attachment: {selectedRequest.attachment.name}</a>}</div>
+        {isAppeal(selectedRequest) && <div className="edc-admin-security-notice"><ShieldAlert size={15} /><p>Accepting an appeal records the decision only. Rejected courses, books or accounts are not automatically published or restored; complete the existing approval or governance workflow separately.</p></div>}
+        <section className="edc-admin-support-admin-controls"><h4>Assignment &amp; priority</h4><div><label>Assign / reassign staff<input value={assignment} onChange={(event) => setAssignment(event.target.value)} maxLength={160} placeholder="Staff name or email" /></label><button className="edc-admin-action-button" type="button" onClick={saveAssignment}>Save Assignment</button><label>Priority<select value={priorityDraft} onChange={(event) => setPriorityDraft(event.target.value)}>{SUPPORT_REQUEST_PRIORITIES.map((priority) => <option key={priority}>{priority}</option>)}</select></label><button className="edc-admin-action-button" type="button" onClick={savePriority}>Save Priority</button></div></section>
+        {isAppeal(selectedRequest) && <label className="edc-admin-support-decision-reason">Decision reason (required for accept/reject)<textarea rows={3} maxLength={2000} value={decisionReason} onChange={(event) => setDecisionReason(event.target.value)} placeholder="Explain the appeal decision for the requester." /></label>}
+        <section className="edc-admin-support-status-section"><h4>Update Status</h4><div className="edc-admin-support-status-buttons">{(isAppeal(selectedRequest) ? MODERATION_APPEAL_STATUSES : SUPPORT_REQUEST_STATUSES).map((status) => <button key={status} className={`edc-admin-action-button ${selectedRequest.status === status ? "edc-admin-support-status-btn-active" : ""}`} type="button" disabled={selectedRequest.status === status} onClick={() => handleStatusChange(selectedRequest, status)}>{status === "Resolved" || status === "Accepted" ? <CheckCircle2 size={13} /> : status === "Rejected" ? <AlertTriangle size={13} /> : status === "Closed" ? <Lock size={13} /> : null}{status}</button>)}</div></section>
+        <section className="edc-admin-support-thread-section"><h4>Messages &amp; Internal Notes ({(selectedRequest.responses || []).length})</h4>{selectedRequest.responses?.length ? <div className="edc-admin-support-thread-list">{selectedRequest.responses.map((response) => <article key={response.id} className={`edc-admin-support-thread-item ${response.type === "internal_note" ? "edc-admin-support-thread-internal" : "edc-admin-support-thread-response"}`}><header><span><strong>{response.author || "User"}</strong> · {response.authorRole || (response.type === "internal_note" ? "Admin note" : "User")}</span><time>{formatTimestamp(response.createdAt)}</time></header><p>{response.message}</p></article>)}</div> : <p className="edc-admin-support-empty">No messages have been sent.</p>}
+          <form onSubmit={sendResponse}><div className="edc-admin-support-response-type-row"><label><input type="radio" name="support-response-type" checked={responseType === "response"} onChange={() => setResponseType("response")} /> Public reply</label><label><input type="radio" name="support-response-type" checked={responseType === "internal_note"} onChange={() => setResponseType("internal_note")} /> Internal Admin note</label></div><textarea rows={3} required minLength={2} maxLength={5000} value={responseMessage} onChange={(event) => setResponseMessage(event.target.value)} placeholder={responseType === "internal_note" ? "Private note for Admin staff" : "Write a reply to the requester"} />{responseError && <p className="edc-admin-feedback edc-admin-feedback-error" role="alert">{responseError}</p>}<button type="submit" className="edc-admin-settings-save"><Send size={14} /> {responseType === "internal_note" ? "Save Internal Note" : "Send Reply"}</button></form>
+        </section>
+      </section></div>}
     </section>
   );
 }

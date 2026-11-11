@@ -17,7 +17,6 @@ import {
   readAdminSupportRequestsState,
   updateAdminSupportRequestStatus,
 } from "./adminData";
-import "./AdminOperations.css";
 
 const SECTIONS = [
   ["tutors", "Tutor profiles"],

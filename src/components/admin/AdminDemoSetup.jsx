@@ -1,7 +1,7 @@
 
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { setupDemoAdmin } from "../utils/demoAdminSetup";
+import { setupDemoAdmin } from "./createDemoAdmin";
 
 export default function DemoAdminSetup() {
   const navigate = useNavigate();

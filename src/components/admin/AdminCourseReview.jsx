@@ -362,7 +362,13 @@ function AdminCourseReview() {
         category: "course-review",
         entityType: "Course",
         entityId: String(course.id ?? "unknown"),
+        targetId: String(course.id ?? "unknown"),
         targetName: displayValue(course.title),
+        previousValue: course.status || "Not set",
+        newValue: nextStatus,
+        ...((nextStatus === "Rejected" || nextStatus === "Changes Requested") && revisionNotes.trim()
+          ? { reason: revisionNotes.trim() }
+          : {}),
         description:
           nextStatus === "Approved"
             ? "Course approved"

@@ -1,16 +1,28 @@
+import { addDemoNotification } from "../../utils/demoNotifications";
+
 export const ADMIN_USERS_KEY = "educonnect.registeredUsers";
 export const ADMIN_AI_KNOWLEDGE_KEY = "educonnect.aiKnowledge";
 export const ADMIN_ACTIVITY_LOG_KEY = "educonnect.adminActivityLog";
 export const ADMIN_SUPPORT_REQUESTS_KEY = "educonnect.supportRequests";
+export const ADMIN_HELP_FAQS_KEY = "educonnect.supportFaqs";
 export const ADMIN_DATA_CHANGED_EVENT = "educonnect:admin-data-changed";
 
 export const ADMIN_ACTIVITY_CATEGORY_LABELS = {
   "teacher-applications": "Teacher Applications",
   "course-review": "Course Review",
+  "book-approvals": "Course & Books",
+  "user-management": "User Management",
+  "user-activity": "User Management",
+  "financial-management": "Financial Management",
+  "admin-settings": "Settings & Configuration",
+  "data-export": "Data Export",
+  "ai-operations": "AI Operations",
+  "tutor-marketplace": "Tutor Marketplace",
   "ai-knowledge": "AI Knowledge Governance",
   "data-import": "Data Import",
   "security": "Security & Access",
   "support": "Support & Moderation",
+  "moderation": "Moderation & Governance",
 };
 
 const KNOWLEDGE_PROPOSAL_STATUSES = [
@@ -492,9 +504,43 @@ export function appendAdminActivityRecord(record) {
     throw new Error(previous.error);
   }
 
+  const actor = typeof record.actor === "string" && record.actor.trim()
+    ? record.actor.trim()
+    : "Admin";
+  let sessionRole = "";
+  try {
+    sessionRole = window.sessionStorage.getItem("educonnect.demoRole") || "";
+  } catch {
+    // Activity logging remains available if session storage is blocked.
+  }
+  const requestedId = typeof record.id === "string" && record.id.trim()
+    ? record.id.trim()
+    : "";
+  const idAlreadyUsed = requestedId && previous.records.some((item) => item.id === requestedId);
+  const id = requestedId && !idAlreadyUsed
+    ? requestedId
+    : createAdminActivityId("activity");
+  const category = typeof record.category === "string" ? record.category : "";
+  const actorRole = typeof record.actorRole === "string" && record.actorRole.trim()
+    ? record.actorRole.trim()
+    : sessionRole || "Admin";
   const nextRecord = {
     ...record,
-    id: typeof record.id === "string" && record.id.trim() ? record.id : `activity-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    id,
+    actor,
+    actorRole,
+    actorId: typeof record.actorId === "string" && record.actorId.trim()
+      ? record.actorId.trim()
+      : actor.includes("@") ? actor : undefined,
+    module: typeof record.module === "string" && record.module.trim()
+      ? record.module.trim()
+      : ADMIN_ACTIVITY_CATEGORY_LABELS[category] || category || "General",
+    targetId: record.targetId ?? record.entityId,
+    status: typeof record.status === "string" && record.status.trim()
+      ? record.status.trim()
+      : typeof record.result === "string" && record.result.trim()
+        ? record.result.trim()
+        : "Success",
     timestamp: typeof record.timestamp === "string" && record.timestamp.trim()
       ? record.timestamp
       : new Date().toISOString(),
@@ -513,17 +559,50 @@ export function notifyAdminDataChanged() {
 export const SUPPORT_REQUEST_STATUSES = [
   "Open",
   "In Progress",
+  "Waiting for User",
   "Resolved",
   "Closed",
 ];
 
+export const MODERATION_APPEAL_STATUSES = [
+  "Submitted",
+  "Under Review",
+  "More Information Required",
+  "Accepted",
+  "Rejected",
+  "Closed",
+];
+
 export const SUPPORT_REQUEST_CATEGORIES = [
+  "Course Access",
+  "PDF/eBook Problem",
+  "Video Lecture Problem",
+  "Enrollment Issue",
+  "Account Problem",
+  "AI Tutor Problem",
+  "Teacher Communication",
+  "Certificate Problem",
+  "Payment Failed",
+  "Payment Completed but Course Locked",
+  "Duplicate Payment",
+  "Incorrect Purchase Status",
+  "Payment Problem",
+  "Refund Request",
+  "Transaction Not Found",
   "Technical Issue",
   "Account & Access",
   "Course Content",
   "Billing & Payment",
   "Moderation & Appeal",
   "General Inquiry",
+  "Course Upload Error",
+  "PDF/eBook Upload Error",
+  "Course Approval Delay",
+  "Teacher Profile Problem",
+  "Account Access Problem",
+  "Student Communication Issue",
+  "Earnings Query",
+  "Other",
 ];
 
 export const SUPPORT_REQUEST_PRIORITIES = [
@@ -564,17 +643,72 @@ export function getAdminSupportRequests() {
   return readAdminSupportRequestsState().records;
 }
 
+export function importLegacyStudentHelpRequests(legacyRequests = []) {
+  if (!Array.isArray(legacyRequests) || legacyRequests.length === 0) return 0;
+  const state = readAdminSupportRequestsState();
+  if (state.error) throw new Error(state.error);
+  const imported = new Set(state.records.map((item) => String(item.legacyHelpRequestId || "")));
+  const additions = [];
+  legacyRequests.filter(isRecord).forEach((legacy, index) => {
+    const legacyId = String(legacy.id || `legacy-${index}`).trim();
+    if (!legacyId || imported.has(legacyId)) return;
+    const createdAt = typeof legacy.createdAt === "string" ? legacy.createdAt : new Date().toISOString();
+    const statusValue = String(legacy.status || "Open").toLowerCase();
+    const status = statusValue === "resolved" ? "Resolved" : statusValue === "closed" ? "Closed" : statusValue === "assigned" ? "In Progress" : "Open";
+    const idBase = `support-legacy-${legacyId.replace(/[^a-z0-9_-]/gi, "-").slice(0, 80)}`;
+    const id = state.records.some((item) => String(item.id) === idBase) || additions.some((item) => item.id === idBase)
+      ? `${idBase}-${Date.now().toString(36)}-${index}`
+      : idBase;
+    const request = {
+      id,
+      legacyHelpRequestId: legacyId,
+      subject: String(legacy.subject || `Help request: ${legacy.teacherName || "Teacher"}`).slice(0, 160),
+      description: String(legacy.question || "Student requested help.").slice(0, 5000),
+      category: "Teacher Communication",
+      priority: SUPPORT_REQUEST_PRIORITIES.includes(legacy.priority) ? legacy.priority : "Medium",
+      status,
+      requesterName: String(legacy.studentName || "Student").slice(0, 120),
+      requesterEmail: String(legacy.studentEmail || "").trim().toLowerCase().slice(0, 254),
+      requesterRole: "Student",
+      requesterId: String(legacy.studentEmail || "").trim().toLowerCase().slice(0, 254),
+      relatedRecordId: String(legacy.teacherEmail || "").slice(0, 120),
+      relatedRecordTitle: String(legacy.teacherName || "Teacher").slice(0, 180),
+      assignedStaff: String(legacy.assignedTeacher || "").slice(0, 160),
+      createdAt,
+      updatedAt: typeof legacy.updatedAt === "string" ? legacy.updatedAt : createdAt,
+      ...(status === "Resolved" ? { resolvedAt: typeof legacy.updatedAt === "string" ? legacy.updatedAt : createdAt } : {}),
+      responses: [],
+      legacyImported: true,
+    };
+    additions.push(request);
+    imported.add(legacyId);
+  });
+  if (!additions.length) return 0;
+  window.localStorage.setItem(ADMIN_SUPPORT_REQUESTS_KEY, JSON.stringify([...additions, ...state.records]));
+  notifyAdminDataChanged();
+  return additions.length;
+}
+
 export function createAdminSupportRequest({
   subject,
   description,
   category = "General Inquiry",
   priority = "Medium",
-  requesterName = "Demo Student",
-  requesterEmail = "student.demo@example.com",
-  actor = "Admin",
+  requesterName = "User",
+  requesterEmail = "",
+  requesterRole = "User",
+  requesterId = "",
+  relatedRecordId = "",
+  relatedRecordTitle = "",
+  appealType = "",
+  originalDecision = "",
+  attachment = null,
+  moderationReportId = "",
+  actor = requesterEmail || requesterRole,
 }) {
   const cleanSubject = typeof subject === "string" ? subject.trim() : "";
   const cleanDescription = typeof description === "string" ? description.trim() : "";
+  const normalizedRequester = String(requesterEmail || "").trim().toLowerCase();
 
   if (cleanSubject.length < 3) {
     throw new Error("Subject must be at least 3 characters long.");
@@ -588,11 +722,23 @@ export function createAdminSupportRequest({
   if (!SUPPORT_REQUEST_PRIORITIES.includes(priority)) {
     throw new Error("Please select a supported priority level.");
   }
+  if (["Student", "Teacher"].includes(requesterRole) && !normalizedRequester) {
+    throw new Error("Sign in with an account email before submitting a support request.");
+  }
+  if (attachment && (Number(attachment.size) > 2 * 1024 * 1024 || String(attachment.dataUrl || "").length > 3 * 1024 * 1024)) {
+    throw new Error("Attachments must be 2 MB or smaller.");
+  }
 
   const state = readAdminSupportRequestsState();
   if (state.error) {
     throw new Error(state.error);
   }
+  const duplicate = state.records.find((item) => String(item.requesterEmail || "").toLowerCase() === normalizedRequester
+    && item.category === category
+    && String(item.subject || "").trim().toLowerCase() === cleanSubject.toLowerCase()
+    && String(item.description || "").trim().toLowerCase() === cleanDescription.toLowerCase()
+    && Date.now() - new Date(item.createdAt || 0).getTime() < 60_000);
+  if (normalizedRequester && duplicate) throw new Error("This same request was just submitted. Check My Tickets before sending it again.");
 
   const id = `support-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   const now = new Date().toISOString();
@@ -603,9 +749,19 @@ export function createAdminSupportRequest({
     description: cleanDescription,
     category,
     priority,
-    status: "Open",
-    requesterName: typeof requesterName === "string" && requesterName.trim() ? requesterName.trim() : "Demo User",
-    requesterEmail: typeof requesterEmail === "string" && requesterEmail.trim() ? requesterEmail.trim().toLowerCase() : "demo.user@example.com",
+    status: category === "Moderation & Appeal" ? "Submitted" : "Open",
+    requesterName: typeof requesterName === "string" && requesterName.trim() ? requesterName.trim().slice(0, 120) : "User",
+    requesterEmail: typeof requesterEmail === "string" ? requesterEmail.trim().toLowerCase().slice(0, 254) : "",
+    requesterRole: typeof requesterRole === "string" && requesterRole.trim() ? requesterRole.trim() : "User",
+    requesterId: typeof requesterId === "string" && requesterId.trim() ? requesterId.trim().slice(0, 160) : typeof requesterEmail === "string" ? requesterEmail.trim().toLowerCase().slice(0, 254) : "",
+    relatedRecordId: typeof relatedRecordId === "string" ? relatedRecordId.trim().slice(0, 120) : "",
+    relatedRecordTitle: typeof relatedRecordTitle === "string" ? relatedRecordTitle.trim().slice(0, 180) : "",
+    ...(typeof appealType === "string" && appealType.trim() ? { appealType: appealType.trim().slice(0, 100) } : {}),
+    ...(typeof originalDecision === "string" && originalDecision.trim() ? { originalDecision: originalDecision.trim().slice(0, 240) } : {}),
+    ...(attachment && typeof attachment === "object" && typeof attachment.dataUrl === "string" && typeof attachment.name === "string"
+      ? { attachment: { name: attachment.name.slice(0, 240), type: String(attachment.type || "application/octet-stream").slice(0, 120), size: Math.max(0, Number(attachment.size) || 0), dataUrl: attachment.dataUrl } }
+      : {}),
+    ...(category === "Moderation & Appeal" && String(moderationReportId || "").trim() ? { moderationReportId: String(moderationReportId).trim().slice(0, 80) } : {}),
     createdAt: now,
     updatedAt: now,
     responses: [],
@@ -617,12 +773,13 @@ export function createAdminSupportRequest({
   try {
     appendAdminActivityRecord({
       actor: actor || "Admin",
-      action: "Created support request",
-      category: "support",
-      entityType: "Support Request",
+      actorRole: requesterRole,
+      action: category === "Moderation & Appeal" ? "Submitted moderation appeal" : "Submitted support ticket",
+      category: category === "Moderation & Appeal" ? "moderation" : "support",
+      entityType: category === "Moderation & Appeal" ? "Moderation Appeal" : "Support Request",
       entityId: id,
       targetName: cleanSubject,
-      description: `Created demo support request: "${cleanSubject}" [${category} / ${priority}]`,
+      description: `Submitted ${category === "Moderation & Appeal" ? "appeal" : "support ticket"} ${id} [${category} / ${priority}].`,
       result: "Success",
     });
   } catch {
@@ -633,55 +790,139 @@ export function createAdminSupportRequest({
   return newRequest;
 }
 
-export function updateAdminSupportRequestStatus(id, nextStatus, actor = "Admin") {
-  if (!SUPPORT_REQUEST_STATUSES.includes(nextStatus)) {
-    throw new Error("This support request status is not supported.");
+function assertSupportRecordOwner(record, actorRole, requesterEmail) {
+  if (!["Student", "Teacher"].includes(actorRole)) return;
+  const normalizedEmail = String(requesterEmail || "").trim().toLowerCase();
+  if (!normalizedEmail || normalizedEmail !== String(record.requesterEmail || "").trim().toLowerCase()
+    || (record.requesterRole && record.requesterRole !== actorRole)) {
+    throw new Error("You can only access your own support record.");
   }
+}
 
+function notifySupportRequester(record, event, message) {
+  const role = String(record?.requesterRole || "").toLowerCase();
+  if (!record?.requesterEmail || !["student", "teacher"].includes(role)) return;
+  const updatedAt = record.updatedAt || new Date().toISOString();
+  try {
+    addDemoNotification(role, record.requesterEmail, {
+      id: `support:${record.id}:${event}:${updatedAt}`,
+      type: "support",
+      title: event === "reply" ? record.category === "Moderation & Appeal" ? "Admin replied to your appeal" : "Admin replied to your support ticket" : event === "assigned" ? "Your support ticket was assigned" : record.category === "Moderation & Appeal" ? "Your appeal was updated" : "Support ticket updated",
+      message,
+      link: record.category === "Moderation & Appeal" ? "appeals" : "help-support",
+      createdAt: updatedAt,
+    });
+  } catch {
+    // A notification failure must not prevent a support update from being saved.
+  }
+}
+
+export function updateAdminSupportRequestStatus(id, nextStatus, actor = "Admin", decisionReason = "", options = {}) {
   const state = readAdminSupportRequestsState();
   if (state.error) {
     throw new Error(state.error);
   }
 
+  const currentRecord = state.records.find((item) => String(item.id) === String(id));
+  if (!currentRecord) {
+    throw new Error("The requested support record could not be found.");
+  }
+  const actorRole = options.actorRole || "Admin";
+  if (!["Admin", "Student", "Teacher"].includes(actorRole)) throw new Error("This account cannot update support ticket status.");
+  assertSupportRecordOwner(currentRecord, actorRole, options.requesterEmail);
+  if (["Student", "Teacher"].includes(actorRole)) {
+    const allowedUserStatuses = currentRecord.status === "Closed" ? ["Open"] : currentRecord.status === "Resolved" ? ["Closed"] : [];
+    if (!allowedUserStatuses.includes(nextStatus) || currentRecord.category === "Moderation & Appeal") {
+      throw new Error("You can close a resolved ticket or reopen a closed ticket only.");
+    }
+  }
+  const allowedStatuses = currentRecord.category === "Moderation & Appeal" ? MODERATION_APPEAL_STATUSES : SUPPORT_REQUEST_STATUSES;
+  if (!allowedStatuses.includes(nextStatus)) {
+    throw new Error("This support request status is not supported.");
+  }
+  if (currentRecord.category === "Moderation & Appeal" && ["Accepted", "Rejected"].includes(nextStatus) && String(decisionReason || "").trim().length < 3) {
+    throw new Error("Add a decision reason before accepting or rejecting an appeal.");
+  }
+
   let updatedRecord = null;
   const updatedRecords = state.records.map((item) => {
     if (String(item.id) === String(id)) {
+      const now = new Date().toISOString();
       updatedRecord = {
         ...item,
         status: nextStatus,
-        updatedAt: new Date().toISOString(),
+        updatedAt: now,
+        ...(nextStatus === "Resolved" ? { resolvedAt: now } : {}),
+        ...(currentRecord.category === "Moderation & Appeal" && ["Accepted", "Rejected"].includes(nextStatus)
+          ? { decisionReason: String(decisionReason).trim().slice(0, 2000), decisionAt: now, decidedBy: actor }
+          : {}),
       };
       return updatedRecord;
     }
     return item;
   });
 
-  if (!updatedRecord) {
-    throw new Error("The requested support record could not be found.");
-  }
-
   window.localStorage.setItem(ADMIN_SUPPORT_REQUESTS_KEY, JSON.stringify(updatedRecords));
 
   try {
     appendAdminActivityRecord({
       actor: actor || "Admin",
-      action: nextStatus === "Closed" ? "Closed support request" : "Updated support request status",
-      category: "support",
-      entityType: "Support Request",
+      actorRole,
+      action: updatedRecord.category === "Moderation & Appeal"
+        ? ["Accepted", "Rejected"].includes(currentRecord.status) && ["Accepted", "Rejected"].includes(nextStatus) ? "Appeal Decision Changed" : nextStatus === "Accepted" || nextStatus === "Rejected" ? `Appeal ${nextStatus.toLowerCase()}` : `Updated appeal status to ${nextStatus}`
+        : nextStatus === "Closed" ? "Ticket Closed" : nextStatus === "Resolved" ? "Ticket Resolved" : nextStatus === "Open" && currentRecord.status === "Closed" ? "Ticket Reopened" : "Updated support ticket status",
+      category: updatedRecord.category === "Moderation & Appeal" ? "moderation" : "support",
+      entityType: updatedRecord.category === "Moderation & Appeal" ? "Moderation Appeal" : "Support Request",
       entityId: String(id),
       targetName: updatedRecord.subject || "Support Request",
-      description: `Updated status of request ${id} to "${nextStatus}".`,
+      description: `Updated status of ${id} to "${nextStatus}"${decisionReason ? `: ${String(decisionReason).trim()}` : ""}.`,
       result: "Success",
     });
   } catch {
     // Activity log failure should not block status change
   }
 
+  if (actorRole === "Admin") notifySupportRequester(updatedRecord, "status", `Your ${updatedRecord.category === "Moderation & Appeal" ? "appeal" : "ticket"} ${updatedRecord.id} is now ${updatedRecord.status}${updatedRecord.decisionReason ? `. Admin reason: ${updatedRecord.decisionReason}` : ""}.`);
   notifyAdminDataChanged();
   return updatedRecords;
 }
 
-export function addAdminSupportResponse(id, { message, type = "response", author = "Admin", actor = "Admin" }) {
+export function updateAdminSupportRequestAssignment(id, assignedStaff, actor = "Admin") {
+  const staff = String(assignedStaff || "").trim().slice(0, 160);
+  const state = readAdminSupportRequestsState();
+  if (state.error) throw new Error(state.error);
+  const current = state.records.find((item) => String(item.id) === String(id));
+  if (!current) throw new Error("The requested support record could not be found.");
+  let updatedRecord;
+  const now = new Date().toISOString();
+  const updatedRecords = state.records.map((item) => {
+    if (String(item.id) !== String(id)) return item;
+    updatedRecord = { ...item, assignedStaff: staff, assignedBy: staff ? actor : "", assignedAt: staff ? now : "", updatedAt: now };
+    return updatedRecord;
+  });
+  window.localStorage.setItem(ADMIN_SUPPORT_REQUESTS_KEY, JSON.stringify(updatedRecords));
+  try {
+    appendAdminActivityRecord({ actor, actorRole: "Admin", action: staff ? current.assignedStaff ? "Ticket Reassigned" : "Ticket Assigned" : "Ticket Assignment Cleared", category: "support", entityType: current.category === "Moderation & Appeal" ? "Moderation Appeal" : "Support Request", entityId: String(id), targetId: String(id), targetName: current.subject, previousValue: current.assignedStaff || "Unassigned", newValue: staff || "Unassigned", result: "Success" });
+  } catch { /* audit logging must not block assignment */ }
+  if (staff) notifySupportRequester(updatedRecord, "assigned", `Your ticket ${id} was assigned to ${staff}.`);
+  notifyAdminDataChanged();
+  return updatedRecords;
+}
+
+export function updateAdminSupportRequestPriority(id, priority, actor = "Admin") {
+  if (!SUPPORT_REQUEST_PRIORITIES.includes(priority)) throw new Error("Select a supported priority level.");
+  const state = readAdminSupportRequestsState();
+  if (state.error) throw new Error(state.error);
+  const current = state.records.find((item) => String(item.id) === String(id));
+  if (!current) throw new Error("The requested support record could not be found.");
+  const updatedRecords = state.records.map((item) => String(item.id) === String(id) ? { ...item, priority, updatedAt: new Date().toISOString() } : item);
+  window.localStorage.setItem(ADMIN_SUPPORT_REQUESTS_KEY, JSON.stringify(updatedRecords));
+  try { appendAdminActivityRecord({ actor, actorRole: "Admin", action: "Ticket Priority Changed", category: "support", entityType: "Support Request", entityId: String(id), targetId: String(id), targetName: current.subject, previousValue: current.priority, newValue: priority, result: "Success" }); } catch { /* audit logging must not block priority changes */ }
+  notifyAdminDataChanged();
+  return updatedRecords;
+}
+
+export function addAdminSupportResponse(id, { message, type = "response", author = "Admin", actor = "Admin", authorRole = "Admin", requesterEmail = "" }) {
   const cleanMessage = typeof message === "string" ? message.trim() : "";
   if (cleanMessage.length < 2) {
     throw new Error("Response or note message cannot be empty.");
@@ -696,6 +937,12 @@ export function addAdminSupportResponse(id, { message, type = "response", author
   }
 
   const now = new Date().toISOString();
+  const currentRecord = state.records.find((item) => String(item.id) === String(id));
+  if (!currentRecord) throw new Error("The requested support record could not be found.");
+  assertSupportRecordOwner(currentRecord, authorRole, requesterEmail);
+  if (currentRecord.status === "Closed") throw new Error("Reopen this ticket before replying.");
+  if (!["Admin", "Student", "Teacher"].includes(authorRole)) throw new Error("This account cannot reply to support tickets.");
+  if (authorRole !== "Admin" && finalType !== "response") throw new Error("Only Admin can add internal notes.");
   const responseId = `resp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   let updatedRecord = null;
 
@@ -704,6 +951,7 @@ export function addAdminSupportResponse(id, { message, type = "response", author
     message: cleanMessage,
     type: finalType,
     author: typeof author === "string" && author.trim() ? author.trim() : actor || "Admin",
+    authorRole,
     createdAt: now,
   };
 
@@ -712,6 +960,7 @@ export function addAdminSupportResponse(id, { message, type = "response", author
       const existingResponses = Array.isArray(item.responses) ? item.responses : [];
       updatedRecord = {
         ...item,
+        ...(authorRole !== "Admin" && item.status === "Resolved" ? { status: "Open", reopenedAt: now } : {}),
         responses: [...existingResponses, newResponse],
         updatedAt: now,
       };
@@ -729,7 +978,8 @@ export function addAdminSupportResponse(id, { message, type = "response", author
   try {
     appendAdminActivityRecord({
       actor: actor || "Admin",
-      action: finalType === "internal_note" ? "Added internal note" : "Added support response",
+      actorRole: authorRole,
+      action: finalType === "internal_note" ? "Added internal note" : authorRole !== "Admin" && currentRecord.status === "Resolved" ? "Ticket Reopened by Requester Reply" : "Added support response",
       category: "support",
       entityType: "Support Request",
       entityId: String(id),
@@ -741,6 +991,67 @@ export function addAdminSupportResponse(id, { message, type = "response", author
     // Activity log failure should not block response addition
   }
 
+  if (authorRole === "Admin" && finalType === "response") notifySupportRequester(updatedRecord, "reply", `Admin replied to ticket ${id}.`);
   notifyAdminDataChanged();
   return updatedRecord;
+}
+
+export const SUPPORT_FAQ_CATEGORIES = [
+  "Account & Login", "Courses & Enrollment", "PDF/eBooks", "Video Lectures", "Teacher Registration",
+  "Course Upload", "Payments & Refunds", "AI Tutor", "Certificates", "Technical Support",
+];
+
+export const DEFAULT_SUPPORT_FAQS = [
+  { id: "faq-education-levels", category: "Courses & Enrollment", question: "Which education levels are available?", answer: "The platform is designed to organize learning from Class 1 to 12, college, undergraduate, postgraduate and PhD levels.", published: true },
+  { id: "faq-subjects", category: "Courses & Enrollment", question: "Which subjects can I explore?", answer: "You can explore technology, science, mathematics, business, languages, engineering, health sciences, humanities and more.", published: true },
+  { id: "faq-professional-courses", category: "Courses & Enrollment", question: "Can I search for professional courses?", answer: "Yes. You can search for topics such as Web Development, Artificial Intelligence, Machine Learning and Data Science.", published: true },
+  { id: "faq-video-lectures", category: "Video Lectures", question: "Are all courses and videos already available?", answer: "The platform currently contains a starter course catalog. Complete notes, verified videos and detailed syllabuses need to be added progressively.", published: true },
+  { id: "faq-more-courses", category: "Courses & Enrollment", question: "Will the platform support more courses?", answer: "Yes. The catalog is structured so more subjects, courses and learning resources can be added in the future.", published: true },
+];
+
+export function readAdminHelpFaqsState() {
+  try {
+    const raw = window.localStorage.getItem(ADMIN_HELP_FAQS_KEY);
+    if (raw === null) return { records: DEFAULT_SUPPORT_FAQS, error: null };
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return { records: [], error: "Saved Help Center FAQs are not in a supported format." };
+    return { records: parsed.filter(isRecord), error: null };
+  } catch {
+    return { records: [], error: "Saved Help Center FAQs could not be read from browser storage." };
+  }
+}
+
+export function getAdminHelpFaqs({ publishedOnly = false } = {}) {
+  const records = readAdminHelpFaqsState().records;
+  return publishedOnly ? records.filter((faq) => faq.published !== false) : records;
+}
+
+export function saveAdminHelpFaq(faq, actor = "Admin") {
+  const question = String(faq?.question || "").trim();
+  const answer = String(faq?.answer || "").trim();
+  if (question.length < 5 || answer.length < 5) throw new Error("FAQ question and answer must each contain at least 5 characters.");
+  if (!SUPPORT_FAQ_CATEGORIES.includes(faq.category)) throw new Error("Select a valid FAQ category.");
+  const state = readAdminHelpFaqsState();
+  if (state.error) throw new Error(state.error);
+  const now = new Date().toISOString();
+  const id = String(faq.id || `faq-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`);
+  const existing = state.records.find((item) => item.id === id);
+  const savedFaq = { id, category: faq.category, question: question.slice(0, 240), answer: answer.slice(0, 5000), published: faq.published !== false, createdAt: existing?.createdAt || now, updatedAt: now };
+  const records = existing ? state.records.map((item) => item.id === id ? savedFaq : item) : [savedFaq, ...state.records];
+  window.localStorage.setItem(ADMIN_HELP_FAQS_KEY, JSON.stringify(records));
+  try { appendAdminActivityRecord({ actor, actorRole: "Admin", action: existing ? "FAQ Updated" : "FAQ Created", category: "support", entityType: "Support FAQ", entityId: id, targetId: id, targetName: question, previousValue: existing ? "Existing FAQ" : "Not present", newValue: savedFaq.published ? "Published" : "Unpublished", result: "Success" }); } catch { /* audit logging must not block FAQ changes */ }
+  notifyAdminDataChanged();
+  return records;
+}
+
+export function deleteAdminHelpFaq(id, actor = "Admin") {
+  const state = readAdminHelpFaqsState();
+  if (state.error) throw new Error(state.error);
+  const faq = state.records.find((item) => item.id === id);
+  if (!faq) throw new Error("The selected FAQ could not be found.");
+  const records = state.records.filter((item) => item.id !== id);
+  window.localStorage.setItem(ADMIN_HELP_FAQS_KEY, JSON.stringify(records));
+  try { appendAdminActivityRecord({ actor, actorRole: "Admin", action: "FAQ Deleted", category: "support", entityType: "Support FAQ", entityId: id, targetId: id, targetName: faq.question, result: "Success" }); } catch { /* audit logging must not block FAQ changes */ }
+  notifyAdminDataChanged();
+  return records;
 }

@@ -1,3 +1,4 @@
+import { appendAdminActivityRecord } from "../components/admin/adminData";
 
 const cartKey = (email) => `educonnect.student.${email}.cart`;
 const enrollmentKey = (email) => `educonnect.student.${email}.enrollments`;
@@ -103,6 +104,26 @@ export function demoCheckout(email) {
     JSON.stringify([...getStudentOrders(email), order])
   );
   localStorage.setItem(cartKey(email), JSON.stringify([]));
+  try {
+    appendAdminActivityRecord({
+      actor: email.toLowerCase(),
+      actorRole: "Student",
+      action: "Demo Checkout Completed",
+      category: "financial-management",
+      module: "Financial Management",
+      entityType: "Demo Order",
+      entityId: String(order.id),
+      targetId: String(order.id),
+      targetName: `Course order (${newCourses.length} item${newCourses.length === 1 ? "" : "s"})`,
+      previousValue: "Cart",
+      newValue: "Completed",
+      description: "Student completed a demo course checkout. No real payment was processed and no payment credentials were stored.",
+      result: "Success",
+      status: "Completed",
+    });
+  } catch {
+    // Keep checkout successful when local audit storage is unavailable.
+  }
   notifyChange();
   window.dispatchEvent(new Event(ORDERS_EVENT));
 

@@ -1,4 +1,4 @@
-import DemoAdminSetup from "./pages/DemoAdminSetup";
+import DemoAdminSetup from "./components/admin/AdminDemoSetup";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
@@ -9,6 +9,7 @@ import {
   ChevronUp,
   ArrowLeft,
   ArrowRight,
+  ShoppingCart,
   Star,
   Users,
   BookOpen,
@@ -40,10 +41,14 @@ import {
 } from "lucide-react";
 
 import ExploreCourses from "./pages/ExploreCourses";
+import PublishedCourses from "./components/Marketplace/PublishedCourses";
 import SignupPage from "./pages/SignupPage";
 import LoginPage from "./pages/LoginPage";
 import DashboardPage from "./pages/DashboardPage";
+import CartPage from "./components/Marketplace/CartPage";
 import ResilientImage from "./components/ResilientImage";
+import { ADMIN_DATA_CHANGED_EVENT, getAdminHelpFaqs } from "./components/admin/adminData";
+import { getCart, getStudentEmail } from "./utils/studentCart";
 import reactLogo from "./assets/partners/react.svg";
 import pythonLogo from "./assets/partners/python.svg";
 import tensorflowLogo from "./assets/partners/tensorflow.svg";
@@ -69,57 +74,6 @@ const categories = Array.from({ length: 12 }, (_, index) => ({
   count: "School Education",
   color: ["purple", "pink", "orange", "blue", "green", "yellow"][index % 6]
 }));
-
-const educationLevels = [
-  {
-    name: "School Education",
-    detail: "Class 1 to Class 12",
-    courses: "12 Classes",
-    icon: School,
-    color: "purple",
-    category: "All"
-  },
-  {
-    name: "College",
-    detail: "Intermediate and Diploma",
-    courses: "FA, FSc, ICS, ICom",
-    icon: BookOpen,
-    color: "pink",
-    category: "College"
-  },
-  {
-    name: "Undergraduate",
-    detail: "Bachelor's Degree Programs",
-    courses: "BS, BA, BSc, BBA",
-    icon: GraduationCap,
-    color: "blue",
-    category: "Undergraduate"
-  },
-  {
-    name: "Postgraduate",
-    detail: "Master's Degree Programs",
-    courses: "MS, MSc, MBA, MPhil",
-    icon: Award,
-    color: "orange",
-    category: "Postgraduate"
-  },
-  {
-    name: "Doctoral Studies",
-    detail: "Advanced Research Programs",
-    courses: "PhD Programs",
-    icon: Microscope,
-    color: "green",
-    category: "Doctoral"
-  },
-  {
-    name: "Professional Learning",
-    detail: "Career and Technical Skills",
-    courses: "Technology, Business, Design",
-    icon: BriefcaseBusiness,
-    color: "yellow",
-    category: "Technology"
-  }
-];
 
 const professionalFields = [
   { name: "Computer Science", icon: Monitor, category: "Technology" },
@@ -360,6 +314,13 @@ function App() {
   const location = useLocation();
   const navigate = useNavigate();
   const currentPage = location.pathname === "/" ? "home" : "courses";
+  const routeParts = location.pathname.split("/").filter(Boolean);
+  const courseRoute = routeParts[0] === "course" && routeParts.length >= 3
+    ? {
+        teacherEmail: decodeURIComponent(routeParts[1]),
+        id: decodeURIComponent(routeParts.slice(2).join("/")),
+      }
+    : null;
   const exploreRouteState = getExploreRouteState(location.pathname, location.search);
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
@@ -375,6 +336,33 @@ function App() {
   const [canScrollFieldsBack, setCanScrollFieldsBack] = useState(false);
   const [canScrollFieldsForward, setCanScrollFieldsForward] = useState(true);
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const [showGlobalCart, setShowGlobalCart] = useState(false);
+  const [cartCount, setCartCount] = useState(() => {
+    const email = getStudentEmail();
+    return email ? getCart(email).length : 0;
+  });
+  const [helpFaqs, setHelpFaqs] = useState(() => getAdminHelpFaqs({ publishedOnly: true }));
+
+  useEffect(() => {
+    const refreshCart = () => {
+      const email = getStudentEmail();
+      setCartCount(email ? getCart(email).length : 0);
+    };
+
+    refreshCart();
+    window.addEventListener("storage", refreshCart);
+    window.addEventListener("focus", refreshCart);
+    window.addEventListener("educonnect:student-data-changed", refreshCart);
+    return () => {
+      window.removeEventListener("storage", refreshCart);
+      window.removeEventListener("focus", refreshCart);
+      window.removeEventListener("educonnect:student-data-changed", refreshCart);
+    };
+  }, [location.pathname]);
+
+  useEffect(() => {
+    setShowGlobalCart(false);
+  }, [location.pathname]);
 
   // Shows the back-to-top control only after the visitor scrolls down.
   useEffect(() => {
@@ -387,6 +375,16 @@ function App() {
 
     return () => {
       window.removeEventListener("scroll", updateScrollTopVisibility);
+    };
+  }, []);
+
+  useEffect(() => {
+    const refreshFaqs = () => setHelpFaqs(getAdminHelpFaqs({ publishedOnly: true }));
+    window.addEventListener("storage", refreshFaqs);
+    window.addEventListener(ADMIN_DATA_CHANGED_EVENT, refreshFaqs);
+    return () => {
+      window.removeEventListener("storage", refreshFaqs);
+      window.removeEventListener(ADMIN_DATA_CHANGED_EVENT, refreshFaqs);
     };
   }, []);
 
@@ -463,6 +461,16 @@ function App() {
   const closeMenus = () => {
     setOpenMenu("");
     setMobileOpen(false);
+  };
+
+  const openGlobalCart = () => {
+    closeMenus();
+    if (!getStudentEmail()) {
+      navigate("/login");
+      return;
+    }
+    setShowGlobalCart(true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const toggleMenu = (menu) => {
@@ -780,6 +788,16 @@ if (
 
           <div className="nav-actions">
             <button
+              type="button"
+              className="cart-nav-btn"
+              onClick={openGlobalCart}
+              aria-label={`My Cart, ${cartCount} items`}
+            >
+              <ShoppingCart size={18} />
+              <span>My Cart ({cartCount})</span>
+            </button>
+
+            <button
               className="login-btn"
               onClick={() => {
                 closeMenus();
@@ -805,7 +823,21 @@ if (
       {/* MAIN CONTENT */}
       <main>
 
-        {currentPage === "courses" ? (
+        {showGlobalCart ? (
+          <CartPage
+            email={getStudentEmail()}
+            onBack={() => setShowGlobalCart(false)}
+            onComplete={() => {
+              setShowGlobalCart(false);
+              navigate("/student/dashboard");
+            }}
+          />
+        ) : courseRoute ? (
+          <PublishedCourses
+            courseRoute={courseRoute}
+            backTo={location.state?.from || "/"}
+          />
+        ) : currentPage === "courses" ? (
 
           <ExploreCourses
             initialSearch={exploreRouteState.search}
@@ -939,56 +971,127 @@ if (
               </div>
             </section>
 
-            {/* EDUCATION LEVELS */}
-            <section className="section categories-section" id="categories">
+            <PublishedCourses
+              layout="carousel"
+              title="Explore"
+              eyebrow="EXPLORE COURSES"
+              description="Browse courses published by our teachers. Select a course to view its lessons and details."
+              onViewAll={() => openExploreCourses("", "All")}
+            />
+
+            {/* PROFESSIONAL FIELDS */}
+            <section className="section courses-section" id="fields">
               <div className="section-heading">
                 <div>
-                  <span className="eyebrow">CHOOSE YOUR EDUCATION LEVEL</span>
+                  <span className="eyebrow">EXPLORE KNOWLEDGE</span>
                   <h2>
-                    Learning From <span>School to PhD</span>
+                    Popular <span>Study Fields</span>
                   </h2>
                   <p>
-                    Choose your education level and explore available programs.
+                    Explore academic and professional subjects from different fields.
                   </p>
                 </div>
 
+              </div>
+
+              <div className="study-fields-carousel">
+                <button
+                  type="button"
+                  className="study-fields-scroll-button"
+                  aria-label="Scroll to previous study fields"
+                  title="Previous fields"
+                  aria-hidden={!canScrollFieldsBack}
+                  tabIndex={canScrollFieldsBack ? 0 : -1}
+                  onClick={() =>
+                    studyFieldsRef.current?.scrollBy({
+                      left: -480,
+                      behavior: "smooth",
+                    })
+                  }
+                  style={{ visibility: canScrollFieldsBack ? "visible" : "hidden" }}
+                >
+                  <ArrowLeft size={21} />
+                </button>
+
+                <div className="study-fields-track" ref={studyFieldsRef}>
+                  {professionalFields.map((field) => {
+                    const Icon = field.icon;
+
+                    return (
+                      <button
+                        className="category-card study-field-card"
+                        key={field.name}
+                        onClick={() => openExploreCourses(field.name, "All")}
+                      >
+                        <span className="category-icon purple study-field-icon">
+                          <Icon size={25} />
+                        </span>
+
+                        <strong>{field.name}</strong>
+                        <small>{field.category}</small>
+
+                        <span className="category-arrow">
+                          <ArrowRight size={17} />
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <button
+                  type="button"
+                  className="study-fields-scroll-button"
+                  aria-label="Scroll to more study fields"
+                  title="More fields"
+                  aria-hidden={!canScrollFieldsForward}
+                  tabIndex={canScrollFieldsForward ? 0 : -1}
+                  onClick={() =>
+                    studyFieldsRef.current?.scrollBy({
+                      left: 480,
+                      behavior: "smooth",
+                    })
+                  }
+                  style={{ visibility: canScrollFieldsForward ? "visible" : "hidden" }}
+                >
+                  <ArrowRight size={21} />
+                </button>
+              </div>
+
+              <div className="study-fields-view-all">
                 <button
                   className="text-link"
                   onClick={() => openExploreCourses("", "All")}
                 >
-                  Explore All <ArrowRight size={17} />
+                  View All Courses <ArrowRight size={17} />
                 </button>
               </div>
 
-              <div className="category-grid">
-                {educationLevels.map((item) => {
-                  const Icon = item.icon;
-
-                  return (
-                    <button
-                      key={item.name}
-                      className="category-card"
-                      onClick={() => {
-                        if (item.name === "School Education") {
-                          openCategoryPage("Class 1");
-                        } else {
-                          openCategoryPage(item.category);
-                        }
-                      }}
-                    >
-                      <span className={`category-icon ${item.color}`}>
-                        <Icon size={27} />
-                      </span>
-
-                      <strong>{item.name}</strong>
-                      <small>{item.detail}</small>
-
-                      <span className="category-arrow">
-                        <ArrowRight size={17} />
-                      </span>
-                    </button>
-                  );
-                })}
+              <div className="study-partners">
+                <p>Explore popular tools and platforms across technology and learning</p>
+                <div className="study-partners-logos" aria-label="Technology and learning platforms">
+                  {/* The hidden duplicate keeps the logo marquee moving seamlessly. */}
+                  <div className="study-partners-track">
+                    {[false, true].map((isDuplicate) => (
+                      <div
+                        className="study-partners-group"
+                        key={isDuplicate ? "duplicate" : "original"}
+                        aria-hidden={isDuplicate}
+                      >
+                        {studyPartnerCompanies.map((company) => (
+                          <div
+                            className="study-partner-logo"
+                            key={company.name}
+                            data-tooltip={company.name}
+                            aria-label={isDuplicate ? undefined : company.name}
+                            tabIndex={isDuplicate ? -1 : 0}
+                          >
+                            <img src={company.logo} alt="" />
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
             </section>
 
@@ -1183,122 +1286,6 @@ if (
                 >
                   <ArrowRight size={21} />
                 </button>
-              </div>
-            </section>
-
-            {/* PROFESSIONAL FIELDS */}
-            <section className="section courses-section" id="fields">
-              <div className="section-heading">
-                <div>
-                  <span className="eyebrow">EXPLORE KNOWLEDGE</span>
-                  <h2>
-                    Popular <span>Study Fields</span>
-                  </h2>
-                  <p>
-                    Explore academic and professional subjects from different fields.
-                  </p>
-                </div>
-
-              </div>
-
-              <div className="study-fields-carousel">
-                <button
-                  type="button"
-                  className="study-fields-scroll-button"
-                  aria-label="Scroll to previous study fields"
-                  title="Previous fields"
-                  aria-hidden={!canScrollFieldsBack}
-                  tabIndex={canScrollFieldsBack ? 0 : -1}
-                  onClick={() =>
-                    studyFieldsRef.current?.scrollBy({
-                      left: -480,
-                      behavior: "smooth",
-                    })
-                  }
-                  style={{ visibility: canScrollFieldsBack ? "visible" : "hidden" }}
-                >
-                  <ArrowLeft size={21} />
-                </button>
-
-                <div className="study-fields-track" ref={studyFieldsRef}>
-                  {professionalFields.map((field) => {
-                    const Icon = field.icon;
-
-                    return (
-                      <button
-                        className="category-card study-field-card"
-                        key={field.name}
-                        onClick={() => openExploreCourses(field.name, "All")}
-                      >
-                        <span className="category-icon purple study-field-icon">
-                          <Icon size={25} />
-                        </span>
-
-                        <strong>{field.name}</strong>
-                        <small>{field.category}</small>
-
-                        <span className="category-arrow">
-                          <ArrowRight size={17} />
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <button
-                  type="button"
-                  className="study-fields-scroll-button"
-                  aria-label="Scroll to more study fields"
-                  title="More fields"
-                  aria-hidden={!canScrollFieldsForward}
-                  tabIndex={canScrollFieldsForward ? 0 : -1}
-                  onClick={() =>
-                    studyFieldsRef.current?.scrollBy({
-                      left: 480,
-                      behavior: "smooth",
-                    })
-                  }
-                  style={{ visibility: canScrollFieldsForward ? "visible" : "hidden" }}
-                >
-                  <ArrowRight size={21} />
-                </button>
-              </div>
-
-              <div className="study-fields-view-all">
-                <button
-                  className="text-link"
-                  onClick={() => openExploreCourses("", "All")}
-                >
-                  View All Courses <ArrowRight size={17} />
-                </button>
-              </div>
-
-              <div className="study-partners">
-                <p>Explore popular tools and platforms across technology and learning</p>
-                <div className="study-partners-logos" aria-label="Technology and learning platforms">
-                  {/* The hidden duplicate keeps the logo marquee moving seamlessly. */}
-                  <div className="study-partners-track">
-                    {[false, true].map((isDuplicate) => (
-                      <div
-                        className="study-partners-group"
-                        key={isDuplicate ? "duplicate" : "original"}
-                        aria-hidden={isDuplicate}
-                      >
-                        {studyPartnerCompanies.map((company) => (
-                          <div
-                            className="study-partner-logo"
-                            key={company.name}
-                            data-tooltip={company.name}
-                            aria-label={isDuplicate ? undefined : company.name}
-                            tabIndex={isDuplicate ? -1 : 0}
-                          >
-                            <img src={company.logo} alt="" />
-                          </div>
-                        ))}
-                      </div>
-                    ))}
-                  </div>
-                </div>
               </div>
             </section>
 
@@ -1576,31 +1563,10 @@ if (
               </div>
 
               <div className="faq-list">
-                {[
-                  [
-                    "Which education levels are available?",
-                    "The platform is designed to organize learning from Class 1 to 12, college, undergraduate, postgraduate and PhD levels."
-                  ],
-                  [
-                    "Which subjects can I explore?",
-                    "You can explore technology, science, mathematics, business, languages, engineering, health sciences, humanities and more."
-                  ],
-                  [
-                    "Can I search for professional courses?",
-                    "Yes. You can search for topics such as Web Development, Artificial Intelligence, Machine Learning and Data Science."
-                  ],
-                  [
-                    "Are all courses and videos already available?",
-                    "The platform currently contains a starter course catalog. Complete notes, verified videos and detailed syllabuses need to be added progressively."
-                  ],
-                  [
-                    "Will the platform support more courses?",
-                    "Yes. The catalog is structured so more subjects, courses and learning resources can be added in the future."
-                  ]
-                ].map(([question, answer], index) => (
+                {helpFaqs.map(({ question, answer, id }, index) => (
                   <div
                     className={`faq-item ${faqOpen === index ? "faq-active" : ""}`}
-                    key={question}
+                    key={id || question}
                   >
                     <button
                       onClick={() =>

@@ -1,49 +1,132 @@
 
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
+  ArrowLeft,
+  ArrowRight,
   BookOpen,
   Clock3,
   GraduationCap,
-  ShoppingCart,
+  Star,
+  UserRound,
 } from "lucide-react";
 
 import { getPublishedTeacherCourses } from "../../utils/teacherCourses";
 import { getCart, getStudentEmail } from "../../utils/studentCart";
+import { courseReviewKey, getReviews, REVIEW_EVENT } from "../../utils/courseReviews";
+import {
+  getRelatedPublishedCourses,
+  isAcademicProfileComplete,
+  normalizeRecommendationText,
+} from "../../utils/studentRecommendations";
 
 import CourseDetails from "./CourseDetails";
 import CartPage from "./CartPage";
 import "./PublishedCourses.css";
 
-export default function PublishedCourses() {
+function teacherRatingSummary(course, courses, reviews) {
+  const teacherEmail = String(course.teacherEmail || "").toLowerCase();
+  const teacherCourseKeys = new Set(
+    courses
+      .filter((item) => String(item.teacherEmail || "").toLowerCase() === teacherEmail)
+      .map(courseReviewKey)
+  );
+  const ratings = reviews
+    .filter((review) => teacherCourseKeys.has(review.courseKey))
+    .map((review) => Number(review.rating))
+    .filter((rating) => Number.isFinite(rating) && rating >= 1 && rating <= 5);
+
+  return {
+    rating: ratings.length ? ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length : null,
+    reviewCount: ratings.length,
+  };
+}
+
+function matchesEducationProfileLevel(course, profile) {
+  if (!profile?.educationLevel) return true;
+  const courseLevels = [
+    course.educationLevel,
+    course.targetLevel,
+    course.instructorProfile?.teachingEducationLevel,
+  ].filter(Boolean).map(normalizeRecommendationText);
+  if (!courseLevels.length) return false;
+
+  const expectedLevels = {
+    school: ["school", "primary", "middle", "secondary", "higher secondary", "class"],
+    intermediate: ["intermediate", "college", "higher secondary"],
+    university: ["university", "undergraduate", "postgraduate", "doctoral", "phd", "bs", "masters"],
+    online: ["online", "interest", "professional"],
+  }[profile.educationLevel] || [];
+
+  const levelMatches = courseLevels.some((courseLevel) =>
+    expectedLevels.some((expected) => courseLevel.includes(expected))
+  );
+  if (!levelMatches) return false;
+
+  const courseClass = Number(course.classNumber || course.grade || 0);
+  if (profile.educationLevel === "school" && profile.classNumber && courseClass && courseClass !== Number(profile.classNumber)) return false;
+
+  const courseYear = Number(course.intermediateYear || course.year || 0);
+  if (profile.educationLevel === "intermediate" && profile.intermediateYear && courseYear && courseYear !== Number(profile.intermediateYear)) return false;
+  if (profile.educationLevel === "intermediate" && profile.stream && course.stream
+    && normalizeRecommendationText(profile.stream) !== normalizeRecommendationText(course.stream)) return false;
+
+  const courseDegree = normalizeRecommendationText(course.degreeLevel || course.instructorProfile?.teachingDegreeLevel);
+  if (profile.educationLevel === "university" && profile.degreeLevel && courseDegree && courseDegree !== normalizeRecommendationText(profile.degreeLevel)) return false;
+
+  return true;
+}
+
+export default function PublishedCourses({
+  title = "Courses From Our Instructors",
+  eyebrow = "EDUCONNECT AI MARKETPLACE",
+  description = "Explore courses reviewed and published by EduConnect AI.",
+  layout = "grid",
+  onViewAll,
+  courseRoute = null,
+  backTo = "/",
+  educationProfile = null,
+  subjectFilter = "All",
+}) {
   const navigate = useNavigate();
+  const location = useLocation();
 
   // Published teacher courses  
   const [courses, setCourses] = useState(() =>
     getPublishedTeacherCourses()
   );
+  const [reviews, setReviews] = useState(() => getReviews());
 
   // Selected course
   const [selectedCourse, setSelectedCourse] = useState(null);
+  const [expandedDescriptions, setExpandedDescriptions] = useState({});
+  const carouselRef = useRef(null);
+  const [canScrollBack, setCanScrollBack] = useState(false);
+  const [canScrollForward, setCanScrollForward] = useState(false);
 
   // Cart page visibility
   const [showCart, setShowCart] = useState(false);
 
-  // Cart item count
-  const [cartCount, setCartCount] = useState(() => {
-    const email = getStudentEmail();
-    return email ? getCart(email).length : 0;
-  });
+  const visibleCourses = useMemo(() => {
+    let matching = courses.filter((course) => matchesEducationProfileLevel(course, educationProfile));
+    if (educationProfile && isAcademicProfileComplete(educationProfile)) {
+      matching = getRelatedPublishedCourses(matching, educationProfile);
+    }
+    if (subjectFilter !== "All") {
+      const selectedSubject = normalizeRecommendationText(subjectFilter);
+      matching = matching.filter((course) =>
+        (Array.isArray(course.subjects) ? course.subjects : [course.subject])
+          .filter(Boolean)
+          .some((item) => normalizeRecommendationText(item) === selectedSubject)
+      );
+    }
+    return matching;
+  }, [courses, educationProfile, subjectFilter]);
 
-  // Refresh courses and cart
+  // Refresh published courses when teacher or admin data changes.
   useEffect(() => {
     function refreshCourses() {
       setCourses(getPublishedTeacherCourses());
-    }
-
-    function refreshCart() {
-      const email = getStudentEmail();
-      setCartCount(email ? getCart(email).length : 0);
     }
 
     window.addEventListener("storage", refreshCourses);
@@ -54,13 +137,6 @@ export default function PublishedCourses() {
       refreshCourses
     );
 
-    window.addEventListener("storage", refreshCart);
-    window.addEventListener("focus", refreshCart);
-    window.addEventListener(
-      "educonnect:student-data-changed",
-      refreshCart
-    );
-
     return () => {
       window.removeEventListener("storage", refreshCourses);
       window.removeEventListener("focus", refreshCourses);
@@ -69,15 +145,40 @@ export default function PublishedCourses() {
         "educonnect:admin-data-changed",
         refreshCourses
       );
-
-      window.removeEventListener("storage", refreshCart);
-      window.removeEventListener("focus", refreshCart);
-      window.removeEventListener(
-        "educonnect:student-data-changed",
-        refreshCart
-      );
     };
   }, []);
+
+  useEffect(() => {
+    const refreshReviews = () => setReviews(getReviews());
+    window.addEventListener(REVIEW_EVENT, refreshReviews);
+    window.addEventListener("storage", refreshReviews);
+    window.addEventListener("focus", refreshReviews);
+    return () => {
+      window.removeEventListener(REVIEW_EVENT, refreshReviews);
+      window.removeEventListener("storage", refreshReviews);
+      window.removeEventListener("focus", refreshReviews);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (layout !== "carousel") return undefined;
+    const track = carouselRef.current;
+    if (!track) return undefined;
+
+    const updateScrollControls = () => {
+      const maxScroll = track.scrollWidth - track.clientWidth;
+      setCanScrollBack(track.scrollLeft > 1);
+      setCanScrollForward(maxScroll - track.scrollLeft > 1);
+    };
+
+    updateScrollControls();
+    track.addEventListener("scroll", updateScrollControls, { passive: true });
+    window.addEventListener("resize", updateScrollControls);
+    return () => {
+      track.removeEventListener("scroll", updateScrollControls);
+      window.removeEventListener("resize", updateScrollControls);
+    };
+  }, [visibleCourses, layout]);
 
   function openCart() {
     const email = getStudentEmail();
@@ -99,11 +200,17 @@ export default function PublishedCourses() {
 
   function openCourse(course) {
     setShowCart(false);
-    setSelectedCourse(course);
+    navigate(`/course/${encodeURIComponent(course.teacherEmail)}/${encodeURIComponent(course.id)}`, {
+      state: { from: location.pathname },
+    });
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function closeCourse() {
+    if (courseRoute) {
+      navigate(backTo || "/");
+      return;
+    }
     setSelectedCourse(null);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -162,9 +269,133 @@ export default function PublishedCourses() {
     return (
       <CourseDetails
         course={latestCourse || selectedCourse}
+        teacherRating={teacherRatingSummary(latestCourse || selectedCourse, courses, reviews)}
         onBack={closeCourse}
         onOpenCart={openCart}
       />
+    );
+  }
+
+  if (courseRoute) {
+    const routeCourse = courses.find(
+      (course) =>
+        String(course.id) === String(courseRoute.id) &&
+        String(course.teacherEmail || "").toLowerCase() === String(courseRoute.teacherEmail || "").toLowerCase()
+    );
+
+    if (!routeCourse) {
+      return (
+        <section className="marketplace-published" style={{ textAlign: "center", padding: 40 }}>
+          <h2>Course not found</h2>
+          <p>This course may have been unpublished or removed.</p>
+          <button type="button" onClick={closeCourse}>Back to Courses</button>
+        </section>
+      );
+    }
+
+    return <CourseDetails course={routeCourse} teacherRating={teacherRatingSummary(routeCourse, courses, reviews)} onBack={closeCourse} onOpenCart={openCart} />;
+  }
+
+  if (layout === "carousel") {
+    return (
+      <section className="section courses-section marketplace-published-carousel" id="explore-courses">
+        <div className="section-heading">
+          <div>
+            <span className="eyebrow">{eyebrow}</span>
+            <h2>{title}</h2>
+            <p>{description}</p>
+          </div>
+        </div>
+
+        {visibleCourses.length === 0 ? (
+          <div className="marketplace-empty">
+            <BookOpen size={32} />
+            <h3>{courses.length === 0 ? "No published courses yet" : "No courses match these filters"}</h3>
+            <p>{courses.length === 0 ? "Courses appear here after Admin approval and teacher publishing." : "Try another education level, program or subject."}</p>
+          </div>
+        ) : (
+          <div className="study-fields-carousel">
+            <button
+              type="button"
+              className="study-fields-scroll-button"
+              aria-label="Scroll to previous courses"
+              title="Previous courses"
+              aria-hidden={!canScrollBack}
+              tabIndex={canScrollBack ? 0 : -1}
+              onClick={() => carouselRef.current?.scrollBy({ left: -480, behavior: "smooth" })}
+              style={{ visibility: canScrollBack ? "visible" : "hidden" }}
+            >
+              <ArrowLeft size={21} />
+            </button>
+
+            <div className="study-fields-track" ref={carouselRef}>
+              {visibleCourses.map((course) => (
+                <button
+                  type="button"
+                  className="edc-explore-course-card"
+                  key={`${course.teacherEmail}-${course.id}`}
+                  onClick={() => openCourse(course)}
+                >
+                  {course.thumbnail ? (
+                    <img className="edc-explore-course-cover" src={course.thumbnail} alt={course.title} loading="lazy" />
+                  ) : (
+                    <span className="edc-explore-course-cover edc-explore-course-placeholder"><BookOpen size={34} /></span>
+                  )}
+                  <span className="edc-explore-course-content">
+                    <strong className="edc-explore-course-title">{course.title}</strong>
+                    <small>{course.category || course.program || "Teacher Course"}</small>
+                    <span className="edc-explore-course-rating">
+                      <Star size={14} fill="currentColor" />
+                      {(() => {
+                        const summary = teacherRatingSummary(course, courses, reviews);
+                        return summary.rating === null
+                          ? "No ratings yet"
+                          : `${summary.rating.toFixed(1)} teacher rating · ${summary.reviewCount} reviews`;
+                      })()}
+                    </span>
+                    <span className="edc-explore-course-price">
+                      {Number(course.price || 0) === 0
+                        ? "Free"
+                        : `PKR ${Number(course.price).toLocaleString()}`}
+                    </span>
+                    <span className="edc-explore-course-teacher">
+                      {course.instructorProfile?.avatar
+                        ? <img src={course.instructorProfile.avatar} alt="" />
+                        : <UserRound size={15} />}
+                      <span>
+                        {course.instructorName || "Teacher"}
+                        {course.instructorProfile?.qualification && <small>{course.instructorProfile.qualification}</small>}
+                      </span>
+                    </span>
+                  </span>
+                  <span className="edc-explore-course-arrow"><ArrowRight size={17} /></span>
+                </button>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              className="study-fields-scroll-button"
+              aria-label="Scroll to more courses"
+              title="More courses"
+              aria-hidden={!canScrollForward}
+              tabIndex={canScrollForward ? 0 : -1}
+              onClick={() => carouselRef.current?.scrollBy({ left: 480, behavior: "smooth" })}
+              style={{ visibility: canScrollForward ? "visible" : "hidden" }}
+            >
+              <ArrowRight size={21} />
+            </button>
+          </div>
+        )}
+
+        {onViewAll && (
+          <div className="study-fields-view-all">
+            <button className="text-link" type="button" onClick={onViewAll}>
+              View All Courses <ArrowRight size={17} />
+            </button>
+          </div>
+        )}
+      </section>
     );
   }
 
@@ -173,56 +404,38 @@ export default function PublishedCourses() {
     <section className="marketplace-published">
       <div className="marketplace-published-heading">
         <div>
-          <span className="marketplace-eyebrow">
-            EDUCONNECT AI MARKETPLACE
-          </span>
+          <span className="marketplace-eyebrow">{eyebrow}</span>
 
-          <h2>Courses From Our Instructors</h2>
+          <h2>{title}</h2>
 
-          <p>
-            Explore courses reviewed and published
-            by EduConnect AI.
-          </p>
+          <p>{description}</p>
         </div>
-
-        <button
-          type="button"
-          onClick={openCart}
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 8,
-            padding: "12px 20px",
-            borderRadius: 10,
-            border: "1px solid #ded3f5",
-            background: "#ffffff",
-            color: "#6d28d9",
-            fontWeight: 700,
-            cursor: "pointer",
-          }}
-        >
-          <ShoppingCart size={19} />
-          My Cart ({cartCount})
-        </button>
       </div>
 
-      {courses.length === 0 ? (
+      {visibleCourses.length === 0 ? (
         <div className="marketplace-empty">
           <BookOpen size={38} />
 
-          <h3>No published courses yet</h3>
+          <h3>{courses.length === 0 ? "No published courses yet" : "No courses match these filters"}</h3>
 
-          <p>
-            Courses will appear here after
-            admin approval.
-          </p>
+          <p>{courses.length === 0 ? "Courses appear here after Admin approval and teacher publishing." : "Try another education level, program or subject."}</p>
         </div>
       ) : (
         <div className="marketplace-course-grid">
-          {courses.map((course) => (
+          {visibleCourses.map((course) => {
+            const descriptionKey = `${course.teacherEmail || ""}:${course.id}`;
+            const fullDescription = course.description || "Learn with EduConnect AI.";
+            const teacherRating = teacherRatingSummary(course, courses, reviews);
+            const isLongDescription = fullDescription.length > 150;
+            const isExpanded = Boolean(expandedDescriptions[descriptionKey]);
+            const visibleDescription = isLongDescription && !isExpanded
+              ? `${fullDescription.slice(0, 150).trimEnd()}… `
+              : fullDescription;
+
+            return (
             <article
               className="marketplace-course-card"
-              key={`${course.teacherEmail}-${course.id}`}
+              key={descriptionKey}
             >
               {/* Course Thumbnail */}
               <div className="marketplace-course-image">
@@ -247,10 +460,31 @@ export default function PublishedCourses() {
                 <p className="marketplace-instructor">
                   By {course.instructorName}
                 </p>
+                <p className="marketplace-teacher-qualification">
+                  {course.instructorProfile?.qualification || "Qualification not provided"}
+                </p>
+                <p className="marketplace-teacher-rating">
+                  <Star size={14} fill="currentColor" />
+                  {teacherRating.rating === null
+                    ? "No teacher ratings yet"
+                    : `${teacherRating.rating.toFixed(1)} teacher rating · ${teacherRating.reviewCount} reviews`}
+                </p>
 
                 <p className="marketplace-description">
-                  {course.description ||
-                    "Learn with EduConnect AI."}
+                  {visibleDescription}
+                  {isLongDescription && (
+                    <button
+                      type="button"
+                      className="marketplace-description-toggle"
+                      aria-expanded={isExpanded}
+                      onClick={() => setExpandedDescriptions((previous) => ({
+                        ...previous,
+                        [descriptionKey]: !isExpanded,
+                      }))}
+                    >
+                      {isExpanded ? "Less" : "More"}
+                    </button>
+                  )}
                 </p>
 
                 {/* Course Metadata */}
@@ -286,7 +520,8 @@ export default function PublishedCourses() {
                 </div>
               </div>
             </article>
-          ))}
+            );
+          })}
         </div>
       )}
     </section>

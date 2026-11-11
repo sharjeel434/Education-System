@@ -4,6 +4,13 @@ import PublishedCourses from "../components/Marketplace/PublishedCourses";
 import React, { useEffect, useMemo, useState } from "react";
 import ResilientImage from "../components/ResilientImage";
 import ClassBooksArtwork from "../components/ClassBooksArtwork";
+import {
+  getProgramGroupsForDegreeLevel,
+  getStudentAcademicSubjects,
+  INTERMEDIATE_STREAMS,
+  ONLINE_COURSES,
+  normalizeRecommendationText,
+} from "../utils/studentRecommendations";
 import "./ExploreCourses.css";
 
 const imageSchool = "https://images.unsplash.com/photo-1509062522246-3755977927d7?w=900";
@@ -241,12 +248,65 @@ const getSubjectGroup = (subjectName) =>
   subjectGroupRules.find(([, pattern]) => pattern.test(subjectName))?.[0] ||
   "Other Subjects";
 
-const schoolLevels = [
-  "Primary",
-  "Middle",
-  "Secondary",
-  "Higher Secondary"
-];
+const schoolLevels = ["Primary", "Middle", "Secondary", "Higher Secondary"];
+const educationLevelGroups = {
+  School: schoolLevels,
+  College: ["College"],
+  University: ["Undergraduate", "Postgraduate", "MPhil", "PhD"],
+  "Online Courses": ["Professional"]
+};
+
+const matchesEducationLevel = (courseLevel, selectedLevel) =>
+  selectedLevel === "All" ||
+  (educationLevelGroups[selectedLevel] || [selectedLevel]).includes(courseLevel);
+
+const matchesCourseEducationLevel = (course, selectedLevel) => {
+  if (selectedLevel === "School") {
+    const number = Number(course.category.match(/^Class (\d+)$/)?.[1]);
+    return number >= 1 && number <= 10;
+  }
+  return matchesEducationLevel(course.level, selectedLevel);
+};
+
+function matchesAcademicDetails(course, profile, profileSubjects) {
+  if (profile.educationLevel === "school" && profile.classNumber) {
+    return course.category === `Class ${profile.classNumber}`;
+  }
+
+  if (profile.educationLevel === "intermediate") {
+    const courseYear = Number(course.intermediateYear || course.year || 0);
+    if (courseYear && profile.intermediateYear && courseYear !== Number(profile.intermediateYear)) return false;
+    const courseTitlesByStream = {
+      PreMedical: "FSc Pre-Medical",
+      PreEngineering: "FSc Pre-Engineering",
+      ICS: "ICS",
+      Commerce: "ICom",
+      Arts: "FA and Arts",
+    };
+    const streamTitle = courseTitlesByStream[profile.stream];
+    return !streamTitle || normalizeRecommendationText(course.title).includes(normalizeRecommendationText(streamTitle));
+  }
+
+  if (profile.educationLevel === "university") {
+    const degreeLevels = {
+      bs: ["Undergraduate"],
+      masters: ["Postgraduate", "MPhil"],
+      phd: ["PhD"],
+    };
+    if (profile.degreeLevel && !degreeLevels[profile.degreeLevel]?.includes(course.level)) return false;
+  }
+
+  if (["university", "online"].includes(profile.educationLevel) && profile.program) {
+    const program = normalizeRecommendationText(profile.program);
+    const courseTitle = normalizeRecommendationText(course.title);
+    const titleMatches = courseTitle.includes(program) || program.includes(courseTitle);
+    const selectedSubjects = new Set(profileSubjects.map(normalizeRecommendationText));
+    const subjectMatches = course.subjects.some((item) => selectedSubjects.has(normalizeRecommendationText(item)));
+    return titleMatches || subjectMatches;
+  }
+
+  return true;
+}
 
 function makeVideoSearch(course, subject, chapter) {
   const query = encodeURIComponent(
@@ -266,6 +326,14 @@ function ExploreCourses({
   const [subject, setSubject] = useState("All");
   const [sort, setSort] = useState("name");
   const [selectedBoard, setSelectedBoard] = useState("All");
+  const [academicDetails, setAcademicDetails] = useState({
+    classNumber: "",
+    intermediateYear: "",
+    stream: "PreEngineering",
+    degreeLevel: "",
+    programChoice: "",
+    customProgram: "",
+  });
   const [selectedCourse, setSelectedCourse] = useState(null);
   const [page, setPage] = useState(1);
 
@@ -274,7 +342,16 @@ function ExploreCourses({
     setSearch(initialSearch);
     setCategory(initialCategory);
     setLevel("All");
+    setSubject("All");
     setSelectedBoard("All");
+    setAcademicDetails({
+      classNumber: "",
+      intermediateYear: "",
+      stream: "PreEngineering",
+      degreeLevel: "",
+      programChoice: "",
+      customProgram: "",
+    });
     setPage(1);
     setSelectedCourse(null);
   }, [initialSearch, initialCategory]);
@@ -285,10 +362,29 @@ function ExploreCourses({
   );
 
   const showBoardFilter =
-    isSchoolCategory(category) || schoolLevels.includes(level);
+    isSchoolCategory(category) || level === "School" || schoolLevels.includes(level);
+  const selectedProgram = academicDetails.programChoice === "Other"
+    ? academicDetails.customProgram.trim()
+    : academicDetails.programChoice;
+  const studentAcademicProfile = {
+    educationLevel: {
+      School: "school",
+      College: "intermediate",
+      University: "university",
+      "Online Courses": "online",
+    }[level] || "",
+    classNumber: academicDetails.classNumber,
+    intermediateYear: academicDetails.intermediateYear,
+    stream: academicDetails.stream,
+    degreeLevel: academicDetails.degreeLevel,
+    programChoice: academicDetails.programChoice,
+    program: selectedProgram,
+  };
+  const profileSubjects = getStudentAcademicSubjects(studentAcademicProfile);
   const subjectCourses = allCourses.filter((course) => {
     if (category !== "All" && course.category !== category) return false;
-    if (level !== "All" && course.level !== level) return false;
+    if (!matchesCourseEducationLevel(course, level)) return false;
+    if (!matchesAcademicDetails(course, studentAcademicProfile, profileSubjects)) return false;
     if (
       showBoardFilter &&
       selectedBoard !== "All" &&
@@ -297,7 +393,6 @@ function ExploreCourses({
     ) {
       return false;
     }
-
     return true;
   });
   const subjectGroups = subjectCourses.reduce((groups, course) => {
@@ -308,6 +403,15 @@ function ExploreCourses({
     });
     return groups;
   }, {});
+  const filterSubjectGroups = profileSubjects.length
+    ? profileSubjects.reduce((groups, item) => {
+        const groupName = getSubjectGroup(item);
+        if (!groups[groupName]) groups[groupName] = new Set();
+        groups[groupName].add(item);
+        return groups;
+      }, {})
+    : subjectGroups;
+
   const pageTitle =
     search.trim() || (category !== "All" ? category : "Explore Courses and Subjects");
   const isSpecificPage = search.trim() !== "" || category !== "All";
@@ -328,7 +432,8 @@ function ExploreCourses({
         return searchable.includes(search.toLowerCase().trim());
       })
       .filter((course) => category === "All" || course.category === category)
-      .filter((course) => level === "All" || course.level === level)
+      .filter((course) => matchesCourseEducationLevel(course, level))
+      .filter((course) => matchesAcademicDetails(course, studentAcademicProfile, profileSubjects))
       .filter((course) => subject === "All" || course.subjects.includes(subject))
       .filter((course) => {
         if (!showBoardFilter || selectedBoard === "All") {
@@ -345,7 +450,7 @@ function ExploreCourses({
         if (sort === "level") return a.level.localeCompare(b.level);
         return a.title.localeCompare(b.title);
       });
-  }, [search, category, level, subject, sort, selectedBoard, showBoardFilter]);
+  }, [search, category, level, subject, sort, selectedBoard, showBoardFilter, academicDetails, selectedProgram, profileSubjects]);
 
   const coursesPerPage = 9;
   const totalPages = Math.ceil(filteredCourses.length / coursesPerPage);
@@ -376,6 +481,14 @@ function ExploreCourses({
     setSubject("All");
     setSort("name");
     setSelectedBoard("All");
+    setAcademicDetails({
+      classNumber: "",
+      intermediateYear: "",
+      stream: "PreEngineering",
+      degreeLevel: "",
+      programChoice: "",
+      customProgram: "",
+    });
     setPage(1);
   };
 
@@ -387,7 +500,7 @@ function ExploreCourses({
       value !== "All" &&
       level !== "All" &&
       !allCourses.some(
-        (course) => course.category === value && course.level === level
+        (course) => course.category === value && matchesCourseEducationLevel(course, level)
       )
     ) {
       setLevel("All");
@@ -399,13 +512,20 @@ function ExploreCourses({
     setLevel(value);
     setSelectedBoard("All");
     setSubject("All");
+    setAcademicDetails({
+      classNumber: "",
+      intermediateYear: "",
+      stream: "PreEngineering",
+      degreeLevel: "",
+      programChoice: "",
+      customProgram: "",
+    });
     setPage(1);
-
     if (
       value !== "All" &&
       category !== "All" &&
       !allCourses.some(
-        (course) => course.category === category && course.level === value
+        (course) => course.category === category && matchesCourseEducationLevel(course, value)
       )
     ) {
       setCategory("All");
@@ -624,24 +744,18 @@ function ExploreCourses({
             </select>
           </div>
 
+          <div className="academic-filter-grid">
           <div className="filter-group">
             <h3>Education Level</h3>
-
             <select
               value={level}
-              onChange={(e) => handleLevelChange(e.target.value)}
+              onChange={(event) => handleLevelChange(event.target.value)}
             >
               <option value="All">All Levels</option>
-              <option value="Primary">Primary</option>
-              <option value="Middle">Middle</option>
-              <option value="Secondary">Secondary</option>
-              <option value="Higher Secondary">Higher Secondary</option>
-              <option value="College">College</option>
-              <option value="Undergraduate">Undergraduate</option>
-              <option value="Postgraduate">Postgraduate</option>
-              <option value="MPhil">MPhil</option>
-              <option value="PhD">PhD</option>
-              <option value="Professional">Professional</option>
+              <option value="School">School</option>
+              <option value="College">College / Intermediate</option>
+              <option value="University">University</option>
+              <option value="Online Courses">Online Courses</option>
             </select>
           </div>
 
@@ -672,31 +786,178 @@ function ExploreCourses({
             </div>
           )}
 
+          {level === "School" && (
+            <div className="filter-group">
+              <h3>Class</h3>
+              <select
+                value={academicDetails.classNumber}
+                onChange={(event) => {
+                  setAcademicDetails((previous) => ({ ...previous, classNumber: event.target.value }));
+                  setSubject("All");
+                  setPage(1);
+                }}
+              >
+                <option value="">Select your class</option>
+                {Array.from({ length: 10 }, (_, index) => (
+                  <option key={index + 1} value={String(index + 1)}>Class {index + 1}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {level === "College" && <>
+            <div className="filter-group">
+              <h3>Year</h3>
+              <select
+                value={academicDetails.intermediateYear}
+                onChange={(event) => {
+                  setAcademicDetails((previous) => ({ ...previous, intermediateYear: event.target.value }));
+                  setSubject("All");
+                  setPage(1);
+                }}
+              >
+                <option value="">Select your year</option>
+                <option value="1">1st Year</option>
+                <option value="2">2nd Year</option>
+              </select>
+            </div>
+            <div className="filter-group">
+              <h3>College Program / Group</h3>
+              <select
+                value={academicDetails.stream}
+                onChange={(event) => {
+                  setAcademicDetails((previous) => ({ ...previous, stream: event.target.value }));
+                  setSubject("All");
+                  setPage(1);
+                }}
+              >
+                {INTERMEDIATE_STREAMS.map(([value, label]) => (
+                  <option value={value} key={value}>{label}</option>
+                ))}
+              </select>
+            </div>
+          </>}
+
+          {level === "University" && <>
+            <div className="filter-group">
+              <h3>Degree Level</h3>
+              <select
+                value={academicDetails.degreeLevel}
+                onChange={(event) => {
+                  setAcademicDetails((previous) => ({
+                    ...previous,
+                    degreeLevel: event.target.value,
+                    programChoice: "",
+                    customProgram: "",
+                  }));
+                  setSubject("All");
+                  setPage(1);
+                }}
+              >
+                <option value="">Select degree</option>
+                <option value="bs">BS / Bachelor's</option>
+                <option value="masters">Master's</option>
+                <option value="phd">PhD</option>
+              </select>
+            </div>
+            {academicDetails.degreeLevel && <div className="filter-group">
+              <h3>{academicDetails.degreeLevel === "bs" ? "BS / Bachelor's Program" : academicDetails.degreeLevel === "masters" ? "Master's Program" : "PhD Program"}</h3>
+              <select
+                value={academicDetails.programChoice}
+                onChange={(event) => {
+                  setAcademicDetails((previous) => ({
+                    ...previous,
+                    programChoice: event.target.value,
+                    customProgram: "",
+                  }));
+                  setSubject("All");
+                  setPage(1);
+                }}
+              >
+                <option value="">Select a program</option>
+                {getProgramGroupsForDegreeLevel(academicDetails.degreeLevel).map((group) => (
+                  <optgroup key={group.label} label={group.label}>
+                    {group.programs.map((program) => <option key={program} value={program}>{program}</option>)}
+                  </optgroup>
+                ))}
+                <option value="Other">Other</option>
+              </select>
+            </div>}
+            {academicDetails.programChoice === "Other" && <div className="filter-group">
+              <h3>Enter Your Program</h3>
+              <input
+                maxLength={100}
+                value={academicDetails.customProgram}
+                onChange={(event) => {
+                  setAcademicDetails((previous) => ({ ...previous, customProgram: event.target.value }));
+                  setSubject("All");
+                  setPage(1);
+                }}
+                placeholder="Type your degree program"
+              />
+            </div>}
+          </>}
+
+          {level === "Online Courses" && <>
+            <div className="filter-group">
+              <h3>Interest</h3>
+              <select
+                value={academicDetails.programChoice}
+                onChange={(event) => {
+                  setAcademicDetails((previous) => ({
+                    ...previous,
+                    programChoice: event.target.value,
+                    customProgram: "",
+                  }));
+                  setSubject("All");
+                  setPage(1);
+                }}
+              >
+                <option value="">Choose a course</option>
+                {ONLINE_COURSES.map((course) => <option key={course} value={course}>{course}</option>)}
+              </select>
+            </div>
+            {academicDetails.programChoice === "Other" && <div className="filter-group">
+              <h3>Enter Course Name</h3>
+              <input
+                maxLength={100}
+                value={academicDetails.customProgram}
+                onChange={(event) => {
+                  setAcademicDetails((previous) => ({ ...previous, customProgram: event.target.value }));
+                  setSubject("All");
+                  setPage(1);
+                }}
+                placeholder="Type the course area"
+              />
+            </div>}
+          </>}
+
+          </div>
+
+          {profileSubjects.length > 0 && (
+            <div className="explore-profile-subject-preview">
+              <strong>Related subjects</strong>
+              <p>{profileSubjects.join(" · ")}</p>
+            </div>
+          )}
+
           <div className="filter-group">
             <h3>Subject</h3>
-
             <select
               value={subject}
-              onChange={(e) => {
-                setSubject(e.target.value);
+              onChange={(event) => {
+                setSubject(event.target.value);
                 setPage(1);
               }}
             >
               <option value="All">All Subjects</option>
-
-              {Object.entries(subjectGroups)
+              {Object.entries(filterSubjectGroups)
                 .sort(([groupA], [groupB]) => groupA.localeCompare(groupB))
                 .map(([groupName, subjects]) => (
                   <optgroup label={groupName} key={groupName}>
                     {[...subjects]
-                      .sort((subjectA, subjectB) =>
-                        subjectA.localeCompare(subjectB)
-                      )
-                      .map((item) => (
-                        <option value={item} key={item}>
-                          {item}
-                        </option>
-                      ))}
+                      .sort((subjectA, subjectB) => subjectA.localeCompare(subjectB))
+                      .map((item) => <option value={item} key={item}>{item}</option>)}
                   </optgroup>
                 ))}
             </select>
@@ -745,7 +1006,10 @@ function ExploreCourses({
               </p>
             </div>
           )}
-           <PublishedCourses />
+          <PublishedCourses
+            educationProfile={level === "All" ? null : studentAcademicProfile}
+            subjectFilter={subject}
+          />
           <div className="explore-course-grid">
             {visibleCourses.map((course) => (
               <article className="explore-course-card" key={course.id}>

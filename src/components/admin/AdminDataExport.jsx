@@ -7,7 +7,7 @@ import {
   ADMIN_USERS_KEY,
   getAdminTeachers,
 } from "./adminData";
-import { createCsvContent, downloadCsv } from "./adminExportUtils";
+import { createCsvContent, downloadCsv } from "./adminCsvUtils";
 
 const DATASET_CONFIG = [
   {

@@ -16,23 +16,41 @@ import {
   UserRound,
   ShoppingCart,
   CheckCircle2,
+  Star,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 
 import "./CourseDetails.css";
 
 export default function CourseDetails({
   course,
+  teacherRating = { rating: null, reviewCount: 0 },
   onBack,
   onOpenCart,
 }) {
   const navigate = useNavigate();
   const [cartMessage, setCartMessage] = useState("");
+  const [showTeacherProfile, setShowTeacherProfile] = useState(false);
 
   const lessons = Array.isArray(course?.lessons)
     ? course.lessons
     : [];
 
   const instructor = course?.instructorProfile || {};
+  const teacherSubjects = [...new Set(
+    [instructor.expertise, instructor.subjects, instructor.specializations, instructor.teachingSubjects]
+      .flatMap((value) => Array.isArray(value) ? value : String(value || "").split(/[,;\n]+/))
+      .map((value) => String(value || "").trim())
+      .filter(Boolean)
+  )];
+  const teachingFocus = [
+    instructor.teachingEducationLevel,
+    instructor.teachingClassNumber ? `Class ${instructor.teachingClassNumber}` : "",
+    instructor.teachingIntermediateYear ? `${instructor.teachingIntermediateYear} Year` : "",
+    instructor.teachingDegreeLevel,
+    instructor.teachingProgram || instructor.program,
+  ].filter(Boolean);
 
   function handleAddToCart() {
     const email = getStudentEmail();
@@ -185,27 +203,96 @@ function handleViewCart() {
                 </div>
               )}
 
-              <div>
+              <div className="edc-details-instructor-summary">
+                <span className="edc-details-profile-eyebrow">COURSE INSTRUCTOR</span>
                 <h3>
                   {course.instructorName ||
                     "EduConnect Instructor"}
                 </h3>
 
-                {instructor.headline && (
-                  <p>{instructor.headline}</p>
-                )}
-
-                {instructor.expertise && (
-                  <p>
-                    Expertise: {instructor.expertise}
-                  </p>
-                )}
-
-                {instructor.bio && (
-                  <p>{instructor.bio}</p>
-                )}
+                <p>{instructor.headline || instructor.expertise || "Educator on EduConnect AI"}</p>
+                <p className="edc-details-teacher-rating">
+                  <Star size={16} fill="currentColor" />
+                  {teacherRating.rating === null
+                    ? "No teacher ratings yet"
+                    : `${teacherRating.rating.toFixed(1)} teacher rating · ${teacherRating.reviewCount} reviews`}
+                </p>
               </div>
             </div>
+
+            <button
+              type="button"
+              className="edc-details-profile-toggle"
+              aria-expanded={showTeacherProfile}
+              onClick={() => setShowTeacherProfile((visible) => !visible)}
+            >
+              {showTeacherProfile ? "Hide Teacher Profile" : "View Full Teacher Profile"}
+              {showTeacherProfile ? <ChevronUp size={17} /> : <ChevronDown size={17} />}
+            </button>
+
+            {showTeacherProfile && (
+              <div className="edc-details-profile-card">
+                <div className="edc-details-profile-header">
+                  {instructor.avatar ? (
+                    <img src={instructor.avatar} alt="" />
+                  ) : (
+                    <div className="edc-details-profile-avatar"><UserRound size={28} /></div>
+                  )}
+                  <div className="edc-details-profile-identity">
+                    <span>INSTRUCTOR PROFILE</span>
+                    <h3>{course.instructorName || "EduConnect Instructor"}</h3>
+                    <p>{instructor.headline || instructor.expertise || "Educator on EduConnect AI"}</p>
+                  </div>
+                  <div className="edc-details-profile-rating">
+                    <Star size={17} fill="currentColor" />
+                    <strong>{teacherRating.rating === null ? "New" : teacherRating.rating.toFixed(1)}</strong>
+                    <small>{teacherRating.reviewCount} {teacherRating.reviewCount === 1 ? "review" : "reviews"}</small>
+                  </div>
+                </div>
+
+                <div className="edc-details-profile-facts">
+                  <article>
+                    <GraduationCap size={18} />
+                    <span>Qualification</span>
+                    <strong>{instructor.qualification || "Not added yet"}</strong>
+                  </article>
+                  <article>
+                    <Clock3 size={18} />
+                    <span>Teaching experience</span>
+                    <strong>{instructor.experience || "Not added yet"}</strong>
+                  </article>
+                </div>
+
+                {teachingFocus.length > 0 && (
+                  <div className="edc-details-profile-group">
+                    <h4>Teaching focus</h4>
+                    <div className="edc-details-profile-tags">
+                      {teachingFocus.map((item) => <span key={item}>{item}</span>)}
+                    </div>
+                  </div>
+                )}
+
+                <div className="edc-details-profile-group">
+                  <h4>Expertise & subjects</h4>
+                  {teacherSubjects.length > 0 ? (
+                    <div className="edc-details-profile-tags">
+                      {teacherSubjects.map((item) => <span key={item}>{item}</span>)}
+                    </div>
+                  ) : <p className="edc-details-profile-empty">No subjects have been added yet.</p>}
+                </div>
+
+                <div className="edc-details-profile-group">
+                  <h4>About the instructor</h4>
+                  <p className="edc-details-profile-bio">{instructor.bio || "The instructor has not added a biography yet."}</p>
+                </div>
+
+                {course.teacherEmail && (
+                  <a className="edc-details-profile-contact" href={`mailto:${course.teacherEmail}`}>
+                    Contact instructor <span>{course.teacherEmail}</span>
+                  </a>
+                )}
+              </div>
+            )}
           </section>
         </div>
 

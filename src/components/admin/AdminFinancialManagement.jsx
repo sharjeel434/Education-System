@@ -7,7 +7,6 @@ import {
   readAdminOperationsSettings,
   updateCommissionRate,
 } from "./adminOperationsData";
-import "./AdminOperations.css";
 
 const SECTIONS = [
   ["transactions", "Transactions"],

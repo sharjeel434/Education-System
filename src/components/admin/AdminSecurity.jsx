@@ -24,7 +24,6 @@ import {
   readAdminArray,
 } from "./adminData";
 import { ADMIN_SECTIONS } from "./adminNavigation";
-import "./AdminOperations.css";
 
 function maskEmail(email) {
   if (typeof email !== "string" || !email.includes("@")) {
@@ -96,7 +95,22 @@ function formatActivityTimestamp(value) {
   return Number.isNaN(date.getTime()) ? "Not provided" : date.toLocaleString();
 }
 
-function AdminSecurity({ email, onLogout }) {
+const SECURITY_DETAIL_PAGES = {
+  session: {
+    description: "Current login identity, role, and browser session details.",
+  },
+  role: {
+    description: "How student, teacher, and admin roles are separated in this demo.",
+  },
+  runtime: {
+    description: "Where authentication state is stored and which protections require a backend.",
+  },
+  routes: {
+    description: "The Admin routes protected by the current role allowlist.",
+  },
+};
+
+function AdminSecurity({ email, onLogout, view = "overview" }) {
   const [sessionEmail, setSessionEmail] = useState(() =>
     email || window.sessionStorage.getItem("educonnect.demoEmail") || "",
   );
@@ -153,10 +167,6 @@ function AdminSecurity({ email, onLogout }) {
     },
     { clientDemo: 0, placeholders: 0 },
   );
-
-  function scrollToSection(sectionId) {
-    document.getElementById(sectionId)?.scrollIntoView({ block: "start" });
-  }
 
   function handleClearRememberedEmail() {
     setFeedback(null);
@@ -252,11 +262,21 @@ function AdminSecurity({ email, onLogout }) {
     }
   }
 
+  const detailPage = SECURITY_DETAIL_PAGES[view];
+
   return (
-    <div className="edc-admin-security">
+    <div className={`edc-admin-security${detailPage ? ` edc-admin-security-detail edc-admin-security-page-${view}` : ""}`}>
+      {detailPage && (
+        <div className="edc-admin-security-detail-heading">
+          <Link className="edc-admin-export-link" to="/admin/security">
+            ← Back to Security overview
+          </Link>
+          <p>{detailPage.description}</p>
+        </div>
+      )}
       {/* Overview Stat Cards */}
       <section className="edc-admin-stat-grid" aria-label="Security summary">
-        <button type="button" className="edc-admin-stat-card edc-admin-ops-card" onClick={() => scrollToSection("security-authentication")}>
+        <Link to="/admin/security/session" className="edc-admin-stat-card edc-admin-stat-card-link edc-admin-ops-card edc-admin-ops-card-link">
           <span className="edc-admin-stat-icon" aria-hidden="true">
             <ShieldCheck size={19} />
           </span>
@@ -264,9 +284,9 @@ function AdminSecurity({ email, onLogout }) {
           <strong style={{ fontSize: "19px" }}>
             {hasActiveSession ? "Active Demo Session" : "Inactive"}
           </strong>
-        </button>
+        </Link>
 
-        <button type="button" className="edc-admin-stat-card edc-admin-ops-card" onClick={() => scrollToSection("security-session-information")}>
+        <Link to="/admin/security/role" className="edc-admin-stat-card edc-admin-stat-card-link edc-admin-ops-card edc-admin-ops-card-link">
           <span className="edc-admin-stat-icon" aria-hidden="true">
             <UserCheck size={19} />
           </span>
@@ -274,9 +294,9 @@ function AdminSecurity({ email, onLogout }) {
           <strong style={{ fontSize: "20px" }}>
             {sessionRole || "None"}
           </strong>
-        </button>
+        </Link>
 
-        <button type="button" className="edc-admin-stat-card edc-admin-ops-card" onClick={() => scrollToSection("security-limitations")}>
+        <Link to="/admin/security/runtime" className="edc-admin-stat-card edc-admin-stat-card-link edc-admin-ops-card edc-admin-ops-card-link">
           <span className="edc-admin-stat-icon" aria-hidden="true">
             <KeyRound size={19} />
           </span>
@@ -284,15 +304,15 @@ function AdminSecurity({ email, onLogout }) {
           <strong style={{ fontSize: "18px" }}>
             Client Storage (Demo)
           </strong>
-        </button>
+        </Link>
 
-        <button type="button" className="edc-admin-stat-card edc-admin-ops-card" onClick={() => scrollToSection("security-route-protection")}>
+        <Link to="/admin/security/routes" className="edc-admin-stat-card edc-admin-stat-card-link edc-admin-ops-card edc-admin-ops-card-link">
           <span className="edc-admin-stat-icon" aria-hidden="true">
             <Layers size={19} />
           </span>
           <p>Guarded Admin Routes</p>
           <strong>{ADMIN_SECTIONS.length}</strong>
-        </button>
+        </Link>
       </section>
 
       {/* Primary Grid Layout */}
