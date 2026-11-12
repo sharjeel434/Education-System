@@ -54,6 +54,7 @@ import {
   Phone,
   ShieldAlert,
   LifeBuoy,
+  Crown,
 } from "lucide-react";
 import "./Dashboard.css";
 import "../../components/notifications/NotificationsCenter.css";
@@ -72,7 +73,9 @@ import { getPublishedTeacherCourses } from "../../utils/teacherCourses";
 import { lessonVideoKey, loadLessonVideo } from "../../utils/lessonVideos";
 import { getReviews } from "../../utils/courseReviews";
 import { getStudentAcademicSubjects, INTERMEDIATE_STREAMS, ONLINE_COURSES, getProgramGroupsForDegreeLevel, loadCurriculumResource, getPublishedPdfResources, getRelatedPublishedCourses, isAcademicProfileComplete } from "../../utils/studentRecommendations";
-import PersonalizedDashboardSections from "../../components/student/PersonalizedDashboardSections";
+import StudentOverview from "../../components/student/StudentOverview";
+import StudentLearning from "../../components/student/StudentLearning";
+import StudentStudyPlanner from "../../components/student/StudentStudyPlanner";
 import BookTeacherHub from "../../components/books/BookTeacherHub";
 import { getPublishedBooks, isBookPurchased } from "../../utils/books";
 import { loadBookFile } from "../../utils/books";
@@ -187,19 +190,6 @@ function readStorage(key, fallback) {
   }
 }
 
-function ProgressBar({ value = 0 }) {
-  const safeValue = Math.min(100, Math.max(0, Number(value) || 0));
-
-  return (
-    <div className="edc-progress-track">
-      <div
-        className="edc-progress-fill"
-        style={{ width: `${safeValue}%` }}
-      />
-    </div>
-  );
-}
-
 function SectionHeading({ eyebrow, title, description, action }) {
   return (
     <div className="edc-section-heading">
@@ -229,10 +219,24 @@ export default function StudentDashboard({ email = "student" }) {
   const baseKey = `educonnect.student.${email.trim().toLowerCase()}`;
   const location = useLocation();
   const navigate = useNavigate();
+  const quizRouteId = location.pathname.startsWith("/student/dashboard/quiz/")
+    ? decodeURIComponent(location.pathname.split("/").at(-1) || "")
+    : "";
+  const quizRouteCourseId = new URLSearchParams(location.search).get("course") || "";
+  const quizRouteTeacher = new URLSearchParams(location.search).get("teacher") || "";
 
-  const [activeTab, setActiveTab] = useState("overview");
+  const [activeTab, setActiveTab] = useState(() => quizRouteId ? "quizzes" : "overview");
   const [mobileMenu, setMobileMenu] = useState(false);
+  const requestedTab = location.state?.studentTab;
+  useEffect(() => {
+    if (requestedTab && MENU.some(item => item.id === requestedTab)) {
+      setActiveTab(requestedTab);
+      setMobileMenu(false);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }, [requestedTab, location.key]);
   const [search, setSearch] = useState("");
+  const [learningSearch, setLearningSearch] = useState("");
   const [playerCourseId, setPlayerCourseId] = useState(null);
   const [playerLessonIndex, setPlayerLessonIndex] = useState(0);
   const [previewCourse, setPreviewCourse] = useState(null);
@@ -327,6 +331,7 @@ export default function StudentDashboard({ email = "student" }) {
   useEffect(() => {
     try {
       localStorage.setItem(`${baseKey}.profile`, JSON.stringify(studentProfile));
+      window.dispatchEvent(new Event("educonnect:student-header-changed"));
     } catch {
       setProfileNotice("Profile image may be too large for browser storage. Try a smaller photo.");
     }
@@ -460,13 +465,13 @@ export default function StudentDashboard({ email = "student" }) {
   }
 
 
-  const [dailyGoals, setDailyGoals] = useState(() =>
-    readStorage(`${baseKey}.dailyGoals`, [
-      { id: 1, title: "Complete one lesson", done: false },
-      { id: 2, title: "Review your course progress", done: false },
-      { id: 3, title: "Plan tomorrow's learning", done: false },
-    ])
-  );
+  const [dailyGoals, setDailyGoals] = useState(() => {
+    const saved = readStorage(`${baseKey}.dailyGoals`, []);
+    const previousExamples = new Set(["Complete one lesson", "Review your course progress", "Plan tomorrow's learning"]);
+    return Array.isArray(saved)
+      ? saved.filter((goal) => !(["1", "2", "3"].includes(String(goal.id)) && previousExamples.has(goal.title)))
+      : [];
+  });
 
   const [newGoal, setNewGoal] = useState("");
 
@@ -863,7 +868,10 @@ export default function StudentDashboard({ email = "student" }) {
   }, [baseKey, wishlist]);
 
   useEffect(() => {
-    try { localStorage.setItem(`${baseKey}.notifications`, JSON.stringify(notifications)); }
+    try {
+      localStorage.setItem(`${baseKey}.notifications`, JSON.stringify(notifications));
+      window.dispatchEvent(new Event("educonnect:student-header-changed"));
+    }
     catch (error) { console.error("Could not save notifications", error); }
   }, [baseKey, notifications]);
 
@@ -1555,244 +1563,59 @@ export default function StudentDashboard({ email = "student" }) {
   }
 
   function Overview() {
-    return (
-      <div className="edc-tab-content">
-        <section className="edc-hero">
-          <div className="edc-hero-copy">
-            <span className="edc-hero-pill">
-              <Sparkles size={14} /> YOUR LEARNING JOURNEY
-            </span>
-            <h2>Keep learning. Keep growing.</h2>
-            <p>
-              Track your progress, build new skills and make every
-              learning session count.
-            </p>
-            <button
-              className="edc-btn edc-btn-white"
-              onClick={() => navigateTo("learning")}
-            >
-              Continue Learning <ArrowRight size={17} />
-            </button>
-          </div>
-          <div className="edc-hero-art">
-            <GraduationCap size={104} strokeWidth={1.1} />
-          </div>
-        </section>
-
-        <section className="edc-stats">
-          {[
-            {
-              label: "Enrolled Courses",
-              value: enrolledCourses.length,
-              icon: BookOpen,
-              color: "purple",
-            },
-            {
-              label: "Completed Courses",
-              value: completedCourses.length,
-              icon: CheckCircle2,
-              color: "green",
-            },
-            {
-              label: "Average Progress",
-              value: `${averageProgress}%`,
-              icon: TrendingUp,
-              color: "blue",
-            },
-            {
-              label: "Wishlist",
-              value: wishlist.length,
-              icon: Heart,
-              color: "pink",
-            },
-          ].map((stat) => (
-            <button
-              type="button"
-              className="edc-stat-card edc-academic-stat-card"
-              key={stat.label}
-              onClick={() => navigate(`/student/dashboard/overview/${{
-                "Enrolled Courses": "enrolled-courses",
-                "Completed Courses": "completed-courses",
-                "Average Progress": "average-progress",
-                Wishlist: "wishlist",
-              }[stat.label]}`)}
-            >
-              <div className={`edc-stat-icon edc-stat-${stat.color}`}>
-                <stat.icon size={21} />
-              </div>
-              <span>{stat.label}</span>
-              <strong>{stat.value}</strong>
-            </button>
-          ))}
-        </section>
-
-        <section className="edc-two-column">
-          <div className="edc-panel">
-            <SectionHeading
-              eyebrow="YOUR PROGRESS"
-              title="Continue Learning"
-              action={
-                <button
-                  className="edc-text-btn"
-                  onClick={() => navigateTo("learning")}
-                >
-                  View All <ChevronRight size={15} />
-                </button>
-              }
-            />
-
-            {enrolledCourses.length ? (
-              <div className="edc-learning-list">
-                {enrolledCourses.map((course) => (
-                  <LearningCard key={course.id} course={course} />
-                ))}
-              </div>
-            ) : (
-              <div><EmptyState title="No courses to continue yet" description="Enroll in a free course or purchase a published course to start learning." />
-                <button type="button" className="edc-btn edc-btn-light" onClick={() => navigate("/courses")}>Explore Courses <ArrowRight size={15} /></button></div>
-            )}
-          </div>
-
-          <div className="edc-panel">
-            <SectionHeading
-              eyebrow="STAY CONSISTENT"
-              title="Daily Goals"
-              action={
-                <button
-                  className="edc-text-btn"
-                  onClick={() => navigateTo("planner")}
-                >
-                  Planner <ChevronRight size={15} />
-                </button>
-              }
-            />
-
-            <div className="edc-goal-progress">
-              <strong>{goalProgress}%</strong>
-              <span>Goals completed</span>
-              <ProgressBar value={goalProgress} />
-            </div>
-
-            <div className="edc-goals">
-              {dailyGoals.slice(0, 4).map((goal) => (
-                <label className="edc-goal" key={goal.id}>
-                  <input
-                    type="checkbox"
-                    checked={goal.done}
-                    onChange={() => toggleGoal(goal.id)}
-                  />
-                  <span className={goal.done ? "edc-goal-done" : ""}>
-                    {goal.title}
-                  </span>
-                </label>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <PersonalizedDashboardSections
-          studentName={studentProfile.fullName || profileDisplayName}
-          email={email}
-          notice={resourceNotice}
-          profile={studentProfile}
-          courses={latestPublishedCourses}
-          reviews={getReviews()}
-          enrollments={enrollments}
-          orders={orders}
-          onEditProfile={() => navigateTo("profile")}
-          onOpenEbooks={() => navigateTo("ebooks")}
-          onBrowseCourses={() => navigate("/courses")}
-          onEnrollFree={enrollPublishedCourse}
-          onAddToCart={(course) => { addCart(course); navigateTo("cart"); }}
-          onGoToCourse={goToPublishedCourse}
-          onPreviewLesson={openPublishedLesson}
-          onOpenLesson={openPublishedLesson}
-          onOpenPdf={openPdfResource}
-          canPlayLesson={(lesson) => Boolean(getLessonMedia(lesson))}
-        />
-
-        <section className="edc-panel" id="books-and-teachers">
-          <SectionHeading eyebrow="PERSONALIZED LIBRARY" title="Books & Teachers" description="Browse published PDFs and registered teacher profiles related to your saved education profile." action={<button type="button" className="edc-text-btn" onClick={() => navigateTo("books")}>Open Library <ArrowRight size={15} /></button>} />
-          <BookTeacherHub email={email} profile={studentProfile} courses={latestPublishedCourses} cart={cart} purchasedBooks={bookPurchases} onAddBookToCart={(book) => { addBookToCart(book); navigateTo("cart"); }} onOpenEbooks={() => navigateTo("ebooks")} recommendedOnly />
-        </section>
-
-        <section className="edc-feature-banner">
-          <div className="edc-feature-icon">
-            <Bot size={28} />
-          </div>
-          <div>
-            <h3>Your Personal AI Tutor</h3>
-            <p>
-              Adaptive explanations, practice and personalized learning
-              will be added during the AI integration phase.
-            </p>
-          </div>
-          <button
-            className="edc-btn edc-btn-light"
-            onClick={() => navigateTo("ai")}
-          >
-            Explore Feature <ArrowRight size={16} />
-          </button>
-        </section>
-      </div>
-    );
+    const legacyTasks = [
+      ...availableAssignments.filter(task => !submissions[task.id]).map(task => ({ id: task.id, title: task.title, type: "assignment", tab: "assignments" })),
+      ...availableQuizzes.filter(quiz => !quizResults[quiz.id]).map(quiz => ({ id: quiz.id, title: quiz.title, type: "quiz", tab: "assignments" })),
+    ];
+    return <StudentOverview
+      email={email}
+      profile={studentProfile}
+      courses={enrolledCourses}
+      publishedCourses={latestPublishedCourses}
+      demoCourses={COURSES}
+      activity={learningActivity}
+      dailyGoals={dailyGoals}
+      goalProgress={goalProgress}
+      wishlist={wishlist}
+      legacyTasks={legacyTasks}
+      legacyQuizPasses={passedQuizzes.length}
+      legacySubmissions={submittedCount}
+      onNavigate={navigateTo}
+      onResume={openCoursePlayer}
+      onExplore={() => navigate("/courses")}
+      onCourseAction={course => course.teacherEmail ? enrollPublishedCourse(course) : enrollCourse(course.id)}
+      onToggleWishlist={toggleWishlist}
+      onMetric={slug => navigate(`/student/dashboard/overview/${slug}`)}
+    />;
   }
-
-  const Learning = () => {
-    return (
-      <div className="edc-tab-content">
-        <SectionHeading
-          eyebrow="MY COURSES"
-          title="My Learning"
-          description="Manage your demo courses and track lesson completion."
-        />
-
-        {enrolledCourses.length ? (
-          <div className="edc-learning-list">
-            {enrolledCourses.map((course) => (
-              <LearningCard key={course.id} course={course} />
-            ))}
-          </div>
-        ) : (
-          <EmptyState
-            title="No enrolled courses yet"
-            description="Choose a demo course to start learning."
-          />
-        )}
-
-        <div className="edc-panel">
-          <SectionHeading
-            eyebrow="DISCOVER"
-            title="Explore Demo Courses"
-          />
-
-          <div className="edc-search">
-            <Search size={18} />
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search demo courses..."
-            />
-          </div>
-
-          <div className="edc-course-grid">
-            {filteredCourses.map((course) => (
-              <CourseCard key={course.id} course={course} />
-            ))}
-          </div>
-
-          {filteredCourses.length === 0 && (
-            <EmptyState
-              icon={Search}
-              title="No matching courses"
-              description="Try another search term."
-            />
-          )}
-        </div>
-      </div>
-    );
-  }
-
+  const Learning = () => <StudentLearning
+    email={email}
+    courses={enrolledCourses}
+    publishedCourses={latestPublishedCourses}
+    activity={learningActivity}
+    searchQuery={learningSearch}
+    onSearchChange={setLearningSearch}
+    onClearSearch={() => setLearningSearch("")}
+    onResume={openCoursePlayer}
+    onCertificate={course => {
+      navigateTo("portfolio");
+      setPortfolioTab("certificates");
+      printDemoCertificate(course);
+    }}
+    onUndo={id => updateLesson(id, -1)}
+    onRemove={removeEnrollment}
+    onNavigate={navigateTo}
+    onExplore={() => navigate("/courses")}
+  >
+    <div className="edc-search">
+      <Search size={18} />
+      <input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search sample courses..." />
+    </div>
+    <div className="edc-course-grid">
+      {filteredCourses.map(course => <CourseCard key={course.id} course={course} />)}
+    </div>
+    {filteredCourses.length === 0 && <EmptyState icon={Search} title="No matching courses" description="Try another search term." />}
+  </StudentLearning>;
   function LearningPlayer() {
     const course = playerCourse;
     if (!course) {
@@ -2050,111 +1873,6 @@ export default function StudentDashboard({ email = "student" }) {
     );
   }
 
-  function Planner() {
-    return (
-      <div className="edc-tab-content">
-        <SectionHeading
-          eyebrow="STUDY PLANNER"
-          title="Plan Your Learning"
-          description="Set learning goals and keep track of your daily tasks."
-        />
-
-        <div className="edc-two-column">
-          <div className="edc-panel">
-            <SectionHeading title="My Daily Goals" />
-
-            <div className="edc-goal-progress">
-              <strong>{goalProgress}%</strong>
-              <span>Completed</span>
-              <ProgressBar value={goalProgress} />
-            </div>
-
-            <form className="edc-add-goal" onSubmit={addGoal}>
-              <input
-                value={newGoal}
-                onChange={(event) => setNewGoal(event.target.value)}
-                placeholder="Add a study goal..."
-                maxLength={100}
-              />
-              <button className="edc-btn edc-btn-primary" type="submit">
-                <Plus size={17} /> Add
-              </button>
-            </form>
-
-            <div className="edc-goals">
-              {dailyGoals.map((goal) => (
-                <div className="edc-goal-row" key={goal.id}>
-                  <label className="edc-goal">
-                    <input
-                      type="checkbox"
-                      checked={goal.done}
-                      onChange={() => toggleGoal(goal.id)}
-                    />
-                    <span className={goal.done ? "edc-goal-done" : ""}>
-                      {goal.title}
-                    </span>
-                  </label>
-
-                  <button
-                    className="edc-icon-btn edc-danger"
-                    aria-label="Delete goal"
-                    onClick={() =>
-                      setDailyGoals((previous) =>
-                        previous.filter((item) => item.id !== goal.id)
-                      )
-                    }
-                  >
-                    <Trash2 size={15} />
-                  </button>
-                </div>
-              ))}
-            </div>
-
-            <button
-              className="edc-btn edc-btn-light"
-              onClick={() =>
-                setDailyGoals((previous) =>
-                  previous.map((goal) => ({ ...goal, done: false }))
-                )
-              }
-            >
-              <RotateCcw size={15} /> Reset Goals
-            </button>
-          </div>
-
-          <div className="edc-panel">
-            <SectionHeading title="Learning Roadmap" />
-
-            <div className="edc-roadmap">
-              {[
-                ["01", "Choose a course", "Select your learning path."],
-                ["02", "Complete lessons", "Learn and track progress."],
-                ["03", "Practice your skills", "Assessments coming later."],
-                ["04", "Build your portfolio", "Showcase completed work."],
-              ].map(([number, title, description]) => (
-                <div className="edc-roadmap-item" key={number}>
-                  <span className="edc-roadmap-number">{number}</span>
-                  <div>
-                    <strong>{title}</strong>
-                    <p>{description}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="edc-notice">
-              <CalendarDays size={19} />
-              <span>
-                Upcoming classes and academic calendar will be connected
-                when class scheduling is implemented.
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   function FeaturePage({
     eyebrow,
     title,
@@ -2307,7 +2025,6 @@ export default function StudentDashboard({ email = "student" }) {
           title="My Wishlist"
           description="Your favorite demo courses in one place."
         />
-
         {savedCourses.length ? (
           <div className="edc-course-grid">
             {savedCourses.map((course) => (
@@ -2330,7 +2047,6 @@ export default function StudentDashboard({ email = "student" }) {
       <div className="edc-tab-content edc-portfolio-page">
         <SectionHeading eyebrow="YOUR ACHIEVEMENTS" title="Certificates & Portfolio"
           description="Track course completions, showcase your projects and build your student profile." />
-
         <div className="edc-stats">
           {[
             { label: "Completed Courses", value: completedCourses.length, icon: Award, color: "purple" },
@@ -2950,52 +2666,58 @@ export default function StudentDashboard({ email = "student" }) {
         </nav>
 
         <div className="edc-sidebar-bottom">
-          <Sparkles size={19} />
-          <strong>EduConnect AI</strong>
-          <p>Learn. Practice. Grow.</p>
-          <span>Frontend Demo</span>
+          <Crown size={24} fill="currentColor" />
+          <strong>Keep Growing</strong>
+          <p>Build new skills and get closer to your learning goals.</p>
+          <button type="button" className="edc-sidebar-planner" onClick={() => navigateTo("planner")}>Study Planner <ChevronRight size={14}/></button>
         </div>
       </aside>
 
-      <div className="edc-main">
+      <div className="edc-main" data-active-tab={activeTab}>
         <div className="edc-main-header">
           <div>
             <span className="edc-breadcrumb">
-              Student Dashboard / {currentTab?.label}
+              {activeTab === "overview" ? "STUDENT DASHBOARD" : currentTab?.label?.toUpperCase()}
             </span>
             <h2>{currentTab?.label}</h2>
-          </div>
-
-          <div className="edc-header-right">
-            <button type="button" className="edc-notification-bell" onClick={() => navigateTo("notifications")}
-              aria-label={`Open notifications, ${unreadNotifications} unread`} title="Notifications">
-              <Bell size={20} />
-              {unreadNotifications > 0 && <span className="edc-notification-badge">{unreadNotifications > 99 ? "99+" : unreadNotifications}</span>}
-            </button>
-            <span className="edc-demo-badge">
-              <span /> Demo Mode
-            </span>
-            <button type="button" className="edc-student-profile-header-button" title="My Profile"
-              aria-label="Open my profile" onClick={() => navigateTo("profile")}>
-              <ProfileAvatar image={studentProfile.avatar} size="small" />
-            </button>
+            {activeTab === "overview" && <p className="edc-page-description">Track your learning, progress, and recommendations.</p>}
           </div>
         </div>
 {activeTab === "overview" && Overview()}
 {activeTab === "learning" && Learning()}
           {activeTab === "appeals" && <UserModerationAppeals email={email} name={studentProfile.fullName || studentProfile.name || "Student"} role="Student" />}
           {activeTab === "help-support" && <UserSupportCenter email={email} name={studentProfile.fullName || studentProfile.name || "Student"} role="Student" />}
-          {activeTab === "reviews" && <CourseReviews role="student" email={email} courses={enrolledCourses} />}
-          {activeTab === "discussions" && <CourseDiscussions role="student" email={email} courses={enrolledCourses} />}
-          {activeTab === "notes" && <CourseNotes email={email} courses={enrolledCourses} onJump={jumpToNote} />}
+          {activeTab === "reviews" && <CourseReviews role="student" email={email} studentName={studentProfile.fullName || profileDisplayName} courses={enrolledCourses} publishedCourses={latestPublishedCourses} onNavigate={navigateTo} />}
+          {activeTab === "discussions" && <CourseDiscussions role="student" email={email} studentName={studentProfile.fullName || profileDisplayName} studentAvatar={studentProfile.avatar || ""} courses={enrolledCourses} publishedCourses={latestPublishedCourses} onNavigate={navigateTo} onExplore={() => navigate("/courses")} />}
+          {activeTab === "notes" && <CourseNotes email={email} courses={enrolledCourses} publishedCourses={latestPublishedCourses} onNavigate={navigateTo} onJump={jumpToNote} />}
           {activeTab === "analytics" && <LearningAnalytics courses={enrolledCourses} activity={learningActivity} />}
-          {activeTab === "quizzes" && <CourseQuizzes role="student" email={email} courses={enrolledCourses} />}
-          {activeTab === "course-assignments" && <CourseAssignments role="student" email={email} courses={enrolledCourses} />}
-          {activeTab === "learning-paths" && <LearningPaths email={email} courses={enrolledCourses} />}
-          {activeTab === "curriculum" && <CurriculumBuilder role="student" email={email} courses={enrolledCourses}
+          {activeTab === "quizzes" && <CourseQuizzes role="student" email={email} courses={enrolledCourses} publishedCourses={latestPublishedCourses} onNavigate={navigateTo}
+            quizRouteId={quizRouteId} quizCourseId={quizRouteCourseId} quizTeacherEmail={quizRouteTeacher}
+            quizView={new URLSearchParams(location.search).get("view") || ""}
+            onStartQuiz={(quiz, view = "attempt") => {
+              setActiveTab("quizzes");
+              navigate(`/student/dashboard/quiz/${encodeURIComponent(quiz.id)}?course=${encodeURIComponent(quiz.courseId)}&teacher=${encodeURIComponent(quiz.teacherEmail || "")}${view === "result" ? "&view=result" : ""}`);
+            }}
+            onBackToQuizzes={() => navigateTo("quizzes")} />}
+          {activeTab === "course-assignments" && <CourseAssignments role="student" email={email} courses={enrolledCourses} publishedCourses={latestPublishedCourses} onNavigate={navigateTo} />}
+          {activeTab === "learning-paths" && <LearningPaths email={email} courses={enrolledCourses} publishedCourses={latestPublishedCourses} onNavigate={navigateTo} onOpenCourse={courseId => { openCoursePlayer(courseId); navigateTo("player"); }} />}
+          {activeTab === "curriculum" && <CurriculumBuilder role="student" email={email} courses={enrolledCourses} publishedCourses={latestPublishedCourses} onNavigate={navigateTo}
+            onOpenQuiz={quiz => { setActiveTab("quizzes"); navigate(`/student/dashboard/quiz/${encodeURIComponent(quiz.id)}?course=${encodeURIComponent(quiz.courseId)}&teacher=${encodeURIComponent(quiz.teacherEmail || "")}`); }}
             onOpenLesson={(courseId,index)=>{openCoursePlayer(courseId);setPlayerLessonIndex(Math.max(0,index));navigateTo("player")}} />}
         {activeTab === "player" && LearningPlayer()}
-{activeTab === "planner" && Planner()}
+          {activeTab === "planner" && <StudentStudyPlanner
+            email={email}
+            courses={enrolledCourses}
+            publishedCourses={latestPublishedCourses}
+            activity={learningActivity}
+            dailyGoals={dailyGoals}
+            newGoal={newGoal}
+            setNewGoal={setNewGoal}
+            onAddGoal={addGoal}
+            onToggleGoal={toggleGoal}
+            onDeleteGoal={(id) => setDailyGoals((previous) => previous.filter((goal) => goal.id !== id))}
+            onNavigate={navigateTo}
+          />}
 
         {activeTab === "assignments" && (
           <div className="edc-tab-content edc-academic-page">
@@ -3547,7 +3269,7 @@ export default function StudentDashboard({ email = "student" }) {
         )}
 
         <div className="edc-footer-note">
-          EduConnect AI Â· Student Workspace Â· Frontend Demo
+          EduConnect AI · Student Workspace
         </div>
       </div>
     </div>

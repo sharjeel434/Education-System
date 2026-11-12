@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import "./CurriculumBuilder.css";
+import StudentCourseCurriculum from "./StudentCourseCurriculum";
 const PREFIX="educonnect.curriculum.v1.";
 const EVENT="educonnect:curriculum-updated";
 const key=(teacher,id)=>`${PREFIX}${encodeURIComponent(String(teacher||"").toLowerCase())}.${encodeURIComponent(String(id))}`;
@@ -17,7 +18,7 @@ const del=id=>resource(s=>s.delete(id),"readwrite");
 function download(file){const u=URL.createObjectURL(file),a=document.createElement("a");a.href=u;a.download=file.name||"resource";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1000)}
 const empty=()=>({sections:[],resources:[],links:[]});
 function useRevision(){const [n,setN]=useState(0);useEffect(()=>{const f=()=>setN(x=>x+1);["storage","focus",EVENT,"educonnect:quizzes-updated","educonnect:assignments-updated"].forEach(e=>window.addEventListener(e,f));return()=>["storage","focus",EVENT,"educonnect:quizzes-updated","educonnect:assignments-updated"].forEach(e=>window.removeEventListener(e,f))},[]);return n}
-export default function CurriculumBuilder({role,email,courses=[],onAddLesson,onReorderLessons,onOpenLesson}){
+function TeacherCurriculumBuilder({role,email,courses=[],onAddLesson,onReorderLessons,onOpenLesson}){
   const [courseId,setCourseId]=useState("");
   const [sectionName,setSectionName]=useState("");
   const [lessonTitle,setLessonTitle]=useState("");
@@ -101,4 +102,8 @@ export default function CurriculumBuilder({role,email,courses=[],onAddLesson,onR
     {message&&<p className="ecc-message" role="status">{message}</p>}
     <p className="ecc-hint">Frontend demo: sections, links and resource metadata use localStorage; file bytes use IndexedDB. Existing lesson completion is handled by the course player. Changes made here do not reset completed lessons, quizzes, assignments or learning paths.</p>
     </>}</div>
+}
+
+export default function CurriculumBuilder({ role, email, ...props }) {
+  return role === "teacher" ? <TeacherCurriculumBuilder role="teacher" email={email} {...props} /> : <StudentCourseCurriculum key={email} email={email} {...props} />;
 }

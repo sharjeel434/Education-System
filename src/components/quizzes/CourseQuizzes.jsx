@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { addDemoNotification, notifyEnrolledStudents } from "../../utils/demoNotifications";
+import { notifyEnrolledStudents } from "../../utils/demoNotifications";
 import "./CourseQuizzes.css";
+import "./CourseQuizzesStudent.css";
+import StudentCourseQuizzes from "./StudentCourseQuizzes";
 
 const QUIZ_PREFIX = "educonnect.quiz.v1.";
 const ATTEMPT_PREFIX = "educonnect.quizAttempt.v1.";
@@ -9,8 +11,6 @@ const EVENT = "educonnect:quizzes-updated";
 const normalize = value => String(value ?? "").trim().toLowerCase();
 const quizKey = (teacherEmail, courseId) =>
   `${QUIZ_PREFIX}${encodeURIComponent(normalize(teacherEmail))}.${encodeURIComponent(String(courseId))}`;
-const attemptKey = (studentEmail, quizId) =>
-  `${ATTEMPT_PREFIX}${encodeURIComponent(normalize(studentEmail))}.${encodeURIComponent(quizId)}`;
 const read = (key, fallback) => {
   try { return JSON.parse(localStorage.getItem(key) || "null") ?? fallback; }
   catch { return fallback; }
@@ -164,7 +164,7 @@ function TeacherQuizzes({ email, courses }) {
       </div>;
     }
   }
-  return <div className="edc-quiz-root">
+  return <div className="edc-quiz-root edc-quiz-student">
     <header className="edc-quiz-header"><span>INSTRUCTOR TOOLS</span><h2>Course Quizzes & Assessments</h2>
       <p>Create MCQs, set passing marks and optional timers, then publish quizzes for enrolled students.</p></header>
     {!courses.length ? <div className="edc-quiz-panel">Create a course first to add quizzes.</div> : <>
@@ -233,95 +233,8 @@ function TeacherQuizzes({ email, courses }) {
     <p className="edc-quiz-foot">Demo only: quizzes and attempts are saved in this browser's localStorage. Editing a quiz changes future attempts, not historical scores.</p>
   </div>;
 }
-function StudentQuizzes({ email, courses }) {
-  const version = useQuizRecords();
-  const [courseId, setCourseId] = useState("");
-  const [current, setCurrent] = useState(null);
-  const [answers, setAnswers] = useState({});
-  const [startedAt, setStartedAt] = useState(null);
-  const [remaining, setRemaining] = useState(null);
-  const [result, setResult] = useState(null);
-  const selected = courses.find(c => String(c.id) === String(courseId)) || courses[0];
-  const quizzes = useMemo(() => {
-    if (!selected?.teacherEmail) return [];
-    return read(quizKey(selected.teacherEmail, selected.id), []).filter(q=>q.published);
-  }, [selected?.teacherEmail, selected?.id, version]);
-  const allAttempts = useMemo(() => quizzes.flatMap(q=>read(attemptKey(email,q.id), [])), [email, quizzes, version]);
-  const submit = (quiz, selectedAnswers, started, expired=false) => {
-    const correct = quiz.questions.reduce((sum,q,i)=>sum+(Number(selectedAnswers[i])===Number(q.correct)?1:0),0);
-    const percentage = Math.round(correct/quiz.questions.length*100);
-    const record = { id:uid(), quizId:quiz.id, quizTitle:quiz.title, courseId:quiz.courseId,
-      teacherEmail:quiz.teacherEmail, studentEmail:email, total:quiz.questions.length,
-      correct, percentage, passed:percentage>=Number(quiz.passingScore), startedAt:started,
-      submittedAt:new Date().toISOString(), timedOut:expired };
-    const key = attemptKey(email,quiz.id);
-    write(key,[...read(key,[]),record]);
-    addDemoNotification("teacher", quiz.teacherEmail, {
-      id: `quiz-attempt:${record.id}`, type: "quiz", title: "Student completed a quiz",
-      message: `${email} completed ${quiz.title} with a score of ${percentage}%.`, link: "quizzes",
-    });
-    setResult(record);
-    setCurrent(null);
-    setRemaining(null);
-  };
-  useEffect(()=>{
-    if (!current || !startedAt || !current.timeLimit) return;
-    const tick = () => {
-      const left = Math.max(0,Math.ceil((Date.parse(startedAt)+current.timeLimit*60000-Date.now())/1000));
-      setRemaining(left);
-      if (left === 0) submit(current, answers, startedAt, true);
-    };
-    tick();
-    const interval = window.setInterval(tick,1000);
-    return ()=>window.clearInterval(interval);
-  },[current,startedAt,answers]);
-  const start = quiz => {
-    setCurrent(quiz); setAnswers({}); setResult(null);
-    setStartedAt(new Date().toISOString());
-    setRemaining(quiz.timeLimit ? quiz.timeLimit*60 : null);
-  };
-  return <div className="edc-quiz-root">
-    <header className="edc-quiz-header"><span>STUDENT ASSESSMENTS</span><h2>Course Quizzes</h2><p>Practice with your enrolled courses and review your results.</p></header>
-    {!courses.length ? <section className="edc-quiz-panel">Enroll in a course to access its quizzes.</section> : <>
-      <label className="edc-quiz-label">Enrolled course
-        <select value={selected?String(selected.id):""} onChange={e=>{setCourseId(e.target.value);setCurrent(null);setResult(null);}}>
-          {courses.map(c=><option key={`${c.teacherEmail}:${c.id}`} value={String(c.id)}>{c.title}</option>)}
-        </select></label>
-      {current ? <section className="edc-quiz-panel">
-        <div className="edc-quiz-between"><h3>{current.title}</h3><strong>{remaining===null?"Untimed":`${Math.floor(remaining/60)}:${String(remaining%60).padStart(2,"0")}`}</strong></div>
-        {current.questions.map((q,i)=><fieldset className="edc-quiz-question" key={q.id}>
-          <legend>{i+1}. {q.prompt}</legend>
-          {q.options.map((option,n)=><label className="edc-quiz-answer" key={n}>
-            <input type="radio" name={`quiz-${current.id}-${i}`} checked={answers[i]===n} onChange={()=>setAnswers(old=>({...old,[i]:n}))}/>{option}
-          </label>)}
-        </fieldset>)}
-        <div className="edc-quiz-actions">
-          <button type="button" className="edc-quiz-primary" onClick={()=>submit(current,answers,startedAt)}>Submit Quiz</button>
-          <button type="button" onClick={()=>{setCurrent(null);setRemaining(null);}}>Cancel Attempt</button>
-        </div>
-      </section> : <>
-        {result && <section className="edc-quiz-result" role="status"><h3>{result.passed?"Passed!":"Keep Practicing"}</h3>
-          <p>{result.correct}/{result.total} correct · Score {result.percentage}%</p></section>}
-        <section className="edc-quiz-panel"><h3>Available Quizzes</h3>
-          {!quizzes.length ? <p>No published quizzes available for this course yet. Ask your instructor to publish one.</p> :
-            quizzes.map(q=><article className="edc-quiz-listitem" key={q.id}><div><strong>{q.title}</strong>
-              <p>{q.questions.length} MCQs · Pass mark {q.passingScore}% · {q.timeLimit?`${q.timeLimit} min timer`:"No timer"}</p></div>
-              <button type="button" className="edc-quiz-primary" onClick={()=>start(q)}>Start Quiz</button></article>)}
-        </section>
-        <section className="edc-quiz-panel"><h3>Attempt History</h3>
-          {!allAttempts.length ? <p>No attempts yet.</p> :
-            [...allAttempts].sort((a,b)=>String(b.submittedAt).localeCompare(String(a.submittedAt))).map(a=>
-              <article className="edc-quiz-listitem" key={a.id}><div><strong>{a.quizTitle}</strong>
-                <p>{a.correct}/{a.total} correct · {a.percentage}% · {a.passed?"Passed":"Not passed"}{a.timedOut?" · Timer ended":""}</p>
-                <small>{new Date(a.submittedAt).toLocaleString()}</small></div></article>)}
-        </section>
-      </>}
-    </>}
-    <p className="edc-quiz-foot">Scores are automatically calculated. This is a browser-local demo, not a proctored or certified exam.</p>
-  </div>;
-}
-export default function CourseQuizzes({ role, email, courses = [] }) {
+export default function CourseQuizzes({ role, email, courses = [], ...props }) {
   return role === "teacher"
     ? <TeacherQuizzes email={email} courses={courses}/>
-    : <StudentQuizzes email={email} courses={courses}/>;
+    : <StudentCourseQuizzes key={email} email={email} courses={courses} {...props}/>;
 }

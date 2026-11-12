@@ -1,0 +1,76 @@
+.dashboard-page:has(.edc-student-topbar) { --student-sidebar-width: 230px; padding-top: 56px; background: #f7f3ff; }
+.dashboard-page .auth-topbar.edc-student-topbar { position: fixed; inset: 0 0 auto; z-index: 1000; display: flex; align-items: center; gap: 25px; width: 100%; max-width: none; height: 56px; min-height: 56px; padding: 0 23px; border-bottom: 1px solid #e7dafa; background: #fbf9ff; box-shadow: 0 2px 8px #491b790b; backdrop-filter: none; }
+.dashboard-page .edc-student-brand { flex: 0 0 calc(var(--student-sidebar-width) - 22px); gap: 7px; color: #251044; font-size: 17px; white-space: nowrap; }
+.edc-student-brand > svg { flex: none; color: #7817dc; }
+.edc-student-brand b { color: #7413d5; }
+.edc-student-topbar-actions { display: flex; align-items: center; gap: 18px; margin-left: auto; }
+.edc-topbar-bell { position: relative; display: grid; width: 30px; height: 35px; place-items: center; padding: 0; border: 0; border-radius: 8px; background: transparent; color: #3a1759; cursor: pointer; }
+.edc-topbar-bell > span { position: absolute; top: 3px; right: 4px; width: 8px; height: 8px; border: 1px solid #fff; border-radius: 50%; background: #e71a4f; }
+.edc-topbar-account { position: relative; padding-left: 17px; border-left: 1px solid #dfd2f2; }
+.edc-topbar-profile { display: flex; align-items: center; gap: 9px; padding: 0; border: 0; background: transparent; color: #32164e; font: inherit; cursor: pointer; }
+.edc-topbar-avatar { display: grid; flex: 0 0 35px; width: 35px; height: 35px; place-items: center; overflow: hidden; border: 2px solid #9b50f1; border-radius: 50%; background: #e9ddff; color: #6c21bd; font-size: 12px; font-weight: 750; }
+.edc-topbar-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.edc-topbar-identity { display: grid; gap: 3px; min-width: 68px; max-width: 180px; text-align: left; }
+.edc-topbar-identity strong { overflow: hidden; color: #2b1244; font-size: 11px; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
+.edc-topbar-identity small { color: #77578d; font-size: 10px; }
+.edc-topbar-profile > svg { margin-left: 10px; }
+.edc-topbar-account-menu { position: absolute; top: calc(100% + 15px); right: 0; display: grid; gap: 3px; width: 165px; padding: 6px; border: 1px solid #e7dcf7; border-radius: 11px; background: #fff; box-shadow: 0 8px 30px #35115420; }
+.edc-topbar-account-menu button { display: flex; align-items: center; gap: 8px; padding: 10px; border: 0; border-radius: 7px; background: transparent; color: #644377; font: inherit; font-size: 11px; text-align: left; cursor: pointer; }
+.edc-topbar-account-menu button:hover { background: #f5edff; color: #791adb; }
+.dashboard-page .edc-student-shell { --edc-primary: #8822ec; --edc-primary-dark: #6d0bc9; --edc-dark: #2b1048; --edc-muted: #8b789d; --edc-border: #e5d8f9; --edc-bg: #f7f3ff; min-height: calc(100dvh - 56px); background: radial-gradient(ellipse at 75% 0%, #efe5ff88, transparent 60%), #f7f3ff; color: #2b1048; }
+.dashboard-page .edc-student-shell > .edc-sidebar { display: flex; min-height: 0; padding: 17px 13px 14px; overflow: hidden; border-right: 1px solid #5f2499; background: linear-gradient(180deg, #3c087e, #49108e 50%, #50168f); box-shadow: none; color: #fff; }
+.dashboard-page .edc-sidebar-heading,.dashboard-page .edc-sidebar-profile { display: none; }
+.dashboard-page .edc-student-shell .edc-navigation { flex: 1; min-height: 0; gap: 3px; padding: 0 3px 0 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #a85bf088 transparent; }
+.dashboard-page .edc-student-shell .edc-nav-item { min-height: 36px; gap: 11px; padding: 8px 12px; border: 0; border-radius: 8px; background: transparent; color: #f0e4ff; font-size: 11px; font-weight: 450; line-height: 1.3; transform: none; }
+.dashboard-page .edc-student-shell .edc-nav-item svg { color: #ecdaff; width: 17px; height: 17px; }
+.dashboard-page .edc-student-shell .edc-nav-item:hover { background: #ffffff12; color: #fff; transform: none; }
+.dashboard-page .edc-student-shell .edc-nav-active,.dashboard-page .edc-student-shell .edc-nav-active:hover { background: linear-gradient(100deg, #a329f4, #9332fa); color: #fff; font-weight: 650; box-shadow: 0 3px 8px #24044622; }
+.dashboard-page .edc-student-shell .edc-nav-active svg { color: #fff; }
+.dashboard-page .edc-sidebar-bottom { display: grid; justify-items: center; flex: none; gap: 7px; margin-top: 14px; padding: 14px 11px; border: 1px solid #a360d54a; border-radius: 13px; background: linear-gradient(145deg, #7730c5, #6322a9); color: #fff; text-align: center; }
+.dashboard-page .edc-sidebar-bottom > svg { color: #f6c529; }
+.dashboard-page .edc-sidebar-bottom strong { color: #fff; font-size: 12px; }
+.dashboard-page .edc-sidebar-bottom p { max-width: 150px; color: #efdcff; font-size: 10px; line-height: 1.5; }
+.edc-student-shell .edc-sidebar-planner { display: inline-flex; align-items: center; justify-content: center; gap: 7px; width: 100%; min-height: 29px; padding: 7px 10px; border: 0; border-radius: 18px; background: #f4e9ff; color: #5c1b9f; font: inherit; font-size: 10px; font-weight: 700; cursor: pointer; }
+.dashboard-page .edc-student-shell > .edc-main { padding: 18px 23px 25px; }
+.dashboard-page .edc-student-shell .edc-main-header { display: block; min-height: 0; margin-bottom: 15px; padding: 0 5px; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.dashboard-page .edc-student-shell .edc-main-header h2 { margin: 0; color: #30104f; font-size: 27px; font-weight: 800; line-height: 1.25; letter-spacing: -.55px; }
+.dashboard-page .edc-main[data-active-tab="overview"] .edc-breadcrumb { display: none; }
+.edc-page-description { margin: 3px 0 0; color: #5b3d75; font-size: 12px; line-height: 1.5; }
+.dashboard-page .edc-main[data-active-tab="analytics"] > .edc-main-header { display: none; }
+.dashboard-page .edc-student-shell .edc-btn-primary { border-color: #8822ec; background: linear-gradient(105deg, #8d26f1, #740ed2); color: #fff; }
+.dashboard-page .edc-student-shell .edc-btn-light { border-color: #e4d7f6; background: #f0e7ff; color: #7727bc; }
+.edc-student-topbar button:focus-visible { outline: 3px solid #cda5f6; outline-offset: 3px; }
+@media (min-width: 901px) {
+  .dashboard-page .edc-student-shell > .edc-sidebar { position: fixed; top: 56px; bottom: 0; left: 0; width: var(--student-sidebar-width); height: auto; }
+  .dashboard-page .edc-student-shell > .edc-main { width: calc(100% - var(--student-sidebar-width)); margin-left: var(--student-sidebar-width); }
+}
+@media (max-width: 1280px) and (min-width: 901px) {
+  .dashboard-page:has(.edc-student-topbar) { --student-sidebar-width: 190px; }
+  .dashboard-page .auth-topbar.edc-student-topbar { gap: 17px; padding: 0 19px; }
+  .dashboard-page .edc-student-brand { flex-basis: 178px; font-size: 16px; }
+  .dashboard-page .edc-student-shell > .edc-main { padding: 17px; }
+}
+@media (max-width: 900px) {
+  .dashboard-page .auth-topbar.edc-student-topbar { gap: 17px; padding: 0 16px; }
+  .dashboard-page .edc-student-brand { flex: none; font-size: 15px; }
+  .edc-topbar-identity { display: none; }
+  .edc-topbar-profile > svg { margin-left: 0; }
+  .edc-student-topbar-actions { gap: 10px; }
+  .edc-topbar-account { padding-left: 10px; }
+  .dashboard-page .edc-student-shell > .edc-sidebar { top: 56px; bottom: 0; height: calc(100dvh - 56px); min-height: 0; }
+  .dashboard-page .edc-sidebar-heading { display: flex; padding: 0 5px 14px; color: #d2acee; }
+  .dashboard-page .edc-sidebar-close { color: #fff; }
+  .dashboard-page .edc-mobile-toggle { margin: 12px 17px 0; border-color: #d8bcef; background: #fff; color: #6d1eab; font-size: 11px; }
+}
+@media (max-width: 560px) {
+  .dashboard-page .auth-topbar.edc-student-topbar { gap: 10px; padding: 0 12px; }
+  .dashboard-page .edc-student-brand { gap: 5px; font-size: 13px; }
+  .edc-student-brand > svg { width: 26px; height: 26px; }
+  .edc-student-topbar-actions { gap: 3px; }
+  .edc-topbar-account { padding-left: 5px; }
+  .edc-topbar-profile { gap: 3px; }
+  .edc-topbar-profile > svg { width: 12px; }
+  .edc-topbar-avatar { flex-basis: 30px; width: 30px; height: 30px; }
+  .dashboard-page .edc-student-shell > .edc-main { padding: 14px 12px 22px; }
+  .dashboard-page .edc-student-shell .edc-main-header h2 { font-size: 24px; }
+}

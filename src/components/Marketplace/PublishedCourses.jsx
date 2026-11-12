@@ -14,6 +14,7 @@ import {
 import { getPublishedTeacherCourses } from "../../utils/teacherCourses";
 import { getCart, getStudentEmail } from "../../utils/studentCart";
 import { courseReviewKey, getReviews, REVIEW_EVENT } from "../../utils/courseReviews";
+import { matchesCourseSearch } from "../../utils/studentSearch";
 import {
   getRelatedPublishedCourses,
   isAcademicProfileComplete,
@@ -33,6 +34,19 @@ function teacherRatingSummary(course, courses, reviews) {
   );
   const ratings = reviews
     .filter((review) => teacherCourseKeys.has(review.courseKey))
+    .map((review) => Number(review.rating))
+    .filter((rating) => Number.isFinite(rating) && rating >= 1 && rating <= 5);
+
+  return {
+    rating: ratings.length ? ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length : null,
+    reviewCount: ratings.length,
+  };
+}
+
+function courseRatingSummary(course, reviews) {
+  const key = courseReviewKey(course);
+  const courseReviews = reviews.filter((review) => review.courseKey === key);
+  const ratings = courseReviews
     .map((review) => Number(review.rating))
     .filter((rating) => Number.isFinite(rating) && rating >= 1 && rating <= 5);
 
@@ -87,6 +101,8 @@ export default function PublishedCourses({
   backTo = "/",
   educationProfile = null,
   subjectFilter = "All",
+  relatedTo = null,
+  searchQuery = "",
 }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -108,7 +124,7 @@ export default function PublishedCourses({
   const [showCart, setShowCart] = useState(false);
 
   const visibleCourses = useMemo(() => {
-    let matching = courses.filter((course) => matchesEducationProfileLevel(course, educationProfile));
+    let matching = courses.filter((course) => matchesEducationProfileLevel(course, educationProfile) && matchesCourseSearch(course, searchQuery));
     if (educationProfile && isAcademicProfileComplete(educationProfile)) {
       matching = getRelatedPublishedCourses(matching, educationProfile);
     }
@@ -120,8 +136,18 @@ export default function PublishedCourses({
           .some((item) => normalizeRecommendationText(item) === selectedSubject)
       );
     }
+    if (Array.isArray(relatedTo)) {
+      const relatedTerms = relatedTo
+        .flatMap((value) => Array.isArray(value) ? value : [value])
+        .map(normalizeRecommendationText)
+        .filter(Boolean);
+      matching = matching.filter((course) => {
+        const courseTitle = normalizeRecommendationText(course.title);
+        return relatedTerms.some((term) => (` ${courseTitle} `).includes(` ${term} `));
+      });
+    }
     return matching;
-  }, [courses, educationProfile, subjectFilter]);
+  }, [courses, educationProfile, subjectFilter, relatedTo, searchQuery]);
 
   // Refresh published courses when teacher or admin data changes.
   useEffect(() => {
@@ -270,6 +296,8 @@ export default function PublishedCourses({
       <CourseDetails
         course={latestCourse || selectedCourse}
         teacherRating={teacherRatingSummary(latestCourse || selectedCourse, courses, reviews)}
+        courseRating={courseRatingSummary(latestCourse || selectedCourse, reviews)}
+        courseReviews={reviews.filter((review) => review.courseKey === courseReviewKey(latestCourse || selectedCourse))}
         onBack={closeCourse}
         onOpenCart={openCart}
       />
@@ -293,7 +321,7 @@ export default function PublishedCourses({
       );
     }
 
-    return <CourseDetails course={routeCourse} teacherRating={teacherRatingSummary(routeCourse, courses, reviews)} onBack={closeCourse} onOpenCart={openCart} />;
+    return <CourseDetails course={routeCourse} teacherRating={teacherRatingSummary(routeCourse, courses, reviews)} courseRating={courseRatingSummary(routeCourse, reviews)} courseReviews={reviews.filter((review) => review.courseKey === courseReviewKey(routeCourse))} onBack={closeCourse} onOpenCart={openCart} />;
   }
 
   if (layout === "carousel") {
@@ -416,9 +444,21 @@ export default function PublishedCourses({
         <div className="marketplace-empty">
           <BookOpen size={38} />
 
-          <h3>{courses.length === 0 ? "No published courses yet" : "No courses match these filters"}</h3>
+          <h3>
+            {Array.isArray(relatedTo)
+              ? "No related teacher courses yet"
+              : courses.length === 0
+                ? "No published courses yet"
+                : "No courses match these filters"}
+          </h3>
 
-          <p>{courses.length === 0 ? "Courses appear here after Admin approval and teacher publishing." : "Try another education level, program or subject."}</p>
+          <p>
+            {Array.isArray(relatedTo)
+              ? "A teacher course with this course name will appear here after publishing."
+              : courses.length === 0
+                ? "Courses appear here after Admin approval and teacher publishing."
+                : "Try another education level, program or subject."}
+          </p>
         </div>
       ) : (
         <div className="marketplace-course-grid">

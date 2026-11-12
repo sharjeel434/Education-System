@@ -131,9 +131,10 @@
 .edc-sidebar-bottom {
   margin-top: auto;
   padding: 20px 13px;
-  background: linear-gradient(145deg, #7445de, #4923a5);
+  background: #f8f7fb;
+  border: 1px solid #e8e5ef;
   border-radius: 14px;
-  color: white;
+  color: #302b3d;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -147,12 +148,12 @@
 .edc-sidebar-bottom p {
   font-size: 11px;
   margin: 0;
-  color: #e8ddff;
+  color: #647084;
 }
 
 .edc-sidebar-bottom span {
   font-size: 10px;
-  color: #d7c4ff;
+  color: #8a91a0;
 }
 
 .edc-main {
@@ -238,8 +239,12 @@
 .edc-tab-content {
   display: flex;
   flex-direction: column;
-  gap: 23px;
+  gap: 18px;
   min-width: 0;
+}
+
+.edc-tab-content > .edc-section-heading {
+  margin-bottom: 0;
 }
 
 .edc-hero {
@@ -1244,7 +1249,7 @@
 
 .edc-main-header {
   width: 100%;
-  margin-bottom: 28px;
+  margin-bottom: 10px;
 }
 
 .edc-tab-content,
@@ -1282,7 +1287,7 @@
   width: 100%;
   max-width: none;
   min-height: 100vh;
-  padding: 0;
+  padding: 82px 0 0;
 }
 
 .dashboard-page:has(.edc-student-shell) .dashboard-content {
@@ -1303,9 +1308,17 @@
 /* Keep the existing topbar aligned */
 
 .dashboard-page:has(.edc-student-shell) .auth-topbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
   width: 100%;
   max-width: none;
   padding: 16px 32px;
+  background: rgba(255, 255, 255, .96);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 4px 18px rgba(31, 37, 67, .06);
 }
 
 @media (min-width: 901px) {
@@ -1498,9 +1511,9 @@
 .edc-portfolio-showcase{display:grid;gap:15px}
 .edc-portfolio-showcase>h3{margin:12px 0 0}
 .edc-portfolio-showcase>p{display:flex;align-items:center;gap:8px}
-.edc-portfolio-showcase-hero{display:flex;align-items:center;gap:18px;padding:25px;border-radius:15px;background:linear-gradient(120deg,#6d42c8,#956ee3);color:white}
-.edc-portfolio-showcase-hero h3{margin:0 0 6px;font-size:23px;color:white}
-.edc-portfolio-showcase-hero p{margin:0;color:#f1eaff}
+.edc-portfolio-showcase-hero{display:flex;align-items:center;gap:18px;padding:25px;border:1px solid #e5e7eb;border-radius:15px;background:#f8fafc;color:#273244}
+.edc-portfolio-showcase-hero h3{margin:0 0 6px;font-size:23px;color:#172033}
+.edc-portfolio-showcase-hero p{margin:0;color:#647084}
 .edc-portfolio-achievements{display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:15px;margin:16px 0}
 .edc-portfolio-achievements article{display:flex;flex-direction:column;gap:10px;padding:22px 16px;border:1px solid #e8e1f4;border-radius:14px;background:#faf8ff;color:#6742bd}
 .edc-portfolio-achievements strong{color:#302743}
@@ -3911,15 +3924,15 @@ body:has(.edc-teacher-shell) .dashboard-container {
 @media(max-width:950px){.edc-profile-layout{grid-template-columns:1fr}}
 @media(max-width:600px){.edc-profile-form,.edc-profile-card-heading,.edc-profile-preview-heading{padding:18px}}
 /* Append to the END of src/pages/dashboards/Dashboard.css */
-.edc-player-screen-premium{position:relative;isolation:isolate;min-height:385px;padding:26px;overflow:hidden;display:flex;align-items:center;justify-content:center;gap:16px;background:radial-gradient(circle at 75% 18%,rgba(171,133,255,.30),transparent 36%),radial-gradient(circle at 15% 85%,rgba(86,116,242,.22),transparent 45%),linear-gradient(135deg,#131629,#292047 65%,#171b32);border:1px solid #383453;border-radius:20px;box-shadow:0 16px 36px rgba(25,18,58,.18)}
+.edc-player-screen-premium{position:relative;isolation:isolate;min-height:385px;padding:26px;overflow:hidden;display:flex;align-items:center;justify-content:center;gap:16px;background:radial-gradient(circle at 75% 18%,rgba(148,163,184,.16),transparent 36%),radial-gradient(circle at 15% 85%,rgba(100,116,139,.14),transparent 45%),linear-gradient(135deg,#131820,#252d39 65%,#171d27);border:1px solid #38414d;border-radius:20px;box-shadow:0 16px 36px rgba(25,30,40,.18)}
 .edc-player-screen-premium:before{content:"";position:absolute;inset:0;background:linear-gradient(135deg,rgba(255,255,255,.05),transparent 40%);pointer-events:none}
 .edc-player-screen-premium .edc-player-screen-tag{position:absolute;top:21px;left:22px;display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid rgba(255,255,255,.14);border-radius:50px;background:rgba(255,255,255,.08);font-size:10px;font-weight:800;letter-spacing:1.1px;color:#e5ddff;opacity:1}
-.edc-player-play-symbol{width:90px;height:90px;border:1px solid rgba(255,255,255,.27);border-radius:50%;display:grid;place-items:center;background:linear-gradient(145deg,#a580ff,#7554d3);color:#fff;box-shadow:0 0 0 12px rgba(158,119,245,.10),0 15px 40px rgba(10,6,30,.28)}
+.edc-player-play-symbol{width:90px;height:90px;border:1px solid rgba(255,255,255,.27);border-radius:50%;display:grid;place-items:center;background:linear-gradient(145deg,#748094,#4b5563);color:#fff;box-shadow:0 0 0 12px rgba(148,163,184,.10),0 15px 40px rgba(10,6,30,.28)}
 .edc-player-play-symbol svg{margin-left:5px}
 .edc-player-screen-caption{max-width:95%;text-align:center}
-.edc-player-screen-caption>span{font-size:11px;letter-spacing:2px;font-weight:800;color:#d6c7ff;opacity:1}
+.edc-player-screen-caption>span{font-size:11px;letter-spacing:2px;font-weight:800;color:#cbd5e1;opacity:1}
 .edc-player-screen-caption h3{margin:8px 0 3px;color:white;font-size:clamp(20px,2.4vw,29px);font-weight:800;line-height:1.3}
-.edc-player-screen-caption p{margin:0;color:#cfc8e4;font-size:13px}
+.edc-player-screen-caption p{margin:0;color:#cbd5e1;font-size:13px}
 .edc-player-screen-bottom{position:absolute;bottom:0;left:0;right:0;display:flex;justify-content:space-between;gap:12px;padding:14px 20px;background:rgba(8,8,24,.30);border-top:1px solid rgba(255,255,255,.08)}
 .edc-player-screen-bottom span{display:inline-flex;align-items:center;gap:7px;font-size:11px;color:#e5e0f2;opacity:1}
 .edc-player-details-premium{padding-top:22px}
@@ -4088,11 +4101,12 @@ body:has(.edc-teacher-shell) .dashboard-container {
 }
 /* EduConnect AI - Student Profile */
 .edc-student-profile-page{min-width:0}
-.edc-student-profile-cover{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:20px;padding:30px;border-radius:22px;background:linear-gradient(120deg,#312058,#6844b4 65%,#9369d9);color:#fff;box-shadow:0 14px 32px rgba(75,45,137,.16)}
+.edc-student-profile-cover{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:20px;padding:30px;border:1px solid #e5e7eb;border-radius:22px;background:#fff;color:#172033;box-shadow:0 10px 26px rgba(25,35,55,.06)}
+.edc-student-profile-cover .edc-btn-white{border:1px solid #e5e7eb;box-shadow:0 2px 6px rgba(25,35,55,.05)}
 .edc-student-profile-identity{display:flex;align-items:center;gap:20px;min-width:0}
-.edc-student-profile-identity h2{margin:7px 0;color:#fff;font-size:clamp(21px,2.5vw,30px);overflow-wrap:anywhere}
-.edc-student-profile-identity p{margin:0;color:#e6dcff;overflow-wrap:anywhere}
-.edc-student-profile-overline{font-size:11px;letter-spacing:1.5px;font-weight:800;color:#e0d3ff}
+.edc-student-profile-identity h2{margin:7px 0;color:#172033;font-size:clamp(21px,2.5vw,30px);overflow-wrap:anywhere}
+.edc-student-profile-identity p{margin:0;color:#647084;overflow-wrap:anywhere}
+.edc-student-profile-overline{font-size:11px;letter-spacing:1.5px;font-weight:800;color:#7042d8}
 .edc-student-profile-avatar{display:inline-flex;flex:none;align-items:center;justify-content:center;overflow:hidden;border-radius:50%;background:#f2eaff;color:#7653cb;border:3px solid rgba(255,255,255,.7)}
 .edc-student-profile-avatar img{width:100%;height:100%;object-fit:cover}
 .edc-student-profile-avatar-large{width:102px;height:102px;box-shadow:0 8px 24px rgba(21,9,47,.2)}
@@ -4150,3 +4164,304 @@ body:has(.edc-teacher-shell) .dashboard-container {
 .edc-recommendation-empty{padding:13px 15px;border-radius:11px;background:#faf8ff;color:#756987;font-size:13px}
 @media(max-width:900px){.edc-student-profile-grid{grid-template-columns:1fr}}
 @media(max-width:600px){.edc-student-profile-cover{padding:20px}.edc-student-profile-identity{gap:12px}.edc-student-profile-avatar-large{width:74px;height:74px}.edc-student-profile-fields,.edc-student-profile-readonly{grid-template-columns:1fr}.edc-student-profile-about,.edc-profile-subject-preview{grid-column:auto}.edc-student-profile-actions .edc-btn{flex:1;justify-content:center}}
+
+/* Student tabs use the dashboard header for their single page title. */
+.edc-main[data-active-tab]:not([data-active-tab="player"]) .edc-tab-content > .edc-section-heading:first-child,
+.edc-main[data-active-tab="discussions"] .edc-qa-heading,
+.edc-main[data-active-tab="notes"] .edc-notes-header,
+.edc-main[data-active-tab="analytics"] .edc-analytics-head,
+.edc-main[data-active-tab="quizzes"] .edc-quiz-header,
+.edc-main[data-active-tab="course-assignments"] .edca-hero,
+.edc-main[data-active-tab="learning-paths"] .edlp-hero,
+.edc-main[data-active-tab="curriculum"] .ecc-hero,
+.edc-main[data-active-tab="help-support"] .edc-user-support-heading,
+.edc-main[data-active-tab="appeals"] .edc-user-appeals-heading {
+  display: none;
+}
+
+.edc-main[data-active-tab="reviews"] > section > h2:first-child,
+.edc-main[data-active-tab="reviews"] > section > p:nth-child(2) {
+  display: none;
+}
+
+.edc-main[data-active-tab="notifications"] .edc-notifications-heading > div:first-child {
+  display: none;
+}
+
+.edc-main[data-active-tab="notifications"] .edc-notifications-heading {
+  justify-content: flex-end;
+  margin-bottom: 0;
+}
+
+/* Student dashboard visual polish: a calm canvas, clear hierarchy, and consistent cards. */
+.edc-student-shell {
+  --edc-primary: #7042d8;
+  --edc-primary-dark: #5930b8;
+  --edc-dark: #20243b;
+  --edc-muted: #737b91;
+  --edc-border: #e7e9f2;
+  --edc-bg: #f5f6fb;
+  background: var(--edc-bg);
+  color: var(--edc-dark);
+}
+
+.edc-student-shell > .edc-sidebar {
+  background: rgba(255, 255, 255, .96);
+  border-right-color: #e8eaf2;
+  box-shadow: 8px 0 28px rgba(31, 37, 67, .035);
+  padding: 24px 14px 18px;
+}
+
+.edc-sidebar-heading {
+  padding-bottom: 16px;
+  color: #9299ad;
+  letter-spacing: 1.45px;
+}
+
+.edc-sidebar-profile {
+  margin-bottom: 18px;
+  padding: 12px;
+  border: 1px solid #eee8fb;
+  background: #f8f5ff;
+}
+
+.edc-navigation {
+  gap: 4px;
+}
+
+.edc-nav-item {
+  min-height: 42px;
+  padding: 10px 11px;
+  border: 1px solid transparent;
+  color: #626b82;
+  font-size: 13px;
+  transition: background .18s ease, color .18s ease, border-color .18s ease, transform .18s ease;
+}
+
+.edc-nav-item svg {
+  flex: 0 0 auto;
+  color: #858da4;
+}
+
+.edc-nav-item:hover {
+  border-color: #eee8fb;
+  background: #faf8ff;
+  color: var(--edc-primary-dark);
+  transform: translateX(2px);
+}
+
+.edc-nav-item:hover svg,
+.edc-nav-active svg {
+  color: var(--edc-primary);
+}
+
+.edc-nav-active,
+.edc-nav-active:hover {
+  border-color: #e8ddff;
+  background: #f0eaff;
+  color: #5930b8;
+}
+
+.edc-sidebar-bottom {
+  padding: 15px 13px;
+  border-color: #e9eaf1;
+  background: #fafbfe;
+}
+
+.edc-main {
+  padding: 26px 30px 34px;
+}
+
+.edc-main-header {
+  min-height: 82px;
+  margin-bottom: 18px;
+  padding: 15px 19px;
+  border: 1px solid rgba(230, 232, 241, .9);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, .92);
+  box-shadow: 0 5px 18px rgba(31, 37, 67, .035);
+}
+
+.edc-breadcrumb {
+  color: #7b58c2;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1.15px;
+}
+
+.edc-main-header h2 {
+  margin-top: 4px;
+  color: #20243b;
+  font-size: clamp(20px, 2vw, 25px);
+  letter-spacing: -.35px;
+}
+
+.edc-header-right {
+  gap: 10px;
+}
+
+.edc-notification-bell,
+.edc-student-profile-header-button {
+  transition: background .18s ease, border-color .18s ease, transform .18s ease;
+}
+
+.edc-notification-bell:hover,
+.edc-student-profile-header-button:hover {
+  border-color: #d5c5f5;
+  background: #f8f5ff;
+  transform: translateY(-1px);
+}
+
+.edc-demo-badge {
+  border-color: #e8eaf1;
+  color: #657087;
+}
+
+.edc-tab-content {
+  gap: 16px;
+}
+
+.edc-tab-content > .edc-section-heading:first-child {
+  margin-bottom: 0;
+}
+
+.edc-panel,
+.edc-stat-card,
+.edc-course-card,
+.edc-academic-card,
+.edc-academic-stat-card,
+.edc-pds-panel,
+.edc-pds-course,
+.edc-pds-video,
+.edc-pds-resource,
+.edc-pds-teacher,
+.edc-research-count,
+.edc-research-editor,
+.edc-research-library,
+.edc-research-item {
+  border-color: #e7e9f2;
+  border-radius: 16px;
+  box-shadow: 0 5px 18px rgba(31, 37, 67, .035);
+}
+
+.edc-panel,
+.edc-stat-card,
+.edc-academic-card,
+.edc-pds-panel {
+  background: #fff;
+}
+
+.edc-stat-card {
+  padding: 20px;
+}
+
+.edc-stat-card > span,
+.edc-section-heading p {
+  color: #737b91;
+}
+
+.edc-stat-card strong {
+  color: #242840;
+  letter-spacing: -.4px;
+}
+
+.edc-course-card,
+.edc-academic-card,
+.edc-pds-course,
+.edc-pds-teacher {
+  transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+}
+
+.edc-course-card:hover,
+.edc-academic-card:hover,
+.edc-pds-course:hover,
+.edc-pds-teacher:hover {
+  border-color: #d7c8f4;
+  box-shadow: 0 12px 28px rgba(45, 37, 78, .09);
+  transform: translateY(-2px);
+}
+
+.edc-btn,
+.edc-pds-primary,
+.edc-pds-secondary,
+.edc-academic-tab,
+.edc-research-tabs button {
+  transition: background .18s ease, border-color .18s ease, color .18s ease, box-shadow .18s ease, transform .18s ease;
+}
+
+.edc-btn:focus-visible,
+.edc-nav-item:focus-visible,
+.edc-academic-tab:focus-visible,
+.edc-research-tabs button:focus-visible,
+.edc-pds-primary:focus-visible,
+.edc-pds-secondary:focus-visible {
+  outline: 3px solid rgba(112, 66, 216, .24);
+  outline-offset: 2px;
+}
+
+.edc-tab-content input,
+.edc-tab-content select,
+.edc-tab-content textarea {
+  border-color: #dfe3ed;
+  border-radius: 10px;
+  transition: border-color .18s ease, box-shadow .18s ease;
+}
+
+.edc-tab-content input:focus,
+.edc-tab-content select:focus,
+.edc-tab-content textarea:focus {
+  border-color: #a88ae5;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(112, 66, 216, .12);
+}
+
+.edc-student-shell .edc-empty-state,
+.edc-pds-empty,
+.edc-academic-stat-empty {
+  border: 1px dashed #dfe2ed;
+  border-radius: 15px;
+  background: #fbfcff;
+}
+
+@media (max-width: 900px) {
+  .edc-main-header {
+    min-height: 74px;
+    padding: 13px 15px;
+  }
+}
+
+@media (max-width: 600px) {
+  .edc-main {
+    padding: 14px 12px 24px;
+  }
+
+  .edc-main-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 13px;
+  }
+
+  .edc-main-header h2 {
+    font-size: 18px;
+  }
+
+  .edc-header-right {
+    margin-left: auto;
+    gap: 6px;
+  }
+
+  .edc-demo-badge {
+    padding: 7px 8px;
+  }
+
+  .edc-tab-content {
+    gap: 13px;
+  }
+}
+
+@media (max-width: 760px) {
+  .dashboard-page:has(.edc-student-shell) {
+    padding-top: 70px;
+  }
+}

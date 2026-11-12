@@ -77,8 +77,12 @@
 }
 
 .marketplace-instructor {
+  display: block;
+  margin: 0 0 7px;
   color: #6b7280;
   font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .marketplace-description {
@@ -167,9 +171,12 @@
 }
 
 .marketplace-teacher-qualification {
+  display: block;
+  margin: 0 0 14px;
   color: #766b8c;
   font-size: 12px;
-  margin: -6px 0 8px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .marketplace-teacher-rating,

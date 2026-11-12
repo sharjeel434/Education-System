@@ -19,6 +19,7 @@ import {
 } from "../components/admin/adminNavigation";
 import { appendAdminActivityRecord } from "../components/admin/adminData";
 import StudentDashboard from "./dashboards/StudentDashboard";
+import StudentDashboardHeader from "../components/student/StudentDashboardHeader";
 import TeacherDashboard from "./dashboards/TeacherDashboard";
 import AdminLayout from "../components/admin/AdminLayout";
 
@@ -148,7 +149,7 @@ return (
       }`}
     >
 
-      <header className="auth-topbar">
+      {role === "Student" ? <StudentDashboardHeader email={email} onLogout={signOut} /> : <header className="auth-topbar">
         <Link
           className="auth-brand"
           to="/"
@@ -178,7 +179,7 @@ return (
             <LogOut size={17} />
           </button>
         </div>
-      </header>
+      </header>}
 
       <div className="dashboard-content">
         <section className="dashboard-welcome">

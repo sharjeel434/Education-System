@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { addDemoNotification, notifyEnrolledStudents } from '../../utils/demoNotifications';
-import { ASSIGNMENT_EVENT, assignmentKey, submissionKey, norm, read, save, uid, allSubmissions, putAttachment, getAttachment, deleteAttachment, downloadFile } from './assignmentStorage';
+import { notifyEnrolledStudents } from '../../utils/demoNotifications';
+import { ASSIGNMENT_EVENT, assignmentKey, submissionKey, norm, read, save, uid, allSubmissions, getAttachment, downloadFile } from './assignmentStorage';
 import './CourseAssignments.css';
+import StudentCourseAssignments from './StudentCourseAssignments';
 
 function useChanges(){const [version,setVersion]=useState(0);useEffect(()=>{const fn=()=>setVersion(v=>v+1);window.addEventListener(ASSIGNMENT_EVENT,fn);window.addEventListener('storage',fn);window.addEventListener('focus',fn);return()=>{window.removeEventListener(ASSIGNMENT_EVENT,fn);window.removeEventListener('storage',fn);window.removeEventListener('focus',fn);};},[]);return version;}
 const blank = () => ({id:uid(),title:'',instructions:'',dueAt:'',maxMarks:100,published:false,createdAt:new Date().toISOString()});
-const isLate = date => Boolean(date && new Date(date).getTime() < Date.now());
 const prettyDate = date => date ? new Date(date).toLocaleString() : 'No deadline';
 async function getFile(row,setMessage){if(!row.fileId)return;try{const file=await getAttachment(row.fileId);if(!file)throw Error('Attachment not found in this browser.');downloadFile(file);}catch(err){setMessage(err.message||'Could not open file.');}}
 function Teacher({email,courses}){
@@ -55,32 +55,4 @@ function Teacher({email,courses}){
     </>}
     <p className="edca-note">Browser-local demo only. Submissions and grades are visible only in this browser; no real backend sync.</p></div>;
 }
-function Student({email,courses}){
-  const version=useChanges();const [courseId,setCourseId]=useState('');const [openId,setOpenId]=useState('');const [answer,setAnswer]=useState('');const [file,setFile]=useState(null);const [busy,setBusy]=useState(false);const [message,setMessage]=useState('');
-  const selected=courses.find(c=>String(c.id)===String(courseId))||courses[0];
-  const assignments=useMemo(()=>selected?.teacherEmail?read(assignmentKey(selected.teacherEmail,selected.id)).filter(a=>a.published):[],[selected?.teacherEmail,selected?.id,version]);
-  const submissions=useMemo(()=>assignments.flatMap(a=>read(submissionKey(email,a.id))),[email,assignments,version]);
-  const submit=async a=>{
-    if(busy)return;if(!answer.trim()&&!file){setMessage('Write an answer or attach a file before submitting.');return;}
-    if(isLate(a.dueAt)){setMessage('The submission deadline has passed.');return;}
-    if(file && file.size>10*1024*1024){setMessage('File must be 10 MB or smaller.');return;}
-    setBusy(true);setMessage('');const id=uid(),fileId=file?`assignment-${id}`:null;
-    try{if(file)await putAttachment(fileId,file);
-      const item={id,assignmentId:a.id,assignmentTitle:a.title,courseId:a.courseId,teacherEmail:a.teacherEmail,studentEmail:email,answer:answer.trim(),fileId,fileName:file?.name||'',fileSize:file?.size||0,submittedAt:new Date().toISOString(),late:false,maxMarks:a.maxMarks,marks:null,feedback:'',gradedAt:null};
-      const key=submissionKey(email,a.id);save(key,[...read(key),item]);addDemoNotification('teacher',a.teacherEmail,{id:`assignment-submission:${item.id}`,type:'assignment',title:'New assignment submission',message:`${email} submitted ${a.title}.`,link:'course-assignments'});setOpenId('');setAnswer('');setFile(null);setMessage('Assignment submitted successfully.');
-    }catch(err){if(fileId)try{await deleteAttachment(fileId);}catch{}setMessage(`Could not save submission: ${err.message}`);}finally{setBusy(false);}
-  };
-  return <div className="edca-root"><header className="edca-hero"><small>STUDENT LEARNING</small><h2>Course Assignments</h2><p>Submit coursework and check your grades and instructor feedback.</p></header>
-    {!courses.length?<section className="edca-panel">Enroll in a course to access assignments.</section>:<>
-      <label className="edca-label">Enrolled course<select value={selected?String(selected.id):''} onChange={e=>{setCourseId(e.target.value);setOpenId('');setMessage('');}}>{courses.map(c=><option key={`${c.teacherEmail}:${c.id}`} value={String(c.id)}>{c.title||'Untitled course'}</option>)}</select></label>
-      {message&&<p className="edca-message" role="status">{message}</p>}
-      <section className="edca-panel"><h3>Available Assignments ({assignments.length})</h3>{!assignments.length?<p>No published assignments for this course yet.</p>:assignments.map(a=>{
-        const past=submissions.filter(s=>s.assignmentId===a.id);const latest=past[past.length-1];const closed=isLate(a.dueAt);
-        return <article className="edca-item" key={a.id}><div><strong>{a.title}</strong><p>{a.instructions}</p><small>Due: {prettyDate(a.dueAt)} · Max {a.maxMarks} marks · {closed?'Closed':'Open'} · {past.length} submission(s)</small>{latest&&<p>Latest result: {latest.gradedAt?`${latest.marks}/${a.maxMarks} marks · ${latest.feedback||'No feedback'}`:'Awaiting grading'}</p>}</div><div className="edca-actions"><button type="button" disabled={closed} onClick={()=>{setOpenId(openId===a.id?'':a.id);setAnswer('');setFile(null);}}>{openId===a.id?'Close Form':'Submit Assignment'}</button></div>
-          {openId===a.id&&!closed&&<div className="edca-form"><label className="edca-label">Your answer<textarea rows="5" value={answer} onChange={e=>setAnswer(e.target.value)} placeholder="Write your response here"/></label><label className="edca-label">Optional attachment (max 10 MB)<input type="file" onChange={e=>setFile(e.target.files?.[0]||null)}/></label><button type="button" className="edca-primary" disabled={busy} onClick={()=>submit(a)}>{busy?'Saving...':'Submit'}</button></div>}</article>;
-      })}</section>
-      <section className="edca-panel"><h3>Submission History ({submissions.length})</h3>{!submissions.length?<p>No submissions yet.</p>:[...submissions].sort((a,b)=>String(b.submittedAt).localeCompare(String(a.submittedAt))).map(s=><article className="edca-item" key={s.id}><div><strong>{s.assignmentTitle}</strong><p>{prettyDate(s.submittedAt)} · {s.gradedAt?`Graded: ${s.marks}/${s.maxMarks}`:'Awaiting grading'}</p>{s.answer&&<p>{s.answer}</p>}{s.fileId&&<button type="button" onClick={()=>getFile(s,setMessage)}>Download {s.fileName||'attachment'}</button>}{s.gradedAt&&<p><strong>Teacher feedback:</strong> {s.feedback||'No written feedback'}</p>}</div></article>)}</section>
-    </>}
-    <p className="edca-note">Demo only: text and grades use localStorage; file attachments use IndexedDB in this browser. No backend or multi-device synchronization.</p></div>;
-}
-export default function CourseAssignments({role,email,courses=[]}){return role==='teacher'?<Teacher email={email} courses={courses}/>:<Student email={email} courses={courses}/>;}
+export default function CourseAssignments({role,email,courses=[],...props}){return role==='teacher'?<Teacher email={email} courses={courses}/>:<StudentCourseAssignments key={email} email={email} courses={courses} {...props}/>;}

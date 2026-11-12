@@ -106,20 +106,6 @@ const schoolSubjects = {
   12: ["English", "Urdu", "Mathematics", "Physics", "Chemistry", "Biology", "Computer"]
 };
 
-const chapterLibrary = {
-  English: ["Grammar and Sentence Structure", "Vocabulary Building", "Reading Comprehension", "Writing Skills"],
-  Urdu: ["Reading and Comprehension", "Grammar", "Vocabulary", "Essay Writing"],
-  Mathematics: ["Number Systems", "Algebra", "Geometry", "Statistics and Probability"],
-  "General Knowledge": ["Our World", "People and Places", "Environment", "Everyday Science"],
-  "General Science": ["Living Things", "Plants and Animals", "Matter", "Environment"],
-  "Social Studies": ["History", "Geography", "Civics", "Culture and Society"],
-  Science: ["Scientific Method", "Matter and Energy", "Living Organisms", "Environment"],
-  Computer: ["Computer Fundamentals", "Hardware and Software", "Programming Basics", "Internet and Networks"],
-  Physics: ["Measurements", "Motion and Force", "Work and Energy", "Waves and Electricity"],
-  Chemistry: ["Atomic Structure", "Chemical Bonding", "Chemical Reactions", "Organic Chemistry"],
-  Biology: ["Cell Biology", "Genetics", "Human Physiology", "Ecology"]
-};
-
 const professionalCourses = [
   { title: "Web Development", category: "Technology", level: "Professional", subjects: ["HTML", "CSS", "JavaScript", "React", "Node.js", "Databases"], image: imageComputer },
   { title: "Artificial Intelligence", category: "Technology", level: "Professional", subjects: ["AI Fundamentals", "Machine Learning", "Deep Learning", "Neural Networks", "Generative AI"], image: imageComputer },
@@ -230,24 +216,6 @@ const allSubjects = [
   ...new Set(allCourses.flatMap((course) => course.subjects))
 ].sort();
 
-const isSchoolCategory = (value) =>
-  /^Class (?:[1-9]|1[0-2])$/.test(value);
-
-const subjectGroupRules = [
-  ["Mathematics", /\b(math|algebra|geometry|calculus|statistics|probability|topology|econometrics)\b/i],
-  ["Programming & Technology", /\b(programming|computer|software|algorithm|database|data science|machine learning|deep learning|artificial intelligence|network|cyber|cloud|android|ios|web development|operating system|distributed system|neural network|cryptography|virtualization|big data|sql|python|html|javascript|react|node\.js)\b/i],
-  ["Languages & Communication", /\b(english|urdu|language|grammar|vocabulary|reading|writing|literature|comprehension|essay|communication|typography)\b/i],
-  ["Science & Health", /\b(science|physics|chemistry|biology|anatomy|physiology|biochemistry|pathology|pharmacology|pharmaceutics|pharmacognosy|medicinal chemistry|genetics|ecology|molecular biology|quantum|mechanics|electromagnetism|thermodynamics|organic chemistry|inorganic chemistry|cell biology|human physiology)\b/i],
-  ["Business & Economics", /\b(business|accounting|finance|economics|management|marketing|leadership|strategy|operations|auditing|corporate finance|microeconomics|macroeconomics)\b/i],
-  ["Engineering", /\b(engineering|structural|geotechnical|surveying|fluid mechanics|circuit analysis|electronics|power systems|control systems)\b/i],
-  ["Design & Creative Arts", /\b(design|illustration|branding|user research|wireframing|prototyping|usability)\b/i],
-  ["Social Studies & Humanities", /\b(social studies|history|geography|civics|culture|psychology|law|education|pedagogy|curriculum|ethics|environment|research methods|thesis|dissertation)\b/i]
-];
-
-const getSubjectGroup = (subjectName) =>
-  subjectGroupRules.find(([, pattern]) => pattern.test(subjectName))?.[0] ||
-  "Other Subjects";
-
 const schoolLevels = ["Primary", "Middle", "Secondary", "Higher Secondary"];
 const educationLevelGroups = {
   School: schoolLevels,
@@ -308,14 +276,6 @@ function matchesAcademicDetails(course, profile, profileSubjects) {
   return true;
 }
 
-function makeVideoSearch(course, subject, chapter) {
-  const query = encodeURIComponent(
-    `${course.title} ${subject} ${chapter} educational lesson`
-  );
-
-  return `https://www.youtube.com/results?search_query=${query}`;
-}
-
 function ExploreCourses({
   initialSearch = "",
   initialCategory = "All"
@@ -323,9 +283,6 @@ function ExploreCourses({
   const [search, setSearch] = useState(initialSearch);
   const [category, setCategory] = useState(initialCategory);
   const [level, setLevel] = useState("All");
-  const [subject, setSubject] = useState("All");
-  const [sort, setSort] = useState("name");
-  const [selectedBoard, setSelectedBoard] = useState("All");
   const [academicDetails, setAcademicDetails] = useState({
     classNumber: "",
     intermediateYear: "",
@@ -342,8 +299,6 @@ function ExploreCourses({
     setSearch(initialSearch);
     setCategory(initialCategory);
     setLevel("All");
-    setSubject("All");
-    setSelectedBoard("All");
     setAcademicDetails({
       classNumber: "",
       intermediateYear: "",
@@ -356,13 +311,6 @@ function ExploreCourses({
     setSelectedCourse(null);
   }, [initialSearch, initialCategory]);
 
-  const categories = useMemo(
-    () => [...new Set(allCourses.map((course) => course.category))],
-    []
-  );
-
-  const showBoardFilter =
-    isSchoolCategory(category) || level === "School" || schoolLevels.includes(level);
   const selectedProgram = academicDetails.programChoice === "Other"
     ? academicDetails.customProgram.trim()
     : academicDetails.programChoice;
@@ -381,37 +329,6 @@ function ExploreCourses({
     program: selectedProgram,
   };
   const profileSubjects = getStudentAcademicSubjects(studentAcademicProfile);
-  const subjectCourses = allCourses.filter((course) => {
-    if (category !== "All" && course.category !== category) return false;
-    if (!matchesCourseEducationLevel(course, level)) return false;
-    if (!matchesAcademicDetails(course, studentAcademicProfile, profileSubjects)) return false;
-    if (
-      showBoardFilter &&
-      selectedBoard !== "All" &&
-      course.category.startsWith("Class ") &&
-      !course.boards?.includes(selectedBoard)
-    ) {
-      return false;
-    }
-    return true;
-  });
-  const subjectGroups = subjectCourses.reduce((groups, course) => {
-    course.subjects.forEach((item) => {
-      const groupName = getSubjectGroup(item);
-      if (!groups[groupName]) groups[groupName] = new Set();
-      groups[groupName].add(item);
-    });
-    return groups;
-  }, {});
-  const filterSubjectGroups = profileSubjects.length
-    ? profileSubjects.reduce((groups, item) => {
-        const groupName = getSubjectGroup(item);
-        if (!groups[groupName]) groups[groupName] = new Set();
-        groups[groupName].add(item);
-        return groups;
-      }, {})
-    : subjectGroups;
-
   const pageTitle =
     search.trim() || (category !== "All" ? category : "Explore Courses and Subjects");
   const isSpecificPage = search.trim() !== "" || category !== "All";
@@ -434,23 +351,10 @@ function ExploreCourses({
       .filter((course) => category === "All" || course.category === category)
       .filter((course) => matchesCourseEducationLevel(course, level))
       .filter((course) => matchesAcademicDetails(course, studentAcademicProfile, profileSubjects))
-      .filter((course) => subject === "All" || course.subjects.includes(subject))
-      .filter((course) => {
-        if (!showBoardFilter || selectedBoard === "All") {
-          return true;
-        }
-
-        return (
-          !course.category.startsWith("Class ") ||
-          course.boards?.includes(selectedBoard)
-        );
-      })
       .sort((a, b) => {
-        if (sort === "name") return a.title.localeCompare(b.title);
-        if (sort === "level") return a.level.localeCompare(b.level);
         return a.title.localeCompare(b.title);
       });
-  }, [search, category, level, subject, sort, selectedBoard, showBoardFilter, academicDetails, selectedProgram, profileSubjects]);
+  }, [search, category, level, academicDetails, selectedProgram, profileSubjects]);
 
   const coursesPerPage = 9;
   const totalPages = Math.ceil(filteredCourses.length / coursesPerPage);
@@ -478,9 +382,6 @@ function ExploreCourses({
     setSearch("");
     setCategory("All");
     setLevel("All");
-    setSubject("All");
-    setSort("name");
-    setSelectedBoard("All");
     setAcademicDetails({
       classNumber: "",
       intermediateYear: "",
@@ -492,26 +393,8 @@ function ExploreCourses({
     setPage(1);
   };
 
-  const handleCategoryChange = (value) => {
-    setCategory(value);
-    setSelectedBoard("All");
-    setSubject("All");
-    if (
-      value !== "All" &&
-      level !== "All" &&
-      !allCourses.some(
-        (course) => course.category === value && matchesCourseEducationLevel(course, level)
-      )
-    ) {
-      setLevel("All");
-    }
-    setPage(1);
-  };
-
   const handleLevelChange = (value) => {
     setLevel(value);
-    setSelectedBoard("All");
-    setSubject("All");
     setAcademicDetails({
       classNumber: "",
       intermediateYear: "",
@@ -538,16 +421,6 @@ function ExploreCourses({
   };
 
   if (selectedCourse) {
-    const chapters = selectedCourse.subjects.map((item) => ({
-      subject: item,
-      chapters: chapterLibrary[item] || [
-        `Introduction to ${item}`,
-        `${item} Fundamentals`,
-        `Important Concepts in ${item}`,
-        `${item} Applications and Practice`
-      ]
-    }));
-
     return (
       <div className="explore-page">
         <div className="explore-detail-top">
@@ -590,70 +463,11 @@ function ExploreCourses({
               ))}
             </div>
 
-            <h2>Topics and Video Lessons</h2>
-            <p>
-              Choose a topic to find educational video lessons.
-              Video links currently open YouTube search results.
-            </p>
-
-            <div className="chapter-list">
-              {chapters.map(
-                ({ subject: subjectName, chapters: subjectChapters }) => (
-                  <div className="chapter-subject" key={subjectName}>
-                    <h3>{subjectName}</h3>
-
-                    {subjectChapters.map((chapter, index) => (
-                      <div className="chapter-row" key={chapter}>
-                        <span>
-                          <strong>Topic {index + 1}:</strong> {chapter}
-                        </span>
-
-                        <a
-                          href={makeVideoSearch(
-                            selectedCourse,
-                            subjectName,
-                            chapter
-                          )}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="video-link"
-                        >
-                          ▶ Watch Videos
-                        </a>
-                      </div>
-                    ))}
-                  </div>
-                )
-              )}
-            </div>
-
-            <h2>Study Resources</h2>
-            <p>
-              This catalog is a learning structure and starting library.
-              Individual notes, worksheets, verified video links and complete
-              syllabuses can be added to each course as content is developed.
-            </p>
-
-            <button
-              className="enroll-button"
-              onClick={() => {
-                const firstSubject = selectedCourse.subjects[0];
-                const firstChapter =
-                  chapterLibrary[firstSubject]?.[0] || "Introduction";
-
-                window.open(
-                  makeVideoSearch(
-                    selectedCourse,
-                    firstSubject,
-                    firstChapter
-                  ),
-                  "_blank",
-                  "noopener,noreferrer"
-                );
-              }}
-            >
-              Start Learning
-            </button>
+            <PublishedCourses
+              title="Related Teacher Courses"
+              description={`Teacher courses related to ${selectedCourse.title} will appear here after publishing.`}
+              relatedTo={[selectedCourse.title]}
+            />
           </div>
         </section>
       </div>
@@ -690,7 +504,7 @@ function ExploreCourses({
           {isSpecificPage ? "SUBJECT LEARNING PAGE" : "GLOBAL LEARNING LIBRARY"}
         </span>
 
-        <h1 key={pageTitle} className="explore-header-title">
+        <h1 className="explore-header-title">
           {pageTitle}
         </h1>
 
@@ -727,23 +541,6 @@ function ExploreCourses({
             <button onClick={resetFilters}>Reset</button>
           </div>
 
-          <div className="filter-group">
-            <h3>Course Category</h3>
-
-            <select
-              value={category}
-              onChange={(e) => handleCategoryChange(e.target.value)}
-            >
-              <option value="All">All Categories</option>
-
-              {categories.map((item) => (
-                <option value={item} key={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
-          </div>
-
           <div className="academic-filter-grid">
           <div className="filter-group">
             <h3>Education Level</h3>
@@ -759,33 +556,6 @@ function ExploreCourses({
             </select>
           </div>
 
-          {showBoardFilter && (
-            <div className="filter-group">
-              <h3>Pakistan Education Board</h3>
-
-              <select
-                value={selectedBoard}
-                onChange={(e) => {
-                  setSelectedBoard(e.target.value);
-                  setSubject("All");
-                  setPage(1);
-                }}
-              >
-                <option value="All">All Boards</option>
-
-                {pakistanBoards.map((board) => (
-                  <option value={board} key={board}>
-                    {board}
-                  </option>
-                ))}
-              </select>
-
-              <small>
-                Select your board to choose your school education board.
-              </small>
-            </div>
-          )}
-
           {level === "School" && (
             <div className="filter-group">
               <h3>Class</h3>
@@ -793,7 +563,6 @@ function ExploreCourses({
                 value={academicDetails.classNumber}
                 onChange={(event) => {
                   setAcademicDetails((previous) => ({ ...previous, classNumber: event.target.value }));
-                  setSubject("All");
                   setPage(1);
                 }}
               >
@@ -812,7 +581,6 @@ function ExploreCourses({
                 value={academicDetails.intermediateYear}
                 onChange={(event) => {
                   setAcademicDetails((previous) => ({ ...previous, intermediateYear: event.target.value }));
-                  setSubject("All");
                   setPage(1);
                 }}
               >
@@ -827,7 +595,6 @@ function ExploreCourses({
                 value={academicDetails.stream}
                 onChange={(event) => {
                   setAcademicDetails((previous) => ({ ...previous, stream: event.target.value }));
-                  setSubject("All");
                   setPage(1);
                 }}
               >
@@ -850,7 +617,6 @@ function ExploreCourses({
                     programChoice: "",
                     customProgram: "",
                   }));
-                  setSubject("All");
                   setPage(1);
                 }}
               >
@@ -870,7 +636,6 @@ function ExploreCourses({
                     programChoice: event.target.value,
                     customProgram: "",
                   }));
-                  setSubject("All");
                   setPage(1);
                 }}
               >
@@ -890,7 +655,6 @@ function ExploreCourses({
                 value={academicDetails.customProgram}
                 onChange={(event) => {
                   setAcademicDetails((previous) => ({ ...previous, customProgram: event.target.value }));
-                  setSubject("All");
                   setPage(1);
                 }}
                 placeholder="Type your degree program"
@@ -909,7 +673,6 @@ function ExploreCourses({
                     programChoice: event.target.value,
                     customProgram: "",
                   }));
-                  setSubject("All");
                   setPage(1);
                 }}
               >
@@ -924,7 +687,6 @@ function ExploreCourses({
                 value={academicDetails.customProgram}
                 onChange={(event) => {
                   setAcademicDetails((previous) => ({ ...previous, customProgram: event.target.value }));
-                  setSubject("All");
                   setPage(1);
                 }}
                 placeholder="Type the course area"
@@ -932,47 +694,6 @@ function ExploreCourses({
             </div>}
           </>}
 
-          </div>
-
-          {profileSubjects.length > 0 && (
-            <div className="explore-profile-subject-preview">
-              <strong>Related subjects</strong>
-              <p>{profileSubjects.join(" · ")}</p>
-            </div>
-          )}
-
-          <div className="filter-group">
-            <h3>Subject</h3>
-            <select
-              value={subject}
-              onChange={(event) => {
-                setSubject(event.target.value);
-                setPage(1);
-              }}
-            >
-              <option value="All">All Subjects</option>
-              {Object.entries(filterSubjectGroups)
-                .sort(([groupA], [groupB]) => groupA.localeCompare(groupB))
-                .map(([groupName, subjects]) => (
-                  <optgroup label={groupName} key={groupName}>
-                    {[...subjects]
-                      .sort((subjectA, subjectB) => subjectA.localeCompare(subjectB))
-                      .map((item) => <option value={item} key={item}>{item}</option>)}
-                  </optgroup>
-                ))}
-            </select>
-          </div>
-
-          <div className="filter-group">
-            <h3>Sort Courses</h3>
-
-            <select
-              value={sort}
-              onChange={(e) => setSort(e.target.value)}
-            >
-              <option value="name">Course Name</option>
-              <option value="level">Education Level</option>
-            </select>
           </div>
         </aside>
 
@@ -988,27 +709,11 @@ function ExploreCourses({
               </h2>
 
               <p>{filteredCourses.length} courses found</p>
-
-              {showBoardFilter && selectedBoard !== "All" && (
-                <p>
-                  Selected Board: <strong>{selectedBoard}</strong>
-                </p>
-              )}
             </div>
           </div>
-
-          {showBoardFilter && selectedBoard !== "All" && (
-            <div className="board-info">
-              <p>
-                You selected {selectedBoard}. Board-specific books,
-                syllabus and chapter content will be added as those
-                materials are entered into the learning library.
-              </p>
-            </div>
-          )}
           <PublishedCourses
             educationProfile={level === "All" ? null : studentAcademicProfile}
-            subjectFilter={subject}
+            searchQuery={search}
           />
           <div className="explore-course-grid">
             {visibleCourses.map((course) => (

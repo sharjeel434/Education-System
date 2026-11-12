@@ -26,6 +26,8 @@ import "./CourseDetails.css";
 export default function CourseDetails({
   course,
   teacherRating = { rating: null, reviewCount: 0 },
+  courseRating = { rating: null, reviewCount: 0 },
+  courseReviews = [],
   onBack,
   onOpenCart,
 }) {
@@ -183,6 +185,39 @@ function handleViewCart() {
                 ))}
               </div>
             )}
+          </section>
+
+          <section className="edc-details-section edc-details-reviews">
+            <div className="edc-details-reviews-heading">
+              <div>
+                <h2>Student Reviews</h2>
+                <p>Feedback shared by students enrolled in this course.</p>
+              </div>
+              <div className="edc-details-reviews-summary">
+                <strong>{courseRating.rating === null ? "—" : courseRating.rating.toFixed(1)}</strong>
+                <span><span aria-hidden="true">★★★★★</span><small>{courseRating.reviewCount} {courseRating.reviewCount === 1 ? "review" : "reviews"}</small></span>
+              </div>
+            </div>
+            {courseReviews.length ? (
+              <div className="edc-details-reviews-list">
+                {courseReviews.map((review) => {
+                  const emailName = String(review.studentEmail || "").split("@")[0].replace(/[._-]+/g, " ");
+                  const name = String(review.studentName || emailName || "Student").trim();
+                  const rating = Math.min(5, Math.max(1, Number(review.rating) || 1));
+                  const date = new Date(review.updatedAt);
+                  return <article className="edc-details-review" key={review.id || `${review.courseKey}:${review.studentEmail}`}>
+                    <div className="edc-details-review-person">
+                      <span aria-hidden="true">{name.slice(0, 1).toUpperCase()}</span>
+                      <div><strong>{name}</strong><small>{Number.isNaN(date.getTime()) ? "Student review" : date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</small></div>
+                    </div>
+                    <div className="edc-details-review-rating" aria-label={`${rating} out of 5 stars`}>
+                      {Array.from({ length: 5 }, (_, index) => <Star key={index} size={15} fill={index < rating ? "currentColor" : "none"} />)}
+                    </div>
+                    <p>{review.comment}</p>
+                  </article>;
+                })}
+              </div>
+            ) : <div className="edc-details-reviews-empty">No student reviews for this course yet.</div>}
           </section>
 
           <section className="edc-details-section">
