@@ -1,6 +1,6 @@
 
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   ArrowRight,
   BookOpen,
@@ -78,8 +78,9 @@ async function saveAccount({ name, email, role, password }) {
 
 function SignupPage() {
   const navigate = useNavigate();
+  const location = useLocation();
 
-  const [role, setRole] = useState("");
+  const [role, setRole] = useState(() => ["Student", "Teacher"].includes(location.state?.role) ? location.state.role : "");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [message, setMessage] = useState("");

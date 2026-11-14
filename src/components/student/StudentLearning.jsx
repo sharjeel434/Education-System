@@ -34,10 +34,10 @@ function CourseThumbnail({ course }) {
   </span>;
 }
 
-export default function StudentLearning({ email, courses = [], publishedCourses = [], activity = {}, searchQuery = "", onSearchChange, onClearSearch, onResume, onCertificate, onUndo, onRemove, onNavigate, onExplore, children }) {
+export default function StudentLearning({ email, courses = [], publishedCourses = [], activity = {}, initialFilter = "all", searchQuery = "", onSearchChange, onClearSearch, onResume, onCertificate, onUndo, onRemove, onNavigate, onExplore, children }) {
   const bookmarkKey = `educonnect.student.${email.trim().toLowerCase()}.learningBookmarks`;
   const [bookmarks, setBookmarks] = useState(() => readBookmarks(bookmarkKey));
-  const [filter, setFilter] = useState("all");
+  const [filter, setFilter] = useState(initialFilter);
   const [view, setView] = useState("list");
   const [openMenu, setOpenMenu] = useState("");
   const [showSamples, setShowSamples] = useState(false);
@@ -92,7 +92,7 @@ export default function StudentLearning({ email, courses = [], publishedCourses 
   return <div className="edc-my-learning">
     <header className="edc-ml-heading"><div className="edc-ml-breadcrumb"><House size={13}/><span>/</span><strong>My Learning</strong></div><h2>My Learning</h2><p>All your enrolled courses in one place. Continue learning, track progress, and complete your goals.</p></header>
     <section className="edc-ml-stats" aria-label="My learning summary">
-      {[{ label: "Enrolled Courses", value: courseList.length, color: "purple", icon: BookOpen, action: () => changeFilter("all") }, { label: "In Progress", value: inProgress.length, color: "amber", icon: Play, action: () => changeFilter("progress") }, { label: "Completed", value: completed.length, color: "green", icon: CheckCircle2, action: () => changeFilter("completed") }, { label: "Total Learning Hours", value: `${hours} hrs`, color: "purple", icon: Clock3, action: () => onNavigate("analytics") }].map(stat => <button type="button" key={stat.label} className={`edc-ml-stat edc-ml-stat-${stat.color}`} onClick={stat.action}><span className="edc-ml-stat-icon"><stat.icon size={27} strokeWidth={1.8}/></span><span><small>{stat.label}</small><strong>{stat.value}</strong></span></button>)}
+      {[{ label: "Enrolled Courses", value: courseList.length, color: "purple", icon: BookOpen, action: () => changeFilter("all") }, { label: "In Progress", value: inProgress.length, color: "amber", icon: Play, action: () => changeFilter("progress") }, { label: "Completed", value: completed.length, color: "blue", icon: CheckCircle2, action: () => changeFilter("completed") }, { label: "Total Learning Hours", value: `${hours} hrs`, color: "green", icon: Clock3, action: () => onNavigate("analytics") }].map(stat => <button type="button" key={stat.label} className={`edc-ml-stat edc-ml-stat-${stat.color}`} onClick={stat.action}><span className="edc-ml-stat-icon"><stat.icon size={27} strokeWidth={1.8}/></span><span><small>{stat.label}</small><strong>{stat.value}</strong></span></button>)}
     </section>
     <form className="edc-ml-search" role="search" aria-label="Search enrolled courses" onSubmit={event => { event.preventDefault(); setOpenMenu(""); }}>
       <button type="submit" aria-label="Search my courses"><Search size={18}/></button>

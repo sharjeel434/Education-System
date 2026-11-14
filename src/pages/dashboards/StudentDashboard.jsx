@@ -5,15 +5,16 @@ import { appendAdminActivityRecord } from "../../components/admin/adminData";
 import {
   LayoutDashboard,
   BookOpen,
+  BookText,
   CalendarDays,
   ClipboardList,
   Brain,
+  Database,
   Bot,
   Users,
   Heart,
   ShoppingCart,
   ReceiptText,
-  Printer,
   Award,
   Microscope,
   GraduationCap,
@@ -55,8 +56,14 @@ import {
   ShieldAlert,
   LifeBuoy,
   Crown,
+  House,
+  Trophy,
 } from "lucide-react";
 import "./Dashboard.css";
+import "./StudentShoppingCart.css";
+import "./StudentPortfolio.css";
+import "./StudentResearchWorkspace.css";
+import "./StudentProfile.css";
 import "../../components/notifications/NotificationsCenter.css";
 import CourseReviews from "../../components/reviews/CourseReviews";
 import NotificationsCenter from "../../components/notifications/NotificationsCenter";
@@ -76,6 +83,10 @@ import { getStudentAcademicSubjects, INTERMEDIATE_STREAMS, ONLINE_COURSES, getPr
 import StudentOverview from "../../components/student/StudentOverview";
 import StudentLearning from "../../components/student/StudentLearning";
 import StudentStudyPlanner from "../../components/student/StudentStudyPlanner";
+import StudentTopicMastery from "../../components/student/StudentTopicMastery";
+import StudentWishlist from "../../components/student/StudentWishlist";
+import StudentPurchases from "../../components/student/StudentPurchases";
+import StudentEbooks from "../../components/student/StudentEbooks";
 import BookTeacherHub from "../../components/books/BookTeacherHub";
 import { getPublishedBooks, isBookPurchased } from "../../utils/books";
 import { loadBookFile } from "../../utils/books";
@@ -138,13 +149,6 @@ const DEMO_QUIZZES = [
     { question: "What is the purpose of usability testing?", options: ["Increase file size", "Find user experience problems", "Remove colors", "Install software"], correct: 1 },
   ] },
 ];
-
-// Topic tags are used only when question-level quiz answers are available.
-const QUIZ_TOPICS = {
-  "react-quiz": ["Components", "React Hooks", "Props"],
-  "python-quiz": ["Functions", "Data Types", "Comments"],
-  "design-quiz": ["UX Fundamentals", "Wireframing", "Usability Testing"],
-};
 
 // Fictional tutor profiles and sample availability for the frontend demo.
 const DEMO_TUTORS = [
@@ -215,6 +219,20 @@ function EmptyState({ icon: Icon = BookOpen, title, description }) {
   );
 }
 
+function ProgressBar({ value, label = "Progress" }) {
+  const numericValue = Number(value);
+  const progress = Number.isFinite(numericValue)
+    ? Math.min(100, Math.max(0, numericValue))
+    : 0;
+
+  return (
+    <div className="edc-progress-track" role="progressbar" aria-label={label}
+      aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100}>
+      <div className="edc-progress-fill" style={{ width: `${progress}%` }} />
+    </div>
+  );
+}
+
 export default function StudentDashboard({ email = "student" }) {
   const baseKey = `educonnect.student.${email.trim().toLowerCase()}`;
   const location = useLocation();
@@ -237,6 +255,7 @@ export default function StudentDashboard({ email = "student" }) {
   }, [requestedTab, location.key]);
   const [search, setSearch] = useState("");
   const [learningSearch, setLearningSearch] = useState("");
+  const [learningInitialFilter, setLearningInitialFilter] = useState("all");
   const [playerCourseId, setPlayerCourseId] = useState(null);
   const [playerLessonIndex, setPlayerLessonIndex] = useState(0);
   const [previewCourse, setPreviewCourse] = useState(null);
@@ -365,8 +384,7 @@ export default function StudentDashboard({ email = "student" }) {
       program: ["university", "online"].includes(profileDraft.educationLevel) ? profileDraft.program.trim().slice(0, 100) : "",
     });
     setEditingProfile(false);
-    setProfileNotice("Profile saved in this browser.");
-    navigateTo("overview");
+    setProfileNotice("Profile changes saved in this browser.");
   }
 
   function uploadStudentAvatar(event) {
@@ -408,9 +426,14 @@ export default function StudentDashboard({ email = "student" }) {
   const [wishlist, setWishlist] = useState(() =>
     readStorage(`${baseKey}.wishlist`, [])
   );
+  const [savedBookIds, setSavedBookIds] = useState(() =>
+    readStorage(`${baseKey}.bookWishlist`, [])
+  );
 
   const [cart, setCart] = useState(() => readStorage(`${baseKey}.cart`, []));
   const [cartNotice, setCartNotice] = useState("");
+  const [cartSelection, setCartSelection] = useState([]);
+  const [cartSummaryFilter, setCartSummaryFilter] = useState("all");
   const [orders, setOrders] = useState(() => readStorage(`${baseKey}.orders`, []));
   const [bookPurchases, setBookPurchases] = useState(() => readStorage(`${baseKey}.bookPurchases`, []));
   const [orderNotice, setOrderNotice] = useState("");
@@ -427,7 +450,6 @@ export default function StudentDashboard({ email = "student" }) {
       window.removeEventListener("storage", refreshStorage);
     };
   }, [baseKey]);
-  const unreadNotifications = notifications.filter(item => !item.read).length;
   const [discussionRevision, setDiscussionRevision] = useState(0);
   useEffect(() => subscribeDiscussions(() => setDiscussionRevision(v => v + 1)), []);
   useEffect(() => {
@@ -477,6 +499,7 @@ export default function StudentDashboard({ email = "student" }) {
 
   // Portfolio demo data is stored locally for the current student.
   const [portfolioTab, setPortfolioTab] = useState("certificates");
+  const [portfolioSearch, setPortfolioSearch] = useState("");
   const [portfolioName, setPortfolioName] = useState(() =>
     readStorage(`${baseKey}.portfolioName`, "")
   );
@@ -544,10 +567,10 @@ export default function StudentDashboard({ email = "student" }) {
   }
 
   function printDemoCertificate(course) {
-    const name = portfolioName.trim();
+    const name = portfolioName.trim() || String(studentProfile.fullName || studentProfile.name || "").trim();
     if (!name) {
       setPortfolioTab("certificates");
-      setPortfolioMessage("Enter your name above before creating a demo certificate.");
+      setPortfolioMessage("Add your name to My Profile before previewing a completion record.");
       return;
     }
     const certificate = certificateInfo(course);
@@ -571,7 +594,7 @@ export default function StudentDashboard({ email = "student" }) {
       <p>This demo record recognizes</p><div class="name">${escapeHtml(name)}</div>
       <p>for completing all sample lessons in</p><div class="course">${escapeHtml(course.title)}</div>
       <p>Completion progress: 100%</p><p>Completion date: ${escapeHtml(certificate.date)}</p>
-      <p>Certificate ID: ${escapeHtml(certificate.id)}</p><p class="disclaimer">Frontend demonstration only Â· Not an accredited or verified certificate</p>
+      <p class="disclaimer">Frontend demonstration only Â· Not an accredited or verified certificate</p>
       </main></body></html>`);
     popup.document.close();
     setPortfolioMessage("Certificate preview opened. Choose Print / Save as PDF in the new tab.");
@@ -588,10 +611,13 @@ export default function StudentDashboard({ email = "student" }) {
     { id: "experiments", title: "Experiment Tracking", fields: [{key:"title",label:"Experiment name",required:true},{key:"date",label:"Experiment date",type:"date"},{key:"hypothesis",label:"Hypothesis",multiline:true},{key:"method",label:"Method / procedure",multiline:true},{key:"results",label:"Results / observations",multiline:true},{key:"status",label:"Status",options:["Planned","Running","Completed"]}] },
   ];
   const [researchTab, setResearchTab] = useState("projects");
+  const [researchView, setResearchView] = useState("overview");
   const [researchRecords, setResearchRecords] = useState(() => readStorage(`${baseKey}.researchRecords`, {}));
   const [researchForm, setResearchForm] = useState({});
   const [researchEditId, setResearchEditId] = useState(null);
   const [researchSearch, setResearchSearch] = useState("");
+  const [researchDashboardSearch, setResearchDashboardSearch] = useState("");
+  const [researchProjectStatus, setResearchProjectStatus] = useState("All Projects");
   const [researchNotice, setResearchNotice] = useState("");
   useEffect(() => {
     localStorage.setItem(`${baseKey}.researchRecords`, JSON.stringify(researchRecords));
@@ -601,13 +627,28 @@ export default function StudentDashboard({ email = "student" }) {
   const filteredResearchItems = researchItems.filter((item) =>
     Object.values(item).some((value) => String(value ?? "").toLowerCase().includes(researchSearch.toLowerCase()))
   );
+  const projectResearchItems = Array.isArray(researchRecords.projects) ? researchRecords.projects : [];
+  const filteredProjectResearchItems = projectResearchItems.filter((project) => {
+    const matchesStatus = researchProjectStatus === "All Projects"
+      || String(project.status || "Planning").toLowerCase() === researchProjectStatus.toLowerCase();
+    const matchesSearch = !researchDashboardSearch.trim()
+      || Object.values(project).some((value) => String(value ?? "").toLowerCase().includes(researchDashboardSearch.trim().toLowerCase()));
+    return matchesStatus && matchesSearch;
+  });
+  const recentResearchRecords = RESEARCH_SECTIONS.flatMap((section) =>
+    (Array.isArray(researchRecords[section.id]) ? researchRecords[section.id] : [])
+      .map((item) => ({ ...item, sectionId: section.id, sectionTitle: section.title })),
+  ).sort((first, second) => Date.parse(second.updatedAt || "") - Date.parse(first.updatedAt || "")).slice(0, 4);
   function switchResearchTab(id) {
-    setResearchTab(id); setResearchForm({}); setResearchEditId(null); setResearchSearch(""); setResearchNotice("");
+    setResearchView("section"); setResearchTab(id); setResearchForm({}); setResearchEditId(null); setResearchSearch(""); setResearchNotice("");
+  }
+  function showResearchOverview() {
+    setResearchView("overview"); setResearchForm({}); setResearchEditId(null); setResearchSearch(""); setResearchNotice("");
   }
   function saveResearchRecord(event) {
     event.preventDefault();
     const cleaned = {};
-    currentResearchSection.fields.forEach((field) => { cleaned[field.key] = String(researchForm[field.key] ?? "").trim(); });
+    currentResearchSection.fields.forEach((field) => { cleaned[field.key] = String(researchForm[field.key] ?? field.options?.[0] ?? "").trim(); });
     if (!cleaned.title || cleaned.title.length < 3) { setResearchNotice("Please enter a title of at least 3 characters."); return; }
     for (const field of currentResearchSection.fields) {
       if (field.key === "url" && cleaned.url) {
@@ -762,42 +803,16 @@ export default function StudentDashboard({ email = "student" }) {
     ? Math.round(attemptedQuizzes.reduce((total, quiz) => total + quizResults[quiz.id].percentage, 0) / attemptedQuizzes.length)
     : null;
 
-  const masteryRecords = availableQuizzes.map((quiz) => {
-    const course = COURSES.find((item) => item.id === quiz.courseId);
-    const result = quizResults[quiz.id];
-    const topics = QUIZ_TOPICS[quiz.id] || [];
-    const hasAnswerEvidence = result && result.answers && typeof result.answers === "object";
-    return {
-      quiz,
-      course,
-      result,
-      topics: quiz.questions.map((question, index) => ({
-        title: topics[index] || `Topic ${index + 1}`,
-        question: question.question,
-        status: !hasAnswerEvidence || result.answers[index] === undefined
-          ? "not-recorded"
-          : Number(result.answers[index]) === question.correct ? "correct" : "revise",
-      })),
-    };
-  });
-
-  const assessedMastery = masteryRecords.filter((record) => record.result);
   const passedQuizzes = availableQuizzes.filter((quiz) => quizResults[quiz.id]?.percentage >= 70);
-  const masteryAverage = assessedMastery.length
-    ? Math.round(assessedMastery.reduce((sum, record) => sum + (Number(record.result.percentage) || 0), 0) / assessedMastery.length)
-    : null;
-  const topicsToRevise = masteryRecords.flatMap((record) =>
-    record.topics.filter((topic) => topic.status === "revise")
-      .map((topic) => ({ ...topic, course: record.course?.title || "Course", quizId: record.quiz.id }))
-  );
   const portfolioSkills = [...new Set(portfolioProjects.flatMap((project) => project.skills))];
 
-  function reviewMasteryQuiz(quizId) {
-    setAcademicTab("quizzes");
-    setSelectedQuiz(null);
-    setAcademicMessage("");
-    setActiveTab("assignments");
-    // The student can select the relevant quiz and retake it.
+  function reviewMasteryQuiz() {
+    navigateTo("quizzes");
+  }
+
+  function openStudentQuiz(entry, view = "attempt") {
+    setActiveTab("quizzes");
+    navigate(`/student/dashboard/quiz/${encodeURIComponent(entry.quiz.id)}?course=${encodeURIComponent(entry.quiz.courseId)}&teacher=${encodeURIComponent(entry.quiz.teacherEmail || "")}${view === "result" ? "&view=result" : ""}`);
   }
 
   function openAssignment(task) {
@@ -866,6 +881,10 @@ export default function StudentDashboard({ email = "student" }) {
       JSON.stringify(wishlist)
     );
   }, [baseKey, wishlist]);
+
+  useEffect(() => {
+    localStorage.setItem(`${baseKey}.bookWishlist`, JSON.stringify(savedBookIds));
+  }, [baseKey, savedBookIds]);
 
   useEffect(() => {
     try {
@@ -1087,17 +1106,10 @@ export default function StudentDashboard({ email = "student" }) {
 
   function certificateInfo(course) {
     const key = `${course.teacherEmail || "demo"}:${course.id}`;
-    const source = `${email}:${key}`;
-    let hash = 2166136261;
-    for (let i = 0; i < source.length; i += 1) {
-      hash ^= source.charCodeAt(i);
-      hash = Math.imul(hash, 16777619);
-    }
     return {
-      id: `EDC-${(hash >>> 0).toString(16).toUpperCase().padStart(8, "0")}`,
       date: certificateDates[key]
         ? new Date(certificateDates[key]).toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" })
-        : "Completion recorded",
+        : "Date not recorded",
     };
   }
 
@@ -1125,15 +1137,16 @@ export default function StudentDashboard({ email = "student" }) {
   // Cart is stored per student, using the same key as the existing marketplace cart.
   // Keep teacher identity in each entry so similarly named course IDs do not collide.
   const shopCourses = [
-    ...COURSES.map(c => ({ ...c, teacherEmail: "", price: 0 })),
     ...latestPublishedCourses.map(c => ({
       ...c,
       instructor: c.instructorName || c.instructor || "Instructor",
       price: Math.max(0, Number(c.price) || 0),
-      icon: "ðŸ“š", color: "blue",
     })),
   ];
   const shopKey = (c) => `${c.itemType === "book" ? "book" : "course"}::${String(c.teacherEmail || "demo").toLowerCase()}::${String(c.id)}`;
+  const isCurrentCartItem = (item) => item.itemType === "book"
+    ? getPublishedBooks().some((book) => String(book.id) === String(item.id) && String(book.teacherEmail || "").toLowerCase() === String(item.teacherEmail || "").toLowerCase())
+    : Boolean(item.teacherEmail) && latestPublishedCourses.some((course) => String(course.id) === String(item.id) && String(course.teacherEmail || "").toLowerCase() === String(item.teacherEmail).toLowerCase());
   const alreadyEnrolled = (c) => enrollments.some(e =>
     String(e.id) === String(c.id) &&
     String(e.teacherEmail || "").toLowerCase() === String(c.teacherEmail || "").toLowerCase()
@@ -1159,13 +1172,41 @@ export default function StudentDashboard({ email = "student" }) {
   }
   function removeCart(course) {
     setCart(prev => prev.filter(c => shopKey(c) !== shopKey(course)));
+    setCartSelection((previous) => previous.filter((key) => key !== shopKey(course)));
     setCartNotice("Removed from cart.");
   }
+  function toggleCartSelection(course) {
+    const key = shopKey(course);
+    setCartSelection((previous) => previous.includes(key) ? previous.filter((item) => item !== key) : [...previous, key]);
+  }
+  function removeSelectedCart(items) {
+    const selectedKeys = new Set(items.filter((item) => cartSelection.includes(shopKey(item))).map(shopKey));
+    setCart((previous) => previous.filter((item) => !selectedKeys.has(shopKey(item))));
+    setCartSelection([]);
+    setCartNotice("Selected items removed from your cart.");
+  }
+  function moveSelectedToWishlist(items) {
+    const selectedItems = items.filter((item) => cartSelection.includes(shopKey(item)));
+    if (!selectedItems.length) return;
+    const courseIds = selectedItems.filter((item) => item.itemType !== "book").map((item) => item.id);
+    const bookIds = selectedItems.filter((item) => item.itemType === "book").map((item) => String(item.id));
+    setWishlist((previous) => courseIds.reduce((next, id) => next.some((value) => String(value) === String(id)) ? next : [...next, id], [...previous]));
+    setSavedBookIds((previous) => bookIds.reduce((next, id) => next.includes(id) ? next : [...next, id], [...previous]));
+    const selectedKeys = new Set(selectedItems.map(shopKey));
+    setCart((previous) => previous.filter((item) => !selectedKeys.has(shopKey(item))));
+    setCartSelection([]);
+    setCartNotice("Selected items moved to your Wishlist.");
+  }
+  function removeAllCartItems() {
+    setCart([]);
+    setCartSelection([]);
+    setCartNotice("All items removed from your cart.");
+  }
   function checkoutCart() {
-    const available = cart.filter(c => c.itemType === "book" ? !bookPurchases.some((item) => String(item.id) === String(c.id)) : !alreadyEnrolled(c));
+    const available = cart.filter(c => isCurrentCartItem(c) && (c.itemType === "book" ? !isBookPurchased(email, c.id) && !bookPurchases.some((item) => String(item.id) === String(c.id)) : !alreadyEnrolled(c)));
     if (!available.length) { setCartNotice("Cart is empty or all items are already owned."); return; }
     const total = available.reduce((sum,c) => sum + Math.max(0, Number(c.price) || 0), 0);
-    if (!window.confirm(`Demo checkout: ${available.length} course(s), total PKR ${total.toLocaleString()}. No real payment will be charged. Continue?`)) return;
+    if (!window.confirm(`Demo checkout: ${available.length} item(s), total PKR ${total.toLocaleString()}. No real payment will be charged. Continue?`)) return;
     const purchasedAt = new Date().toISOString();
     const order = {
       id: `EDC-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
@@ -1210,6 +1251,7 @@ export default function StudentDashboard({ email = "student" }) {
     if (purchasedCourses.length) setEnrollments(prev => [...prev, ...purchasedCourses.map(c => ({ ...c, completedLessons: 0, progress: 0, enrolledAt: purchasedAt }))]);
     if (purchasedBooksNow.length) setBookPurchases((previous) => [...previous, ...purchasedBooksNow.map((book) => ({ ...book, purchasedAt }))]);
     setCart([]);
+    setCartSelection([]);
     setCartNotice("Demo checkout complete. Purchased books are in My eBooks.");
     setActiveTab(purchasedCourses.length ? "learning" : "ebooks");
   }
@@ -1330,8 +1372,8 @@ export default function StudentDashboard({ email = "student" }) {
 
   async function openPdfResource(book, download = false) {
     const resourceTargetId = `${String(book.teacherEmail || book.course?.teacherEmail || "").toLowerCase()}::${book.course?.id || ""}::${book.id}`;
-    if (!isModerationVisible("pdf", resourceTargetId)) { setResourceNotice("This PDF is temporarily unavailable while it is reviewed."); return; }
-    if (book.course && !hasCourseAccess(book.course)) { setResourceNotice("Enroll in or purchase this course before opening its PDF materials."); return; }
+    if (!isModerationVisible("pdf", resourceTargetId)) { setResourceNotice("This PDF is temporarily unavailable while it is reviewed."); return false; }
+    if (book.course && !hasCourseAccess(book.course)) { setResourceNotice("Enroll in or purchase this course before opening its PDF materials."); return false; }
     const readingTab = download ? null : window.open("about:blank", "_blank");
     if (readingTab) readingTab.opener = null;
     try {
@@ -1349,17 +1391,19 @@ export default function StudentDashboard({ email = "student" }) {
         else setResourceNotice("Allow pop-ups to read this PDF online.");
       }
       window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+      return download || Boolean(readingTab);
     } catch (error) {
       readingTab?.close();
       setResourceNotice(error.message || "PDF could not be opened.");
+      return false;
     }
   }
 
   async function openStudentBook(book, download = false, preview = false) {
-    if (!isModerationVisible("pdf", book.id)) { setResourceNotice("This eBook is temporarily unavailable while it is reviewed."); return; }
+    if (!isModerationVisible("pdf", book.id)) { setResourceNotice("This eBook is temporarily unavailable while it is reviewed."); return false; }
     const accessible = Boolean(book.isFree || bookPurchases.some((item) => String(item.id) === String(book.id)) || isBookPurchased(email, book.id));
-    if (!accessible && !preview) { setResourceNotice("Purchase this eBook before opening the full PDF."); return; }
-    if (download && !book.downloadAllowed) { setResourceNotice("The teacher has not allowed PDF downloads."); return; }
+    if (!accessible && !preview) { setResourceNotice("Purchase this eBook before opening the full PDF."); return false; }
+    if (download && !book.downloadAllowed) { setResourceNotice("The teacher has not allowed PDF downloads."); return false; }
     const readingTab = download ? null : window.open("about:blank", "_blank");
     if (readingTab) readingTab.opener = null;
     try {
@@ -1369,7 +1413,8 @@ export default function StudentDashboard({ email = "student" }) {
       if (download) { const anchor = document.createElement("a"); anchor.href = url; anchor.download = `${book.title || "ebook"}.pdf`; anchor.click(); }
       else if (readingTab) readingTab.location.href = url;
       window.setTimeout(() => URL.revokeObjectURL(url), 60000);
-    } catch (error) { if (readingTab) readingTab.close(); setResourceNotice(error.message); }
+      return download || Boolean(readingTab);
+    } catch (error) { if (readingTab) readingTab.close(); setResourceNotice(error.message); return false; }
   }
 
   function completePlayerLesson() {
@@ -1409,6 +1454,13 @@ export default function StudentDashboard({ email = "student" }) {
         : [...previous, id]
     );
   }
+  function toggleSavedBook(id) {
+    setSavedBookIds((previous) =>
+      previous.some((item) => String(item) === String(id))
+        ? previous.filter((item) => String(item) !== String(id))
+        : [...previous, String(id)]
+    );
+  }
 
   function toggleGoal(id) {
     setDailyGoals((previous) =>
@@ -1432,9 +1484,10 @@ export default function StudentDashboard({ email = "student" }) {
     setNewGoal("");
   }
 
-  function navigateTo(tab) {
+  function navigateTo(tab, learningFilter = "all") {
     setActiveTab(tab);
     setMobileMenu(false);
+    if (tab === "learning") setLearningInitialFilter(learningFilter);
     if (location.pathname !== "/student/dashboard") {
       navigate("/student/dashboard");
     }
@@ -1513,7 +1566,7 @@ export default function StudentDashboard({ email = "student" }) {
             <span className="edc-percentage">{course.progress}%</span>
           </div>
 
-          <ProgressBar value={course.progress} />
+          <ProgressBar value={course.progress} label={`${course.title} lesson progress`} />
 
           <div className="edc-learning-footer">
             <span>
@@ -1593,6 +1646,7 @@ export default function StudentDashboard({ email = "student" }) {
     courses={enrolledCourses}
     publishedCourses={latestPublishedCourses}
     activity={learningActivity}
+    initialFilter={learningInitialFilter}
     searchQuery={learningSearch}
     onSearchChange={setLearningSearch}
     onClearSearch={() => setLearningSearch("")}
@@ -1708,7 +1762,7 @@ export default function StudentDashboard({ email = "student" }) {
           <aside className="edc-panel edc-player-sidebar">
             <h3>Course Content</h3>
             <p>{previewOnly ? "Free preview lesson" : `${course.completedLessons} / ${course.lessons} lessons completed Â· ${course.progress}%`}</p>
-            {!previewOnly && <ProgressBar value={course.progress} />}
+            {!previewOnly && <ProgressBar value={course.progress} label={`${course.title} lesson progress`} />}
             <div className="edc-player-lessons">
               {(previewOnly ? [index] : Array.from({ length: course.lessons }, (_, lessonIndex) => lessonIndex)).map((lessonIndex) => {
                 const done = lessonIndex < course.completedLessons;
@@ -1732,32 +1786,90 @@ export default function StudentDashboard({ email = "student" }) {
 
   function StudentProfile() {
     const shown = editingProfile ? profileDraft : studentProfile;
+    const inProgressCourses = enrolledCourses.filter((course) => course.progress > 0 && course.progress < 100);
+    const subjectInterests = getStudentAcademicSubjects(studentProfile);
+    const educationComplete = studentProfile.educationLevel === "school"
+      ? Boolean(studentProfile.classNumber)
+      : studentProfile.educationLevel === "intermediate"
+        ? Boolean(studentProfile.intermediateYear && studentProfile.stream)
+        : studentProfile.educationLevel === "university"
+            ? Boolean(studentProfile.degreeLevel && (studentProfile.programChoice || studentProfile.program))
+          : studentProfile.educationLevel === "online"
+              ? Boolean(studentProfile.programChoice || studentProfile.program)
+            : false;
+    const profileChecklist = [
+      { label: "Add your name", complete: Boolean(studentProfile.fullName?.trim()) },
+      { label: "Add contact details", complete: Boolean(studentProfile.phone?.trim() || studentProfile.city?.trim()) },
+      { label: "Add education details", complete: educationComplete },
+      { label: "Add a profile photo", complete: Boolean(studentProfile.avatar) },
+      { label: "Add an introduction", complete: Boolean(studentProfile.about?.trim()) },
+    ];
+    const completionPercent = Math.round(profileChecklist.filter((item) => item.complete).length / profileChecklist.length * 100);
+    const learningMinutes = Math.floor(Math.max(0, Number(learningActivity.totalSeconds) || 0) / 60);
+    const learningTime = learningMinutes >= 60
+      ? `${Math.floor(learningMinutes / 60)} hr${Math.floor(learningMinutes / 60) === 1 ? "" : "s"}`
+      : `${learningMinutes} min`;
+    const educationSummary = shown.educationLevel === "school"
+      ? (shown.classNumber ? `Class ${shown.classNumber}` : "School level · class not added")
+      : shown.educationLevel === "intermediate"
+        ? `${shown.intermediateYear === "2" ? "2nd" : shown.intermediateYear === "1" ? "1st" : "Year not selected"} Year · ${INTERMEDIATE_STREAMS.find(([value]) => value === shown.stream)?.[1] || "Intermediate"}`
+        : shown.educationLevel === "university"
+          ? `${shown.degreeLevel ? `${shown.degreeLevel.toUpperCase()} · ` : ""}${shown.program || "Program not added"}`
+          : shown.educationLevel === "online"
+            ? (shown.program || "Course interest not selected")
+            : "Not added yet";
     return (
-      <div className="edc-tab-content edc-student-profile-page">
-        <SectionHeading eyebrow="ACCOUNT SETTINGS" title="My Student Profile"
-          description="Personalize your learning workspace. Changes are stored in this browser only." />
-        <section className="edc-student-profile-cover">
-          <div className="edc-student-profile-identity">
-            <ProfileAvatar image={shown.avatar} />
-            <div>
-              <span className="edc-student-profile-overline">EDUCONNECT AI STUDENT</span>
-              <h2>{shown.fullName?.trim() || "Your Student Profile"}</h2>
-              <p>{email}</p>
-            </div>
+      <div className="edc-tab-content edc-student-profile-page edc-profile-dashboard">
+        <nav className="edc-profile-breadcrumb" aria-label="Breadcrumb"><House size={13} /><span>/</span><strong>My Profile</strong></nav>
+        <header className="edc-profile-hero">
+          <div><span className="edc-profile-eyebrow">YOUR ACCOUNT</span><h1><UserRound size={27} />My Profile</h1>
+            <p>Manage your personal information and see your learning activity.</p>
+            <small>Only your saved profile details and account activity are shown.</small>
           </div>
-          {!editingProfile && (
-            <button type="button" className="edc-btn edc-btn-white" onClick={beginProfileEdit}>
-              <Pencil size={16} /> Edit Profile
-            </button>
-          )}
-        </section>
-        <div className="edc-student-profile-grid">
-          <section className="edc-panel edc-student-profile-card">
-            <div className="edc-student-profile-card-heading">
-              <div><span className="edc-eyebrow">PERSONAL DETAILS</span><h3>{editingProfile ? "Edit Your Information" : "Profile Information"}</h3></div>
-              {!editingProfile && <UserRound size={22} />}
-            </div>
-            {editingProfile ? (
+          <div className="edc-profile-hero-art" aria-hidden="true"><UserRound /><Pencil /></div>
+        </header>
+
+        <div className="edc-profile-layout">
+          <aside className="edc-profile-aside">
+            <section className="edc-profile-identity-card">
+              <div className="edc-profile-avatar-wrap"><ProfileAvatar image={shown.avatar} /></div>
+              <h2>{shown.fullName?.trim() || "Student"}</h2>
+              <span className="edc-profile-role"><GraduationCap size={13} />Student</span>
+              <div className="edc-profile-contact">
+                <p><Mail size={14} /><span>{email}</span></p>
+                <p><Phone size={14} /><span>{shown.phone || "Phone not added"}</span></p>
+                <p><MapPin size={14} /><span>{shown.city || "City not added"}</span></p>
+                <p><GraduationCap size={14} /><span>{educationSummary}</span></p>
+              </div>
+              <button type="button" className="edc-profile-edit-button" onClick={editingProfile ? () => {
+                setProfileDraft({ ...studentProfile }); setEditingProfile(false); setProfileNotice("");
+              } : beginProfileEdit}>
+                <Pencil size={14} />{editingProfile ? "Cancel Edit" : "Edit Profile"}
+              </button>
+            </section>
+
+            <section className="edc-profile-completion-card">
+              <header><div><h3><Target size={18} />Profile Completion</h3></div><strong>{completionPercent}%</strong></header>
+              <div className="edc-profile-progress" role="progressbar" aria-label="Profile completion"
+                aria-valuenow={completionPercent} aria-valuemin={0} aria-valuemax={100}>
+                <span style={{ width: `${completionPercent}%` }} />
+              </div>
+              <ul>
+                {profileChecklist.map(({ label, complete }) => <li key={label}>
+                  {complete ? <CheckCircle2 size={14} className="complete" /> : <Clock3 size={14} className="incomplete" />}
+                  <span>{label}</span><small>{complete ? "Added" : "Not added"}</small>
+                </li>)}
+              </ul>
+            </section>
+          </aside>
+
+          <div className="edc-profile-main">
+            <section className="edc-profile-panel edc-profile-account-card">
+              <header className="edc-profile-panel-heading">
+                <div><h2><UserRound size={19} />Account Details</h2><p>Your profile information and academic details.</p></div>
+                {!editingProfile && <button type="button" onClick={beginProfileEdit}><Pencil size={14} />Edit</button>}
+              </header>
+              {editingProfile ? (
               <form className="edc-student-profile-form" onSubmit={saveStudentProfile}>
                 <div className="edc-student-profile-photo-editor">
                   <ProfileAvatar image={profileDraft.avatar} size="small" />
@@ -1844,30 +1956,51 @@ export default function StudentDashboard({ email = "student" }) {
                 </div>
               </form>
             ) : (
-              <div className="edc-student-profile-readonly">
-                <div><UserRound size={18} /><span>Full Name</span><strong>{studentProfile.fullName || "Not added yet"}</strong></div>
-                <div><Mail size={18} /><span>Email</span><strong>{email}</strong></div>
-                <div><Phone size={18} /><span>Phone</span><strong>{studentProfile.phone || "Not added yet"}</strong></div>
-                <div><MapPin size={18} /><span>City</span><strong>{studentProfile.city || "Not added yet"}</strong></div>
-                <div><GraduationCap size={18} /><span>Education</span><strong>{studentProfile.educationLevel === "school" ? `Class ${studentProfile.classNumber || "not selected"}` : studentProfile.educationLevel === "intermediate" ? `${studentProfile.intermediateYear === "2" ? "2nd" : studentProfile.intermediateYear === "1" ? "1st" : "Year not selected"} Year Â· ${INTERMEDIATE_STREAMS.find(([value]) => value === studentProfile.stream)?.[1] || "Intermediate"}` : studentProfile.educationLevel === "university" ? `${studentProfile.degreeLevel ? `${studentProfile.degreeLevel.toUpperCase()} Â· ` : ""}${studentProfile.program || "Program not added"}` : studentProfile.educationLevel === "online" ? `Interest Â· ${studentProfile.program || "Not selected"}` : "Not selected"}</strong></div>
-                {getStudentAcademicSubjects(studentProfile).length > 0 && <div className="edc-student-profile-about"><span>Related Subjects</span><p>{getStudentAcademicSubjects(studentProfile).join(" Â· ")}</p></div>}
-                <div className="edc-student-profile-about"><span>About Me</span><p>{studentProfile.about || "Add a short introduction about yourself."}</p></div>
-              </div>
+              <>
+                <div className="edc-profile-detail-grid">
+                  <div><UserRound size={16} /><span>Full Name</span><strong>{studentProfile.fullName || "Not added yet"}</strong></div>
+                  <div><Mail size={16} /><span>Email Address</span><strong>{email}</strong></div>
+                  <div><Phone size={16} /><span>Phone Number</span><strong>{studentProfile.phone || "Not added yet"}</strong></div>
+                  <div><MapPin size={16} /><span>Location</span><strong>{studentProfile.city || "Not added yet"}</strong></div>
+                  <div><GraduationCap size={16} /><span>Education</span><strong>{educationSummary}</strong></div>
+                  <div><BookOpen size={16} /><span>Related Subjects</span><strong>{subjectInterests.length ? subjectInterests.join(", ") : "Not added yet"}</strong></div>
+                  <div className="edc-profile-about"><span>About Me</span><p>{studentProfile.about || "Not added yet"}</p></div>
+                </div>
+              </>
             )}
             {profileNotice && <p className="edc-student-profile-notice" role="status">{profileNotice}</p>}
-          </section>
-          <aside className="edc-panel edc-student-profile-summary">
-            <span className="edc-eyebrow">YOUR LEARNING SNAPSHOT</span>
-            <h3>Learning at a glance</h3>
-            <div><BookOpen size={19} /><span>Enrolled Courses</span><strong>{enrolledCourses.length}</strong></div>
-            <div><CheckCircle2 size={19} /><span>Completed Courses</span><strong>{completedCourses.length}</strong></div>
-            <div><TrendingUp size={19} /><span>Average Progress</span><strong>{averageProgress}%</strong></div>
-            <div><Award size={19} /><span>Portfolio Projects</span><strong>{portfolioProjects.length}</strong></div>
-            <button type="button" className="edc-btn edc-btn-light" onClick={() => navigateTo("portfolio")}>
-              View Portfolio <ArrowRight size={16} />
-            </button>
-            <p className="edc-student-profile-hint">Profile data is saved locally. It will not sync across devices until backend integration.</p>
-          </aside>
+            </section>
+
+            <section className="edc-profile-panel edc-profile-activity">
+              <header className="edc-profile-panel-heading"><div><h2><ChartNoAxesCombined size={19} />Activity Summary</h2><p>Based on your enrolled courses and recorded learning activity.</p></div></header>
+              <div className="edc-profile-activity-grid">
+                <button type="button" className="purple" onClick={() => navigateTo("learning", "all")} aria-label={`Courses Enrolled: ${enrolledCourses.length}. View all courses`}>
+                  <span><BookOpen size={19} /></span><strong>{enrolledCourses.length.toLocaleString()}</strong><small>Courses Enrolled</small>
+                </button>
+                <button type="button" className="blue" onClick={() => navigateTo("learning", "progress")} aria-label={`Courses In Progress: ${inProgressCourses.length}. View in-progress courses`}>
+                  <span><Play size={19} /></span><strong>{inProgressCourses.length.toLocaleString()}</strong><small>Courses In Progress</small>
+                </button>
+                <button type="button" className="green" onClick={() => navigateTo("learning", "completed")} aria-label={`Courses Completed: ${completedCourses.length}. View completed courses`}>
+                  <span><CheckCircle2 size={19} /></span><strong>{completedCourses.length.toLocaleString()}</strong><small>Courses Completed</small>
+                </button>
+                <button type="button" className="violet" onClick={() => navigateTo("analytics")} aria-label={`Recorded Learning Time: ${learningTime}. View learning analytics`}>
+                  <span><Clock3 size={19} /></span><strong>{learningTime}</strong><small>Recorded Learning Time</small>
+                </button>
+              </div>
+              <small className="edc-profile-activity-note">Learning time is calculated from recorded course video playback.</small>
+            </section>
+
+            <section className="edc-profile-panel edc-profile-settings">
+              <header className="edc-profile-panel-heading"><div><h2><Pencil size={19} />Profile &amp; Account</h2><p>Shortcuts to settings available in your student dashboard.</p></div></header>
+              <div className="edc-profile-settings-list">
+                <button type="button" onClick={beginProfileEdit}><span><UserRound size={17} /></span><span><strong>Personal Information</strong><small>Update your name, contact details, and education.</small></span><ChevronRight size={15} /></button>
+                <button type="button" onClick={beginProfileEdit}><span><Target size={17} /></span><span><strong>Education &amp; Subjects</strong><small>Update your education details and related subjects.</small></span><ChevronRight size={15} /></button>
+                <button type="button" onClick={() => navigateTo("notifications")}><span><Bell size={17} /></span><span><strong>Notifications</strong><small>Review notifications available to this account.</small></span><ChevronRight size={15} /></button>
+                <button type="button" onClick={() => navigateTo("analytics")}><span><ChartNoAxesCombined size={17} /></span><span><strong>Learning Analytics</strong><small>See your course progress and activity details.</small></span><ChevronRight size={15} /></button>
+              </div>
+              <p className="edc-profile-storage-note">Profile details are stored in this browser and are not synced across devices.</p>
+            </section>
+          </div>
         </div>
       </div>
     );
@@ -1928,7 +2061,7 @@ export default function StudentDashboard({ email = "student" }) {
       <style>body{font-family:Arial,sans-serif;max-width:780px;margin:42px auto;color:#17223b;padding:0 20px}h1{margin-bottom:4px}p{line-height:1.6}table{border-collapse:collapse;width:100%;margin:25px 0}th,td{border-bottom:1px solid #ddd;padding:12px;text-align:left}th{background:#f5f7fa}.total{text-align:right;font-size:20px;font-weight:bold}.note{padding:15px;background:#fff6df;border-radius:8px}@media print{button{display:none}}</style>
       </head><body><h1>EduConnect AI</h1><p>Demo Purchase Receipt</p>
       <p><b>Order:</b> ${escapeHtml(order.id)}<br/><b>Date:</b> ${escapeHtml(new Date(order.purchasedAt).toLocaleString())}<br/><b>Status:</b> ${escapeHtml(order.status)}<br/><b>Payment:</b> ${escapeHtml(order.paymentMethod)}</p>
-      <table><thead><tr><th>Course</th><th>Instructor</th><th style="text-align:right">Price (PKR)</th></tr></thead><tbody>${rows}</tbody></table>
+      <table><thead><tr><th>Item</th><th>Instructor</th><th style="text-align:right">Price (PKR)</th></tr></thead><tbody>${rows}</tbody></table>
       <p class="total">Total: ${money(order.total)}</p><p class="note">DEMO ONLY â€” No payment was collected. This is not a tax invoice or proof of a real purchase.</p>
       <button onclick="window.print()">Print / Save as PDF</button></body></html>`);
     win.document.close();
@@ -1936,194 +2069,323 @@ export default function StudentDashboard({ email = "student" }) {
   }
 
   function OrdersPage() {
-    const money = value => `PKR ${Math.max(0, Number(value) || 0).toLocaleString()}`;
-    return <div className="edc-tab-content">
-      <SectionHeading eyebrow="PURCHASE HISTORY" title="My Purchases"
-        description="Demo checkout orders saved in this browser. No real payments are processed." />
-      {orderNotice && <p role="status">{orderNotice}</p>}
-      {orders.length === 0 ? <EmptyState icon={ReceiptText} title="No purchase history yet"
-        description="Complete a demo checkout in Shopping Cart to create your first order." /> :
-      <div style={{display:"grid",gap:18}}>{orders.map(order =>
-        <section key={order.id} className="edc-panel" style={{padding:22}}>
-          <div style={{display:"flex",justifyContent:"space-between",gap:16,flexWrap:"wrap"}}>
-            <div><strong>Order {order.id}</strong><p>{new Date(order.purchasedAt).toLocaleString()}</p><p>{order.status || "Demo completed"} Â· No real payment</p></div>
-            <div><strong>{money(order.total)}</strong><p>{(order.items || []).length} course(s)</p></div>
-          </div>
-          <div style={{borderTop:"1px solid #e5e7eb",marginTop:12,paddingTop:12}}>
-            {(order.items || []).map((item,index) => <div key={`${item.teacherEmail || "demo"}-${item.id}-${index}`}
-              style={{display:"flex",justifyContent:"space-between",gap:12,padding:"9px 0",flexWrap:"wrap"}}>
-              <div><strong>{item.title}</strong><p>By {item.instructor}</p></div><span>{money(item.price)}</span>
-            </div>)}
-          </div>
-          <div style={{display:"flex",gap:10,flexWrap:"wrap",marginTop:14}}>
-            <button type="button" className="edc-btn edc-btn-primary" onClick={() => navigateTo("learning")}><BookOpen size={16}/> Open My Learning</button>
-            <button type="button" className="edc-btn edc-btn-light" onClick={() => printOrderInvoice(order)}><Printer size={16}/> Print / Save PDF</button>
-          </div>
-        </section>
-      )}</div>}
-      <p style={{marginTop:20,fontSize:13,opacity:.8}}>Orders created before Step 9 cannot be reconstructed automatically from enrollments. New demo checkouts will appear here.</p>
-    </div>;
+    return <StudentPurchases
+      orders={orders}
+      bookPurchases={bookPurchases}
+      completedCourses={completedCourses}
+      enrolledCourses={enrolledCourses}
+      orderNotice={orderNotice}
+      onContinueCourse={(course) => openCoursePlayer(course.id)}
+      onOpenBook={(book) => { navigateTo("ebooks"); if (book) openStudentBook(book); }}
+      onDownloadBook={(book) => { navigateTo("ebooks"); openStudentBook(book, true); }}
+      onPreviewCertificate={(course) => {
+        navigateTo("portfolio");
+        setPortfolioTab("certificates");
+        printDemoCertificate(course);
+      }}
+      onPrintReceipt={printOrderInvoice}
+      onBrowseBooks={() => navigateTo("books")}
+    />;
   }
 
   function MyEbooksPage() {
-    const publicFreeBooks = getPublishedBooks().filter((book) => book.isFree);
-    const byId = new Map([...publicFreeBooks, ...bookPurchases.filter((book) => isModerationVisible("pdf", book.id))].map((book) => [String(book.id), book]));
+    const publishedBooks = getPublishedBooks();
     const curriculumBooks = getPublishedPdfResources(latestPublishedCourses).filter((book) => hasCourseAccess(book.course));
-    const resources = [...byId.values(), ...curriculumBooks];
-    return <div className="edc-tab-content" id="my-ebooks">
-      <SectionHeading eyebrow="YOUR LIBRARY" title="My eBooks & PDFs" description="Free Admin-approved PDFs and eBooks purchased through demo checkout." />
-      {resourceNotice && <p className="edc-student-profile-notice" role="status">{resourceNotice}</p>}
-      {resources.length ? <div className="edc-books-grid">{resources.map((book) => book.course ? <article className="edc-public-book-card" key={`curriculum-${book.teacherEmail}-${book.course.id}-${book.id}`}><div className="edc-public-book-body"><span className="edc-book-status">Course material</span><h3>{String(book.name || "PDF eBook").replace(/\.pdf$/i, "")}</h3><p>{book.course.title} Â· {book.instructorName}</p>{book.semester && <p>Semester: {book.semester}</p>}<div className="edc-book-actions"><button type="button" onClick={() => openPdfResource(book)}>Read Online</button><button className="edc-book-clear" type="button" onClick={() => openPdfResource(book, true)}><Download size={14} /> Download PDF</button><ReportAction reporterEmail={email} reporterName={studentProfile.fullName || "Student"} target={{ reportType: "content", targetType: "pdf", targetId: `${String(book.teacherEmail || book.course.teacherEmail).toLowerCase()}::${book.course.id}::${book.id}`, targetTitle: book.name || "Course PDF eBook", targetOwnerEmail: book.teacherEmail || book.course.teacherEmail, targetOwnerName: book.instructorName, targetRole: "Teacher" }} /></div></div></article> : <article className="edc-public-book-card" key={`book-${book.id}`}><div className="edc-public-book-body"><span className="edc-book-status">{book.isFree ? "Free" : "Purchased"}</span><h3>{book.title}</h3><p>{book.author || book.teacherName || book.instructor}</p><p>{book.subject}{book.educationLevel ? ` Â· ${book.educationLevel}` : ""}{book.classOrProgram ? ` Â· ${book.classOrProgram}` : ""}{book.semester ? ` Â· ${book.semester}` : ""}</p><div className="edc-book-actions"><button type="button" onClick={() => openStudentBook(book)}>Read Online</button>{book.downloadAllowed && <button className="edc-book-clear" type="button" onClick={() => openStudentBook(book, true)}><Download size={14} /> Download PDF</button>}<ReportAction reporterEmail={email} reporterName={studentProfile.fullName || "Student"} target={{ reportType: "content", targetType: "pdf", targetId: String(book.id), targetTitle: book.title || "PDF eBook", targetOwnerEmail: book.teacherEmail, targetOwnerName: book.teacherName || book.author, targetRole: "Teacher" }} /></div></div></article>)}</div>
-        : <div className="edc-panel"><EmptyState icon={BookOpen} title="No eBooks in your library yet" description="Free published PDFs and books you purchase will appear here." /><button className="edc-btn edc-btn-light" type="button" onClick={() => navigateTo("books")}>Browse Books <ArrowRight size={16} /></button></div>}
-    </div>;
+    return <StudentEbooks
+      email={email}
+      studentName={studentProfile.fullName || studentProfile.name || "Student"}
+      publishedBooks={publishedBooks}
+      purchasedBooks={bookPurchases}
+      savedBookIds={savedBookIds}
+      curriculumBooks={curriculumBooks}
+      notice={resourceNotice}
+      onToggleSavedBook={toggleSavedBook}
+      onReadBook={(book) => openStudentBook(book)}
+      onDownloadBook={(book) => openStudentBook(book, true)}
+      onReadResource={(book) => openPdfResource(book)}
+      onDownloadResource={(book) => openPdfResource(book, true)}
+      onAddBookToCart={(book) => { addBookToCart(book); navigateTo("cart"); }}
+      onBrowseBooks={() => navigateTo("books")}
+    />;
   }
 
   function ShoppingCartPage() {
-    const visible = cart.filter(c => c.itemType === "book" ? !bookPurchases.some((item) => String(item.id) === String(c.id)) : !alreadyEnrolled(c));
-    const total = visible.reduce((sum, c) => sum + Math.max(0, Number(c.price) || 0), 0);
-    return <div className="edc-tab-content">
-      <SectionHeading eyebrow="DEMO CHECKOUT" title="Shopping Cart"
-        description="Add courses and PDF eBooks together. This demo checkout does not collect payment." />
-      {cartNotice && <p role="status">{cartNotice}</p>}
-      {visible.length ? <>
-        <div className="edc-panel">
-          {visible.map(course => <div key={shopKey(course)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:16,padding:"16px 0",borderBottom:"1px solid #e5e7eb",flexWrap:"wrap"}}>
-            <div><strong>{course.title}</strong><p>{course.itemType === "book" ? "PDF eBook" : "Course"} Â· By {course.instructor} Â· {course.category}</p></div>
-            <div style={{display:"flex",alignItems:"center",gap:12}}><strong>PKR {Math.max(0, Number(course.price) || 0).toLocaleString()}</strong>
-              <button type="button" className="edc-btn edc-btn-light" onClick={() => removeCart(course)}><Trash2 size={15}/> Remove</button>
-            </div>
-          </div>)}
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,paddingTop:20,flexWrap:"wrap"}}>
-            <strong>Total ({visible.length} items): PKR {total.toLocaleString()}</strong>
-            <button type="button" className="edc-btn edc-btn-primary" onClick={checkoutCart}><ShoppingCart size={17}/> Complete Demo Checkout</button>
-          </div>
+    const currentItems = cart.filter(isCurrentCartItem);
+    const unavailableItems = cart.filter((item) => !isCurrentCartItem(item));
+    const availableItems = currentItems.filter(c => c.itemType === "book" ? !isBookPurchased(email, c.id) && !bookPurchases.some((item) => String(item.id) === String(c.id)) : !alreadyEnrolled(c));
+    const visible = availableItems.filter((item) => cartSummaryFilter === "all" || (cartSummaryFilter === "courses" ? item.itemType !== "book" : item.itemType === "book"));
+    const total = availableItems.reduce((sum, c) => sum + Math.max(0, Number(c.price) || 0), 0);
+    const courseCount = availableItems.filter((item) => item.itemType !== "book").length;
+    const ebookCount = availableItems.length - courseCount;
+    const selectedCount = visible.filter((item) => cartSelection.includes(shopKey(item))).length;
+    const allSelected = visible.length > 0 && selectedCount === visible.length;
+    const availableCourses = shopCourses.filter((course) => !alreadyEnrolled(course) && !cart.some((item) => shopKey(item) === shopKey(course)));
+
+    function selectCartSummary(filter) {
+      if (filter === "total") {
+        setCartSummaryFilter("all");
+        window.requestAnimationFrame(() => document.getElementById("edc-cart-summary")?.scrollIntoView({ behavior: "smooth", block: "center" }));
+        return;
+      }
+      setCartSummaryFilter(filter);
+      window.requestAnimationFrame(() => document.getElementById("edc-cart-items")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    }
+
+    return <div className="edc-tab-content edc-shopping-cart-page">
+      <div className="edc-cart-breadcrumb">
+        <button type="button" onClick={() => navigateTo("orders")}><House size={14} /> <span>My Purchases</span></button>
+        <ChevronRight size={14} />
+        <strong>Shopping Cart</strong>
+      </div>
+      <header className="edc-cart-hero">
+        <div>
+          <span className="edc-cart-eyebrow">YOUR SELECTED LEARNING</span>
+          <h1><ShoppingCart size={29} /> Shopping Cart</h1>
+          <p>Review published courses and approved eBooks before demo checkout.</p>
         </div>
-      </> : <EmptyState icon={ShoppingCart} title="Your cart is empty" description="Browse available courses below and add them to your cart." />}
-      <SectionHeading eyebrow="BROWSE" title="Available Courses" description="Published instructor courses and free demo courses." />
-      <div className="edc-course-grid">{shopCourses.filter(c => !alreadyEnrolled(c)).map(course =>
-        <article className="edc-course-card" key={shopKey(course)}>
-          <div className="edc-course-body"><span className="edc-category">{course.category}</span>
-            <h3>{course.title}</h3><p>By {course.instructor}</p>
-            <p><strong>PKR {Math.max(0, Number(course.price) || 0).toLocaleString()}</strong> {Number(course.price) ? "" : "Â· Free"}</p>
-            <button type="button" className="edc-btn edc-btn-primary" onClick={() => addCart(course)}
-              disabled={cart.some(c => shopKey(c) === shopKey(course))}>
-              <ShoppingCart size={16}/> {cart.some(c => shopKey(c) === shopKey(course)) ? "In Cart" : "Add to Cart"}
-            </button>
+        <div className="edc-cart-hero-art" aria-hidden="true">
+          <BookOpen size={54} />
+          <ShoppingCart size={74} />
+          <BookText size={42} />
+        </div>
+      </header>
+
+      {cartNotice && <p className="edc-cart-notice" role="status">{cartNotice}</p>}
+
+      <section className="edc-cart-stats" aria-label="Cart summary">
+        {[
+          { label: "Items in Cart", value: availableItems.length, icon: ShoppingCart, color: "purple", filter: "all" },
+          { label: "Courses", value: courseCount, icon: BookOpen, color: "blue", filter: "courses" },
+          { label: "eBooks", value: ebookCount, icon: BookText, color: "green", filter: "books" },
+          { label: "Cart Total", value: `PKR ${total.toLocaleString()}`, icon: ReceiptText, color: "pink", filter: "total" },
+        ].map(({ label, value, icon: Icon, color, filter }) => <button type="button" className={`edc-cart-stat ${color}`} key={label} onClick={() => selectCartSummary(filter)} aria-pressed={filter !== "total" && cartSummaryFilter === filter} aria-label={`${label}: ${value}. ${filter === "total" ? "View order summary" : "Show matching cart items"}`}>
+          <span><Icon size={21} /></span><div><small>{label}</small><strong>{value}</strong></div>
+        </button>)}
+      </section>
+
+      {unavailableItems.length > 0 && <section className="edc-cart-unavailable" aria-label="Unavailable cart items">
+        <strong>Some saved cart items are no longer available.</strong>
+        <p>They are excluded from the total and checkout. Remove them here to clear the old entries.</p>
+        {unavailableItems.map((item) => <div key={shopKey(item)}><span>{item.title || "Unavailable item"}</span><button type="button" onClick={() => removeCart(item)}><Trash2 size={14} /> Remove</button></div>)}
+      </section>}
+
+      <div className="edc-cart-layout">
+        <section className="edc-cart-items-panel" id="edc-cart-items">
+          <div className="edc-cart-items-heading">
+            <label className="edc-cart-select-all">
+              <input type="checkbox" checked={allSelected} onChange={() => setCartSelection(allSelected ? [] : visible.map(shopKey))} aria-label="Select all available cart items" />
+              <span>Cart Items ({visible.length})</span>
+            </label>
+            <div>
+              <button type="button" disabled={!selectedCount} onClick={() => removeSelectedCart(visible)}><Trash2 size={15} /> Remove Selected</button>
+              <button type="button" disabled={!selectedCount} onClick={() => moveSelectedToWishlist(visible)}><Heart size={15} /> Move to Wishlist</button>
+            </div>
           </div>
-        </article>
-      )}</div>
+
+          {visible.length ? <div className="edc-cart-item-list">
+            {visible.map((item) => <article className="edc-cart-item" key={shopKey(item)}>
+              <label className="edc-cart-item-check">
+                <input type="checkbox" checked={cartSelection.includes(shopKey(item))} onChange={() => toggleCartSelection(item)} aria-label={`Select ${item.title}`} />
+              </label>
+              <div className={`edc-cart-item-art ${item.itemType === "book" ? "ebook" : ""}`}>
+                {item.thumbnail
+                  ? <img src={item.thumbnail} alt="" />
+                  : item.itemType === "book" ? <BookText size={29} /> : <BookOpen size={29} />}
+              </div>
+              <div className="edc-cart-item-details">
+                <span className="edc-cart-item-type">{item.itemType === "book" ? "Approved eBook" : "Published Course"}</span>
+                <h2>{item.title}</h2>
+                <p>{item.instructor || "Teacher"}{item.category ? ` · ${item.category}` : ""}</p>
+              </div>
+              <strong className="edc-cart-item-price">PKR {Math.max(0, Number(item.price) || 0).toLocaleString()}</strong>
+              <button type="button" className="edc-cart-remove" onClick={() => removeCart(item)} aria-label={`Remove ${item.title} from cart`} title="Remove from cart"><Trash2 size={17} /></button>
+            </article>)}
+          </div> : <div className="edc-cart-empty">
+            <span><ShoppingCart size={30} /></span>
+            <h2>{availableItems.length ? `No ${cartSummaryFilter === "courses" ? "courses" : "eBooks"} in your cart` : "Your cart is empty"}</h2>
+            <p>{availableItems.length ? "Choose another cart summary card to view the other items." : "Add a published course or approved eBook to see it here. Sample courses are not included."}</p>
+            {availableItems.length
+              ? <button type="button" onClick={() => setCartSummaryFilter("all")}>View All Cart Items</button>
+              : <button type="button" onClick={() => navigateTo("books")}>Browse Books & Teachers <ArrowRight size={15} /></button>}
+          </div>}
+
+          <div className="edc-cart-items-footer">
+            <span><input type="checkbox" checked={allSelected} onChange={() => setCartSelection(allSelected ? [] : visible.map(shopKey))} aria-label="Select all available cart items" /> Select All ({visible.length})</span>
+            <button type="button" disabled={!cart.length} onClick={removeAllCartItems}><Trash2 size={14} /> Remove All</button>
+          </div>
+        </section>
+
+        <aside className="edc-cart-summary" id="edc-cart-summary">
+          <h2><BookOpen size={20} /> Order Summary</h2>
+          <div className="edc-cart-summary-row"><span>Subtotal ({availableItems.length} {availableItems.length === 1 ? "item" : "items"})</span><strong>PKR {total.toLocaleString()}</strong></div>
+          <div className="edc-cart-summary-total"><span>Total</span><strong>PKR {total.toLocaleString()}</strong></div>
+          <p className="edc-cart-demo-note">Demo checkout only. No payment will be collected.</p>
+          <button type="button" className="edc-cart-checkout" onClick={checkoutCart} disabled={!availableItems.length}><ShoppingCart size={17} /> Proceed to Demo Checkout <ArrowRight size={17} /></button>
+        </aside>
+      </div>
+
+      <section className="edc-cart-browse">
+        <div><span className="edc-cart-eyebrow">REAL PUBLISHED CONTENT</span><h2>Explore Courses</h2><p>Only published teacher courses are shown here.</p></div>
+        <button type="button" onClick={() => navigateTo("books")}>Browse Books & Teachers <ArrowRight size={15} /></button>
+        {availableCourses.length
+          ? <div className="edc-cart-course-list">{availableCourses.map((course) =>
+            <article key={shopKey(course)}>
+              <span><BookOpen size={19} /></span>
+              <div><strong>{course.title}</strong><small>{course.instructor} · {course.category || course.subject || "Published course"}</small></div>
+              <strong>{course.price > 0 ? `PKR ${course.price.toLocaleString()}` : "Free"}</strong>
+              <button type="button" onClick={() => addCart(course)}><ShoppingCart size={14} /> Add</button>
+            </article>,
+          )}</div>
+          : <p className="edc-cart-no-courses">No other published courses are available to add right now.</p>}
+      </section>
     </div>;
   }
 
   function Wishlist() {
-    const savedCourses = shopCourses.filter(course => wishlist.includes(course.id));
-
-    return (
-      <div className="edc-tab-content">
-        <SectionHeading
-          eyebrow="SAVED FOR LATER"
-          title="My Wishlist"
-          description="Your favorite demo courses in one place."
-        />
-        {savedCourses.length ? (
-          <div className="edc-course-grid">
-            {savedCourses.map((course) => (
-              <CourseCard key={course.id} course={course} />
-            ))}
-          </div>
-        ) : (
-          <EmptyState
-            icon={Heart}
-            title="Your wishlist is empty"
-            description="Save courses from the Overview tab."
-          />
-        )}
-      </div>
-    );
+    return <StudentWishlist
+      email={email}
+      publishedCourses={latestPublishedCourses}
+      enrolledCourses={enrolledCourses}
+      wishlist={wishlist}
+      savedBookIds={savedBookIds}
+      bookPurchases={bookPurchases}
+      onToggleWishlist={toggleWishlist}
+      onToggleSavedBook={toggleSavedBook}
+      onCourseAction={enrollPublishedCourse}
+      onBookAction={(book) => {
+        if (book.isFree || isBookPurchased(email, book.id) || bookPurchases.some((item) => String(item.id) === String(book.id))) {
+          navigateTo("ebooks");
+        } else {
+          addBookToCart(book);
+          navigateTo("cart");
+        }
+      }}
+      onBrowseCourses={() => navigate("/courses")}
+      onBrowseBooks={() => navigateTo("books")}
+    />;
   }
 
   function Portfolio() {
-    return (
-      <div className="edc-tab-content edc-portfolio-page">
-        <SectionHeading eyebrow="YOUR ACHIEVEMENTS" title="Certificates & Portfolio"
-          description="Track course completions, showcase your projects and build your student profile." />
-        <div className="edc-stats">
-          {[
-            { label: "Completed Courses", value: completedCourses.length, icon: Award, color: "purple" },
-            { label: "Portfolio Projects", value: portfolioProjects.length, icon: BookOpen, color: "blue" },
-            { label: "Quizzes Passed (70%+)", value: passedQuizzes.length, icon: CheckCircle2, color: "green" },
-            { label: "Skills Listed", value: portfolioSkills.length, icon: Target, color: "pink" },
-          ].map(({ label, value, icon: Icon, color }) => (
-            <button
-              type="button"
-              className="edc-stat-card edc-academic-stat-card"
-              key={label}
-              onClick={() => navigate(`/student/dashboard/portfolio/${{
-                "Completed Courses": "completed-courses",
-                "Portfolio Projects": "projects",
-                "Quizzes Passed (70%+)": "quizzes-passed",
-                "Skills Listed": "skills",
-              }[label]}`)}
-            >
-              <div className={`edc-stat-icon edc-stat-${color}`}><Icon size={21} /></div>
-              <span>{label}</span><strong>{value}</strong>
-            </button>
-          ))}
-        </div>
+    const query = portfolioSearch.trim().toLowerCase();
+    const visibleCertificates = completedCourses.filter((course) => !query || String(course.title || "").toLowerCase().includes(query));
+    const visibleProjects = portfolioProjects.filter((project) =>
+      [project.title, project.description, project.url, ...(Array.isArray(project.skills) ? project.skills : [])]
+        .some((value) => String(value || "").toLowerCase().includes(query)),
+    );
+    const visibleSkills = portfolioSkills.filter((skill) => !query || skill.toLowerCase().includes(query));
+    const visiblePassedQuizzes = passedQuizzes.filter((quiz) => !query || String(quiz.title || "").toLowerCase().includes(query));
+    const badges = [
+      { title: "Course Explorer", detail: `${enrolledCourses.length} enrolled`, earned: enrolledCourses.length > 0, icon: BookOpen },
+      { title: "Course Finisher", detail: `${completedCourses.length} completed`, earned: completedCourses.length > 0, icon: Award },
+      { title: "Quiz Challenger", detail: `${attemptedQuizzes.length} attempted`, earned: attemptedQuizzes.length > 0, icon: Brain },
+      { title: "Quiz Achiever", detail: `${passedQuizzes.length} scored 70%+`, earned: passedQuizzes.length > 0, icon: Star },
+      { title: "Project Builder", detail: `${portfolioProjects.length} projects`, earned: portfolioProjects.length > 0, icon: Target },
+    ].filter((badge) => !query || `${badge.title} ${badge.detail}`.toLowerCase().includes(query));
 
-        <div className="edc-portfolio-tabs">
-          {[["certificates", "Certificates", Award], ["projects", "My Projects", BookOpen],
-            ["showcase", "Portfolio Showcase", GraduationCap], ["achievements", "Achievements", Star]
-          ].map(([id, label, Icon]) => (
-            <button key={id} type="button"
-              className={`edc-portfolio-tab ${portfolioTab === id ? "edc-portfolio-tab-active" : ""}`}
-              onClick={() => { setPortfolioTab(id); setPortfolioMessage(""); }}>
-              <Icon size={17} /> {label}
-            </button>
-          ))}
+    function changePortfolioTab(tab) {
+      setPortfolioTab(tab);
+      setPortfolioSearch("");
+      setPortfolioMessage("");
+    }
+
+    function startProjectForm() {
+      setProjectForm({ id: null, title: "", description: "", skills: "", url: "" });
+      setProjectEditing(true);
+      changePortfolioTab("projects");
+    }
+
+    function renderProjectCard(project) {
+      const skills = Array.isArray(project.skills) ? project.skills : [];
+      return <article className="edc-portfolio-project-card" key={project.id}>
+        <div className="edc-portfolio-project-art"><BookOpen size={27} /><span>Student Project</span></div>
+        <div className="edc-portfolio-project-copy">
+          <h3>{project.title}</h3>
+          <p>{project.description}</p>
+          {skills.length > 0 && <div className="edc-portfolio-skill-list">{skills.map((skill) => <span key={skill}>{skill}</span>)}</div>}
+          {project.url && <a href={project.url} target="_blank" rel="noopener noreferrer">Open Project Link ↗</a>}
+          <div className="edc-portfolio-actions">
+            <button type="button" className="edc-btn edc-btn-light" onClick={() => editPortfolioProject(project)}>Edit</button>
+            <button type="button" className="edc-icon-btn edc-danger" aria-label={`Delete ${project.title}`} onClick={() => deletePortfolioProject(project.id)}><Trash2 size={17} /></button>
+          </div>
+        </div>
+      </article>;
+    }
+
+    const stats = [
+      { label: "Total Certificates", value: completedCourses.length, icon: Award, color: "purple", tab: "certificates" },
+      { label: "Portfolio Projects", value: portfolioProjects.length, icon: BookOpen, color: "blue", tab: "projects" },
+      { label: "Skills Added", value: portfolioSkills.length, icon: Target, color: "green", tab: "skills" },
+      { label: "Quiz Passes", value: passedQuizzes.length, icon: CheckCircle2, color: "violet", tab: "achievements" },
+    ];
+
+    return (
+      <div className="edc-tab-content edc-portfolio-page edc-portfolio-dashboard">
+        <nav className="edc-portfolio-breadcrumb" aria-label="Breadcrumb"><House size={13} /><span>/</span><strong>Certificates &amp; Portfolio</strong></nav>
+        <header className="edc-portfolio-hero">
+          <div>
+            <span className="edc-portfolio-eyebrow">YOUR LEARNING ACHIEVEMENTS</span>
+            <h1><Award size={28} /> Certificates &amp; Portfolio</h1>
+            <p>Keep your course completion records, projects, and skills together.</p>
+            <small>Completion records are demo-only and are not accredited credentials.</small>
+          </div>
+          <div className="edc-portfolio-hero-art" aria-hidden="true"><GraduationCap /><Award /><BookOpen /></div>
+        </header>
+
+        <section className="edc-portfolio-stats" aria-label="Portfolio summary">
+          {stats.map(({ label, value, icon: Icon, color, tab }) => <button type="button" className={`edc-portfolio-stat ${color}`} key={label} onClick={() => changePortfolioTab(tab)} aria-pressed={portfolioTab === tab} aria-label={`${label}: ${value}. Show matching records`}>
+            <span><Icon size={22} /></span><div><small>{label}</small><strong>{value.toLocaleString()}</strong></div>
+          </button>)}
+        </section>
+
+        <div className="edc-portfolio-toolbar">
+          <nav className="edc-portfolio-tabs" aria-label="Portfolio sections">
+            {[["certificates", "My Certificates", Award], ["projects", "My Portfolio", BookOpen], ["skills", "Skills & Badges", Target], ["achievements", "Achievements", Trophy], ["showcase", "Showcase", GraduationCap]].map(([id, label, Icon]) =>
+              <button key={id} type="button" className={`edc-portfolio-tab ${portfolioTab === id ? "edc-portfolio-tab-active" : ""}`} aria-pressed={portfolioTab === id} onClick={() => changePortfolioTab(id)}>
+                <Icon size={15} />{label}
+              </button>,
+            )}
+          </nav>
+          <label className="edc-portfolio-search"><Search size={16} /><input type="search" value={portfolioSearch} onChange={(event) => setPortfolioSearch(event.target.value)} placeholder={`Search ${portfolioTab === "projects" ? "projects" : portfolioTab === "skills" ? "skills and badges" : "certificates"}...`} aria-label="Search certificates and portfolio" />{portfolioSearch && <button type="button" aria-label="Clear portfolio search" onClick={() => setPortfolioSearch("")}><X size={14} /></button>}</label>
+          <button type="button" className="edc-portfolio-add" onClick={startProjectForm}><Plus size={16} />Add Project</button>
         </div>
         {portfolioMessage && <p className="edc-portfolio-message" role="status">{portfolioMessage}</p>}
 
         {portfolioTab === "certificates" && (
-          <div className="edc-panel">
-            <SectionHeading title="My Demo Completion Records"
-              description="A course appears after all its sample lessons are marked complete." />
-            <div className="edc-portfolio-name-field">
-              <label htmlFor="edc-certificate-name">Name for demo certificate</label>
-              <input id="edc-certificate-name" value={portfolioName}
-                maxLength={80} placeholder="Enter your name"
-                onChange={(event) => setPortfolioName(event.target.value)} />
-            </div>
-            <div className="edc-portfolio-notice">These are demonstration records, not verified or accredited certificates. The print window lets you choose Save as PDF.</div>
-            {completedCourses.length ? (
-              <div className="edc-portfolio-certificate-grid">
-                {completedCourses.map((course) => (
-                  <article className="edc-portfolio-certificate" key={course.id}>
-                    <div className="edc-portfolio-seal"><Award size={38} /></div>
-                    <span className="edc-portfolio-overline">EduConnect AI Â· Demo Record</span>
-                    <h3>{course.title}</h3>
-                    <p>All {course.lessons} lessons completed</p>
-                    <p>{certificateInfo(course).date} Â· {certificateInfo(course).id}</p>
-                    <span className="edc-portfolio-verified"><CheckCircle2 size={16} /> Demo Completion</span>
-                    <button type="button" className="edc-btn edc-btn-primary" onClick={() => printDemoCertificate(course)}>
-                      Preview / Save PDF <ArrowRight size={16} />
-                    </button>
-                  </article>
-                ))}
-              </div>
-            ) : <EmptyState icon={Award} title="No completed courses yet"
-              description="Go to My Learning and complete every demo lesson to unlock a completion record." />}
+          <div className="edc-portfolio-sections">
+            <section className="edc-portfolio-section">
+              <header><div><h2><Award size={19} />My Certificates</h2><p>Records based on courses completed in your account.</p></div>{completedCourses.length > 4 && <button type="button" onClick={() => navigate("/student/dashboard/portfolio/completed-courses")}>View All Certificates <ArrowRight size={14} /></button>}</header>
+              <p className="edc-portfolio-notice">These are demo course completion records, not verified or accredited certificates.</p>
+              {visibleCertificates.length ? <div className="edc-portfolio-certificate-grid">
+                {visibleCertificates.map((course) => {
+                  const completionDate = certificateInfo(course).date;
+                  const lessonCount = Array.isArray(course.lessons) ? course.lessons.length : Number(course.lessons) || 0;
+                  return <article className="edc-portfolio-certificate-card" key={`${course.teacherEmail || ""}:${course.id}`}>
+                    <div className="edc-portfolio-certificate-art"><Award size={31} /><span>Course Completion</span></div>
+                    <div className="edc-portfolio-certificate-copy">
+                      <span className="edc-portfolio-record-label">Demo completion record</span>
+                      <h3>{course.title}</h3>
+                      <p><CheckCircle2 size={13} />{lessonCount} lessons completed</p>
+                      <p><CalendarDays size={13} />Record date: {completionDate}</p>
+                      <button type="button" onClick={() => printDemoCertificate(course)}>Preview / Save PDF <ArrowRight size={14} /></button>
+                    </div>
+                  </article>;
+                })}
+              </div> : <EmptyState icon={Award} title={query ? "No matching completion records" : "No completed courses yet"} description={query ? "Try another search." : "Course records appear here after you complete the lessons in an enrolled course."} />}
+            </section>
+
+            <section className="edc-portfolio-section">
+              <header><div><h2><BookOpen size={19} />My Portfolio</h2><p>Projects you have added to your account.</p></div><button type="button" onClick={() => changePortfolioTab("projects")}>View Full Portfolio <ArrowRight size={14} /></button></header>
+              {visibleProjects.length ? <div className="edc-portfolio-project-grid">{visibleProjects.slice(0, 4).map(renderProjectCard)}</div>
+                : <EmptyState icon={BookOpen} title={query ? "No matching projects" : "No projects yet"} description={query ? "Try another search." : "Add a project to showcase your work and the skills you used."} />}
+            </section>
           </div>
         )}
 
         {portfolioTab === "projects" && (
-          <div className="edc-panel">
-            <SectionHeading title="My Projects" description="Add projects, update details and showcase your skills." />
+          <section className="edc-portfolio-section">
+            <header><div><h2><BookOpen size={19} />My Portfolio</h2><p>Your saved projects and related skills.</p></div></header>
             {!projectEditing ? (
-              <button type="button" className="edc-btn edc-btn-primary" onClick={() => {
-                setProjectForm({ id: null, title: "", description: "", skills: "", url: "" });
-                setProjectEditing(true); setPortfolioMessage("");
-              }}><Plus size={17} /> Add Project</button>
+              <button type="button" className="edc-portfolio-add-inline" onClick={startProjectForm}><Plus size={16} />Add Project</button>
             ) : (
               <form className="edc-portfolio-form" onSubmit={savePortfolioProject}>
                 <h3>{projectForm.id ? "Edit Project" : "Add a New Project"}</h3>
@@ -2145,56 +2407,63 @@ export default function StudentDashboard({ email = "student" }) {
                 </div>
               </form>
             )}
-            {portfolioProjects.length ? <div className="edc-portfolio-project-grid">
-              {portfolioProjects.map((project) => <article className="edc-portfolio-project" key={project.id}>
-                <h3>{project.title}</h3><p>{project.description}</p>
-                <div className="edc-portfolio-skill-list">{project.skills.map((skill) => <span key={skill}>{skill}</span>)}</div>
-                {project.url && <a href={project.url} target="_blank" rel="noopener noreferrer">Open Project Link â†—</a>}
-                <div className="edc-portfolio-actions">
-                  <button type="button" className="edc-btn edc-btn-light" onClick={() => editPortfolioProject(project)}>Edit</button>
-                  <button type="button" className="edc-icon-btn edc-danger" aria-label={`Delete ${project.title}`} onClick={() => deletePortfolioProject(project.id)}><Trash2 size={17} /></button>
-                </div>
-              </article>)}
-            </div> : !projectEditing && <EmptyState icon={BookOpen} title="No projects yet" description="Add your first project to start building a portfolio." />}
+            {visibleProjects.length ? <div className="edc-portfolio-project-grid">{visibleProjects.map(renderProjectCard)}</div> : !projectEditing && <EmptyState icon={BookOpen} title={query ? "No matching projects" : "No projects yet"} description={query ? "Try another search." : "Add your first project to start building a portfolio."} />}
+          </section>
+        )}
+
+        {portfolioTab === "skills" && (
+          <div className="edc-portfolio-sections">
+            <section className="edc-portfolio-section">
+              <header><div><h2><Target size={19} />Skills Added</h2><p>Skills collected from the projects you saved.</p></div></header>
+              {visibleSkills.length ? <div className="edc-portfolio-skill-cards">{visibleSkills.map((skill) => {
+                const relatedProjects = portfolioProjects.filter((project) => Array.isArray(project.skills) && project.skills.includes(skill));
+                return <article key={skill}><span><Target size={18} /></span><div><strong>{skill}</strong><small>Used in {relatedProjects.length} {relatedProjects.length === 1 ? "project" : "projects"}</small></div></article>;
+              })}</div> : <EmptyState icon={Target} title={query ? "No matching skills" : "No skills listed yet"} description={query ? "Try another search." : "Add skills to your portfolio projects to list them here."} />}
+            </section>
+            <section className="edc-portfolio-section">
+              <header><div><h2><Trophy size={19} />Learning Badges</h2><p>Milestones calculated from your account activity.</p></div></header>
+              <div className="edc-portfolio-achievements">{badges.map(({ title, detail, earned, icon: Icon }) => <article key={title} className={earned ? "earned" : ""}><Icon size={25} /><strong>{title}</strong><span>{detail}</span><small>{earned ? "Recorded in your account" : "Not earned yet"}</small></article>)}</div>
+              <p className="edc-portfolio-notice">Badges are demo milestones based on account activity, not verified qualifications.</p>
+            </section>
           </div>
         )}
 
         {portfolioTab === "showcase" && (
-          <div className="edc-panel">
-            <SectionHeading title="Portfolio Showcase" description="A live preview of your student portfolio." />
+          <section className="edc-portfolio-section">
+            <header><div><h2><GraduationCap size={19} />Portfolio Showcase</h2><p>Preview of your saved projects and skills.</p></div></header>
+            <label className="edc-portfolio-name-field">Portfolio display name<input value={portfolioName} maxLength={80} placeholder={studentProfile.fullName || studentProfile.name || "Enter your name"} onChange={(event) => setPortfolioName(event.target.value)} /></label>
             <div className="edc-portfolio-showcase">
               <div className="edc-portfolio-showcase-hero"><GraduationCap size={38} />
-                <div><h3>{portfolioName.trim() || "Your Name"}</h3><p>Student Â· EduConnect AI</p></div>
+                <div><h3>{portfolioName.trim() || studentProfile.fullName || studentProfile.name || "Student"}</h3><p>Student | EduConnect AI</p></div>
               </div>
               <h3>Skills</h3>
-              {portfolioSkills.length ? <div className="edc-portfolio-skill-list">{portfolioSkills.map((skill) => <span key={skill}>{skill}</span>)}</div>
+              {visibleSkills.length ? <div className="edc-portfolio-skill-list">{visibleSkills.map((skill) => <span key={skill}>{skill}</span>)}</div>
                 : <p className="edc-muted">Add skills to your projects to display them here.</p>}
               <h3>Featured Projects</h3>
-              {portfolioProjects.length ? <div className="edc-portfolio-project-grid">
-                {portfolioProjects.map((project) => <article className="edc-portfolio-project" key={project.id}>
+              {visibleProjects.length ? <div className="edc-portfolio-project-grid">
+                {visibleProjects.map((project) => <article className="edc-portfolio-project" key={project.id}>
                   <h4>{project.title}</h4><p>{project.description}</p>
-                  {project.url && <a href={project.url} target="_blank" rel="noopener noreferrer">View Project â†—</a>}
+                  {project.url && <a href={project.url} target="_blank" rel="noopener noreferrer">View Project Link</a>}
                 </article>)}
               </div> : <p className="edc-muted">Your projects will appear here after you add them.</p>}
-              <h3>Completed Demo Courses</h3>
-              {completedCourses.length ? completedCourses.map((course) => <p key={course.id}><CheckCircle2 size={16} /> {course.title}</p>)
-                : <p className="edc-muted">No demo course completions yet.</p>}
+              <h3>Course Completion Records</h3>
+              {visibleCertificates.length ? visibleCertificates.map((course) => <p key={`${course.teacherEmail || ""}:${course.id}`}><CheckCircle2 size={16} /> {course.title}</p>)
+                : <p className="edc-muted">No completed courses to show yet.</p>}
             </div>
-          </div>
+          </section>
         )}
 
         {portfolioTab === "achievements" && (
-          <div className="edc-panel">
-            <SectionHeading title="Learning Achievements" description="Achievements are calculated from your actual demo progress and quiz scores." />
-            <div className="edc-portfolio-achievements">
-              <article><BookOpen size={28} /><strong>Course Explorer</strong><span>{enrolledCourses.length ? `${enrolledCourses.length} enrolled` : "Not earned yet"}</span></article>
-              <article><Award size={28} /><strong>Course Finisher</strong><span>{completedCourses.length ? `${completedCourses.length} completed` : "Not earned yet"}</span></article>
-              <article><Brain size={28} /><strong>Quiz Challenger</strong><span>{attemptedQuizzes.length ? `${attemptedQuizzes.length} attempted` : "Not earned yet"}</span></article>
-              <article><Star size={28} /><strong>Quiz Achiever</strong><span>{passedQuizzes.length ? `${passedQuizzes.length} scored 70%+` : "Not earned yet"}</span></article>
-              <article><Target size={28} /><strong>Project Builder</strong><span>{portfolioProjects.length ? `${portfolioProjects.length} projects` : "Not earned yet"}</span></article>
-            </div>
-            <p className="edc-muted">These badges are demo milestones, not verified qualifications.</p>
-          </div>
+          <section className="edc-portfolio-section">
+            <header><div><h2><Trophy size={19} />Learning Achievements</h2><p>Milestones calculated from your course, quiz, and project activity.</p></div></header>
+            <div className="edc-portfolio-achievements">{badges.map(({ title, detail, earned, icon: Icon }) => <article key={title} className={earned ? "earned" : ""}><Icon size={25} /><strong>{title}</strong><span>{detail}</span><small>{earned ? "Recorded in your account" : "Not earned yet"}</small></article>)}</div>
+            <p className="edc-portfolio-notice">These badges are demo milestones, not verified qualifications.</p>
+            <h3 className="edc-portfolio-subheading">Quizzes Passed (70%+)</h3>
+            {visiblePassedQuizzes.length ? <div className="edc-portfolio-passed-quizzes">{visiblePassedQuizzes.map((quiz) => {
+              const result = quizResults[quiz.id];
+              return <article key={quiz.id}><CheckCircle2 size={18} /><div><strong>{quiz.title}</strong><small>{result.correct} / {result.total} correct answers</small></div><strong>{result.percentage}%</strong></article>;
+            })}</div> : <EmptyState icon={CheckCircle2} title={query ? "No matching quiz passes" : "No quizzes passed yet"} description={query ? "Try another search." : "Quizzes with an actual recorded score of 70% or higher will appear here."} />}
+          </section>
         )}
       </div>
     );
@@ -2291,61 +2560,6 @@ export default function StudentDashboard({ email = "student" }) {
     },
   }[overviewDetailSlug];
 
-  const masteryDetailSlug = location.pathname.startsWith("/student/dashboard/mastery/")
-    ? location.pathname.split("/").at(-1)
-    : "";
-  const masteryDetailConfig = {
-    "enrolled-courses": {
-      title: "Enrolled Courses",
-      description: "Your enrolled courses and their current learning progress.",
-      courses: enrolledCourses,
-      emptyMessage: "You are not enrolled in any courses yet. Explore demo courses to start tracking mastery.",
-    },
-    "quizzes-attempted": {
-      title: "Quizzes Attempted",
-      description: "Quizzes you have completed and their recorded results.",
-      items: assessedMastery.map(({ quiz, course, result }) => ({
-        id: quiz.id,
-        title: quiz.title,
-        detail: `${course?.title || "Course"} Â· ${result.correct}/${result.total} correct Â· ${new Date(result.completedAt).toLocaleString()}`,
-        status: `${result.percentage}%`,
-        actionLabel: "Practice again",
-        action: () => reviewMasteryQuiz(quiz.id),
-      })),
-      emptyMessage: "You have not attempted any quizzes yet. Open a course quiz to begin.",
-    },
-    "average-quiz-score": {
-      title: "Average Quiz Score",
-      description: masteryAverage === null
-        ? "Your average will appear after you complete a quiz."
-        : `Your average score across ${assessedMastery.length} attempted ${assessedMastery.length === 1 ? "quiz" : "quizzes"} is ${masteryAverage}%.`,
-      items: assessedMastery.map(({ quiz, course, result }) => ({
-        id: quiz.id,
-        title: quiz.title,
-        detail: `${course?.title || "Course"} Â· ${result.correct}/${result.total} correct`,
-        status: `${result.percentage}%`,
-        actionLabel: "Review quiz",
-        action: () => reviewMasteryQuiz(quiz.id),
-      })),
-      emptyMessage: "No quiz scores yet. Complete a quiz to see your score breakdown.",
-    },
-    "topics-to-revise": {
-      title: "Topics to Revise",
-      description: "Topics linked to incorrect answers in your latest detailed quiz attempts.",
-      items: topicsToRevise.map((topic) => ({
-        id: `${topic.quizId}-${topic.title}`,
-        title: `Revise ${topic.title}`,
-        detail: `${topic.course} Â· ${topic.question}`,
-        status: "Needs revision",
-        actionLabel: "Practice topic",
-        action: () => reviewMasteryQuiz(topic.quizId),
-      })),
-      emptyMessage: assessedMastery.length
-        ? "No topics need revision based on your latest recorded quiz answers."
-        : "Complete a quiz to identify topics that may need revision.",
-    },
-  }[masteryDetailSlug];
-
   const portfolioDetailSlug = location.pathname.startsWith("/student/dashboard/portfolio/")
     ? location.pathname.split("/").at(-1)
     : "";
@@ -2396,7 +2610,7 @@ export default function StudentDashboard({ email = "student" }) {
           detail: `${course?.title || "Course"} Â· ${result.correct}/${result.total} correct Â· ${new Date(result.completedAt).toLocaleString()}`,
           status: `${result.percentage}%`,
           actionLabel: "Practice again",
-          action: () => reviewMasteryQuiz(quiz.id),
+          action: () => reviewMasteryQuiz(),
         };
       }),
       emptyMessage: "No quizzes passed yet. Complete a course quiz and score at least 70% to earn this milestone.",
@@ -2445,38 +2659,9 @@ export default function StudentDashboard({ email = "student" }) {
     );
   }
 
-  if (masteryDetailConfig) {
-    return (
-      <main className="edc-academic-detail-page" aria-live="polite">
-        <button type="button" className="edc-text-btn edc-academic-detail-back" onClick={() => navigateTo("mastery")}>
-          <ArrowRight size={16} className="edc-academic-back-icon" /> Back to Topic Mastery
-        </button>
-        <SectionHeading eyebrow="LEARNING INTELLIGENCE" title={masteryDetailConfig.title} description={masteryDetailConfig.description} />
-        {masteryDetailConfig.courses ? (
-          masteryDetailConfig.courses.length ? (
-            <div className="edc-learning-list edc-overview-detail-courses">
-              {masteryDetailConfig.courses.map((course) => <LearningCard key={course.id} course={course} />)}
-            </div>
-          ) : (
-            <div className="edc-panel edc-academic-stat-empty">{masteryDetailConfig.emptyMessage}</div>
-          )
-        ) : masteryDetailConfig.items.length ? (
-          <div className="edc-academic-results edc-overview-detail-courses">
-            {masteryDetailConfig.items.map((item) => (
-              <article className="edc-academic-result" key={item.id}>
-                <div><strong>{item.title}</strong><p>{item.detail}</p></div>
-                <div className="edc-academic-stat-detail-actions">
-                  <span className="edc-academic-status">{item.status}</span>
-                  <button type="button" className="edc-btn edc-btn-primary" onClick={item.action}>{item.actionLabel}</button>
-                </div>
-              </article>
-            ))}
-          </div>
-        ) : (
-          <div className="edc-panel edc-academic-stat-empty">{masteryDetailConfig.emptyMessage}</div>
-        )}
-      </main>
-    );
+  if (location.pathname.startsWith("/student/dashboard/mastery/")) {
+    return <StudentTopicMastery email={email} courses={enrolledCourses}
+      publishedCourses={latestPublishedCourses} onNavigate={navigateTo} onOpenQuiz={openStudentQuiz} />;
   }
 
   if (overviewDetailConfig) {
@@ -2644,7 +2829,7 @@ export default function StudentDashboard({ email = "student" }) {
         </div>
 
         <nav className="edc-navigation" aria-label="Student dashboard">
-          {MENU.map((item) => {
+          {MENU.filter(item => item.id !== "notifications").map((item) => {
             const Icon = item.icon;
 
             return (
@@ -2657,8 +2842,6 @@ export default function StudentDashboard({ email = "student" }) {
               >
                 <Icon size={18} />
                 <span>{item.label}</span>
-                {item.id === "notifications" && unreadNotifications > 0 &&
-                  <span className="edc-notification-count" aria-label={`${unreadNotifications} unread`}>{unreadNotifications}</span>}
                 {activeTab === item.id && <ChevronRight size={15} />}
               </button>
             );
@@ -2719,7 +2902,15 @@ export default function StudentDashboard({ email = "student" }) {
             onNavigate={navigateTo}
           />}
 
-        {activeTab === "assignments" && (
+        {activeTab === "assignments" && <CourseAssignments
+          role="student"
+          email={email}
+          courses={enrolledCourses}
+          publishedCourses={latestPublishedCourses}
+          onNavigate={navigateTo}
+          dashboardLayout
+        />}
+        {activeTab === "assignments-demo-disabled" && (
           <div className="edc-tab-content edc-academic-page">
             <SectionHeading eyebrow="ACADEMIC WORKSPACE" title="Assignments & Grades"
               description="Submit demo assignments, attempt quizzes and review results." />
@@ -2921,126 +3112,9 @@ export default function StudentDashboard({ email = "student" }) {
           </div>
         )}
 
-        {activeTab === "mastery" && (
-          <div className="edc-tab-content edc-mastery-page">
-            <SectionHeading
-              eyebrow="LEARNING INTELLIGENCE"
-              title="Topic Mastery"
-              description="Explore your practice quiz performance and find topics to revise. Scores are based on quiz answers, not lesson completion."
-            />
-
-            <div className="edc-stats">
-              {[
-                { label: "Enrolled Courses", value: enrolledCourses.length, icon: BookOpen, color: "purple" },
-                { label: "Quizzes Attempted", value: assessedMastery.length, icon: ClipboardList, color: "blue" },
-                { label: "Average Quiz Score", value: masteryAverage === null ? "â€”" : `${masteryAverage}%`, icon: TrendingUp, color: "green" },
-                { label: "Topics to Revise", value: topicsToRevise.length, icon: Target, color: "pink" },
-              ].map((stat) => {
-                const Icon = stat.icon;
-                return (
-                  <button
-                    type="button"
-                    className="edc-stat-card edc-academic-stat-card"
-                    key={stat.label}
-                    onClick={() => navigate(`/student/dashboard/mastery/${{
-                      "Enrolled Courses": "enrolled-courses",
-                      "Quizzes Attempted": "quizzes-attempted",
-                      "Average Quiz Score": "average-quiz-score",
-                      "Topics to Revise": "topics-to-revise",
-                    }[stat.label]}`)}
-                  >
-                    <div className={`edc-stat-icon edc-stat-${stat.color}`}><Icon size={21} /></div>
-                    <span>{stat.label}</span><strong>{stat.value}</strong>
-                  </button>
-                );
-              })}
-            </div>
-
-            {masteryRecords.length === 0 ? (
-              <div className="edc-panel">
-                <EmptyState
-                  icon={Brain}
-                  title="Enroll to start tracking mastery"
-                  description="Enroll in a demo course, then complete its quiz to see evidence-based performance here."
-                />
-                <button type="button" className="edc-btn edc-btn-primary" onClick={() => navigateTo("learning")}>
-                  <BookOpen size={16} /> Explore Courses
-                </button>
-              </div>
-            ) : (
-              <>
-                <section className="edc-panel">
-                  <SectionHeading eyebrow="COURSE PERFORMANCE" title="Quiz-Based Progress"
-                    description="Each percentage is your latest quiz score. It is not a verified subject mastery rating." />
-                  <div className="edc-mastery-course-grid">
-                    {masteryRecords.map(({ quiz, course, result }) => (
-                      <article className="edc-mastery-course" key={quiz.id}>
-                        <div className="edc-mastery-course-top">
-                          <div className={`edc-learning-icon edc-cover-${course?.color || "purple"}`}>
-                            {course?.icon || "ðŸ“˜"}
-                          </div>
-                          <div><strong>{course?.title || quiz.title}</strong><span>{quiz.title}</span></div>
-                        </div>
-                        <div className="edc-mastery-score-row">
-                          <span>Latest practice score</span>
-                          <strong>{result ? `${result.percentage}%` : "Not attempted"}</strong>
-                        </div>
-                        <ProgressBar value={result?.percentage || 0} />
-                        <button type="button" className="edc-btn edc-btn-light" onClick={() => reviewMasteryQuiz(quiz.id)}>
-                          <Play size={15} /> {result ? "Practice Again" : "Take Quiz"}
-                        </button>
-                      </article>
-                    ))}
-                  </div>
-                </section>
-
-                <section className="edc-panel">
-                  <SectionHeading eyebrow="TOPIC ANALYSIS" title="Your Topic Breakdown"
-                    description="Question-level insights are available for quizzes taken after this update. Older quiz scores remain visible above." />
-                  <div className="edc-mastery-topics">
-                    {masteryRecords.map(({ quiz, course, topics, result }) => (
-                      <div className="edc-mastery-topic-group" key={quiz.id}>
-                        <h3>{course?.title || quiz.title}</h3>
-                        {topics.map((topic) => (
-                          <div className="edc-mastery-topic-row" key={topic.title}>
-                            <div><strong>{topic.title}</strong><span>{topic.question}</span></div>
-                            <span className={`edc-mastery-label edc-mastery-${topic.status}`}>
-                              {topic.status === "correct" ? "Correct" : topic.status === "revise" ? "Needs revision" : result ? "Details unavailable" : "Not assessed"}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    ))}
-                  </div>
-                </section>
-
-                <section className="edc-panel">
-                  <SectionHeading eyebrow="PERSONAL STUDY PLAN" title="Recommended Revision"
-                    description="Suggestions are based on incorrectly answered questions from your latest recorded quiz attempts." />
-                  {topicsToRevise.length ? (
-                    <div className="edc-mastery-revisions">
-                      {topicsToRevise.map((topic) => (
-                        <div className="edc-mastery-revision" key={`${topic.quizId}-${topic.title}`}>
-                          <div className="edc-mastery-revision-icon"><Target size={19} /></div>
-                          <div><strong>Revise {topic.title}</strong><p>{topic.course} Â· Review: {topic.question}</p></div>
-                          <button type="button" className="edc-btn edc-btn-light" onClick={() => reviewMasteryQuiz(topic.quizId)}>
-                            Practice <ArrowRight size={15} />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="edc-notice"><CheckCircle2 size={19} />
-                      <span>{assessedMastery.length === 0
-                        ? "Complete a quiz to receive revision suggestions."
-                        : "No incorrect answers are recorded in your latest detailed quiz results. If you took quizzes before this update, retake them for topic-level insights."}</span>
-                    </div>
-                  )}
-                </section>
-              </>
-            )}
-          </div>
-        )}
+        {activeTab === "mastery" && <StudentTopicMastery email={email}
+          courses={enrolledCourses} publishedCourses={latestPublishedCourses}
+          onNavigate={navigateTo} onOpenQuiz={openStudentQuiz} />}
 
         {activeTab === "ai" && <div className="edc-tab-content edc-ai-page"><SectionHeading eyebrow="PERSONALIZED LEARNING" title="AI Learning Help" description="Ask education-level questions, get guided explanations, and discover relevant materials." /><div className="edc-ai-notice"><Bot size={20} /><span><strong>AI integration pending.</strong> No AI service is connected, so this page does not generate answers. Browse published books and courses or send a help request to Admin from a teacher profile.</span></div><button type="button" className="edc-btn edc-btn-light" onClick={() => navigateTo("books")}>Browse Books & Teachers <ArrowRight size={16} /></button></div>}
         {activeTab === "ai-demo-disabled" && (
@@ -3201,71 +3275,176 @@ export default function StudentDashboard({ email = "student" }) {
         {activeTab === "cart" && ShoppingCartPage()}
         {activeTab === "orders" && OrdersPage()}
         {activeTab === "ebooks" && MyEbooksPage()}
-        {activeTab === "books" && <div className="edc-tab-content"><SectionHeading eyebrow="LIBRARY & DIRECTORY" title="Books & Teachers" description="Search approved PDF/eBooks and real registered teacher profiles." /><BookTeacherHub email={email} profile={studentProfile} courses={latestPublishedCourses} cart={cart} purchasedBooks={bookPurchases} onAddBookToCart={(book) => { addBookToCart(book); navigateTo("cart"); }} onOpenEbooks={() => navigateTo("ebooks")} /></div>}
-        {activeTab === "tutors" && <div className="edc-tab-content"><SectionHeading eyebrow="TEACHER DIRECTORY" title="Find Teachers" description="Browse registered teacher profiles and request Admin help when they are unavailable." /><BookTeacherHub email={email} profile={studentProfile} courses={latestPublishedCourses} cart={cart} purchasedBooks={bookPurchases} defaultTab="teachers" onAddBookToCart={addBookToCart} onOpenEbooks={() => navigateTo("ebooks")} /></div>}
+        {activeTab === "books" && <div className="edc-tab-content"><SectionHeading eyebrow="LIBRARY & DIRECTORY" title="Books & Teachers" description="Search approved PDF/eBooks and real registered teacher profiles." /><BookTeacherHub email={email} profile={studentProfile} courses={latestPublishedCourses} cart={cart} purchasedBooks={bookPurchases} savedBookIds={savedBookIds} onToggleSavedBook={toggleSavedBook} onAddBookToCart={(book) => { addBookToCart(book); navigateTo("cart"); }} onOpenEbooks={() => navigateTo("ebooks")} /></div>}
+        {activeTab === "tutors" && <div className="edc-tab-content"><SectionHeading eyebrow="TEACHER DIRECTORY" title="Find Teachers" description="Browse registered teacher profiles and request Admin help when they are unavailable." /><BookTeacherHub email={email} profile={studentProfile} courses={latestPublishedCourses} cart={cart} purchasedBooks={bookPurchases} savedBookIds={savedBookIds} onToggleSavedBook={toggleSavedBook} defaultTab="teachers" onAddBookToCart={addBookToCart} onOpenEbooks={() => navigateTo("ebooks")} /></div>}
         {activeTab === "notifications" && <NotificationsCenter notifications={notifications}
           onRead={markNotificationRead} onReadAll={markAllNotificationsRead}
           onDelete={deleteNotification} onNavigate={navigateTo} />}
 {activeTab === "portfolio" && Portfolio()}
         {activeTab === "research" && (
-          <div className="edc-tab-content edc-research-page">
-            <SectionHeading eyebrow="ADVANCED LEARNING" title="Research Workspace"
-              description="Organize research projects, papers, references, datasets and experiments. Your demo records stay in this browser." />
-            <div className="edc-research-overview">
-              {RESEARCH_SECTIONS.map((section) => <button key={section.id} type="button"
-                className="edc-research-count edc-research-count-button"
-                onClick={() => navigate(`/student/dashboard/research/${section.id}`)}>
-                <strong>{(researchRecords[section.id] || []).length}</strong><span>{section.title}</span>
-              </button>)}
-            </div>
-            <div className="edc-research-tabs" role="tablist" aria-label="Research workspace sections">
-              {RESEARCH_SECTIONS.map((section) => <button key={section.id} type="button" role="tab"
-                aria-selected={researchTab === section.id} className={researchTab === section.id ? "active" : ""}
-                onClick={() => switchResearchTab(section.id)}>{section.title}</button>)}
-            </div>
-            <div className="edc-research-layout">
-              <section className="edc-panel edc-research-editor">
-                <h3>{researchEditId ? "Edit" : "Add"} {currentResearchSection.title === "References & Citations" ? "Reference" : currentResearchSection.title.replace(/s$/, "")}</h3>
-                <p className="edc-research-muted">Add your own information. Content is not checked against external sources.</p>
-                <form onSubmit={saveResearchRecord} className="edc-research-form">
-                  {currentResearchSection.fields.map((field) => <label key={field.key}>
-                    <span>{field.label}{field.required ? " *" : ""}</span>
-                    {field.options ? <select value={researchForm[field.key] ?? field.options[0]}
-                      onChange={(event) => setResearchForm((prev) => ({ ...prev, [field.key]: event.target.value }))}>
-                      {field.options.map((option) => <option key={option} value={option}>{option}</option>)}
-                    </select> : field.multiline ? <textarea rows={3} maxLength={3000} value={researchForm[field.key] || ""}
-                      onChange={(event) => setResearchForm((prev) => ({ ...prev, [field.key]: event.target.value }))} />
-                    : <input type={field.type || "text"} maxLength={500} required={Boolean(field.required)}
-                      value={researchForm[field.key] || ""} onChange={(event) => setResearchForm((prev) => ({ ...prev, [field.key]: event.target.value }))} />}
-                  </label>)}
-                  <div className="edc-research-actions">
-                    <button className="edc-btn edc-btn-primary" type="submit"><Plus size={16} /> {researchEditId ? "Update Record" : "Save Record"}</button>
-                    {researchEditId && <button type="button" className="edc-btn edc-btn-light" onClick={() => { setResearchEditId(null); setResearchForm({}); setResearchNotice(""); }}>Cancel Edit</button>}
+          researchView === "overview" ? (
+            <div className="edc-tab-content edc-research-page edc-research-dashboard">
+              <nav className="edc-research-breadcrumb" aria-label="Breadcrumb"><House size={13} /><span>/</span><strong>Research Workspace</strong></nav>
+              <header className="edc-research-hero">
+                <div>
+                  <span className="edc-research-eyebrow">YOUR RESEARCH, ORGANIZED</span>
+                  <h1><Microscope size={27} />Research Workspace</h1>
+                  <p>Plan and organize your own projects, sources, notes, datasets, and experiments.</p>
+                  <small>Your records are private to this account on this device; nothing is pre-filled.</small>
+                </div>
+                <div className="edc-research-hero-art" aria-hidden="true"><BookOpen /><Microscope /><NotebookPen /></div>
+              </header>
+
+              <section className="edc-research-overview" aria-label="Research record summary">
+                {[
+                  { label: "Research Projects", value: projectResearchItems.length, color: "purple", icon: BookOpen, tab: "projects" },
+                  { label: "Research Papers", value: (researchRecords.papers || []).length, color: "blue", icon: BookText, tab: "papers" },
+                  { label: "Literature Notes", value: (researchRecords.matrix || []).length, color: "green", icon: NotebookPen, tab: "matrix" },
+                  { label: "References", value: (researchRecords.references || []).length, color: "violet", icon: NotebookPen, tab: "references" },
+                ].map(({ label, value, color, icon: Icon, tab }) => <button key={label} type="button"
+                  className={`edc-research-count edc-research-count-button ${color}`} onClick={() => switchResearchTab(tab)}
+                  aria-label={`${label}: ${value}. Open related records`}>
+                  <span className="edc-research-count-icon"><Icon size={20} /></span><span className="edc-research-count-copy"><small>{label}</small><strong>{value.toLocaleString()}</strong></span>
+                </button>)}
+              </section>
+
+              <section className="edc-research-quick-actions" aria-label="Add research records">
+                {[
+                  { label: "New Research Project", icon: Plus, tab: "projects", primary: true },
+                  { label: "Add Paper", icon: BookText, tab: "papers" },
+                  { label: "Write Literature Note", icon: NotebookPen, tab: "matrix" },
+                  { label: "Add Reference", icon: ClipboardList, tab: "references" },
+                  { label: "Add Dataset", icon: Database, tab: "datasets" },
+                  { label: "Track Experiment", icon: Microscope, tab: "experiments" },
+                ].map(({ label, icon: Icon, tab, primary }) => <button key={tab} type="button"
+                  className={primary ? "edc-research-quick-primary" : ""} onClick={() => switchResearchTab(tab)}>
+                  <Icon size={18} /><span>{label}</span>
+                </button>)}
+              </section>
+
+              <div className="edc-research-home-grid">
+                <section className="edc-research-home-panel edc-research-projects-panel">
+                  <header className="edc-research-home-heading">
+                    <div><h2><BookOpen size={19} />My Research Projects ({projectResearchItems.length})</h2><p>Only projects you have saved are shown here.</p></div>
+                    <button type="button" onClick={() => switchResearchTab("projects")}>View All <ArrowRight size={14} /></button>
+                  </header>
+                  <div className="edc-research-project-toolbar">
+                    <label className="edc-research-search"><Search size={16} /><input type="search" aria-label="Search your research projects"
+                      placeholder="Search projects..." value={researchDashboardSearch}
+                      onChange={(event) => setResearchDashboardSearch(event.target.value)} /></label>
+                    <select aria-label="Filter research projects by status" value={researchProjectStatus}
+                      onChange={(event) => setResearchProjectStatus(event.target.value)}>
+                      {["All Projects", "Planning", "In Progress", "Completed"].map((status) => <option key={status}>{status}</option>)}
+                    </select>
                   </div>
-                  {researchNotice && <p role="status" className="edc-research-notice">{researchNotice}</p>}
-                </form>
-              </section>
-              <section className="edc-panel edc-research-library">
-                <div className="edc-research-library-head"><h3>{currentResearchSection.title} ({researchItems.length})</h3>
-                  <label className="edc-research-search"><Search size={17}/><input aria-label="Search research records" placeholder="Search saved records..."
-                    value={researchSearch} onChange={(event) => setResearchSearch(event.target.value)} /></label></div>
-                {filteredResearchItems.length ? <div className="edc-research-list">
-                  {filteredResearchItems.map((item) => <article key={item.id} className="edc-research-item">
-                    <h4>{item.title}</h4>
-                    {currentResearchSection.fields.filter((field) => field.key !== "title" && item[field.key]).map((field) => <div key={field.key} className="edc-research-field">
-                      <strong>{field.label}:</strong> {field.key === "url" && /^https?:\/\//i.test(item[field.key])
-                        ? <a href={item[field.key]} target="_blank" rel="noopener noreferrer">Open link</a> : <span>{item[field.key]}</span>}
-                    </div>)}
-                    <small>Updated {new Date(item.updatedAt).toLocaleDateString()}</small>
-                    <div className="edc-research-actions"><button type="button" className="edc-btn edc-btn-light" onClick={() => editResearchRecord(item)}>Edit</button>
-                      <button type="button" className="edc-btn edc-btn-light" onClick={() => deleteResearchRecord(item.id)}><Trash2 size={15}/> Delete</button></div>
-                  </article>)}
-                </div> : <EmptyState icon={Microscope} title={researchSearch ? "No matching records" : "No records saved yet"}
-                  description={researchSearch ? "Try a different search term." : "Use the form to add your first research record."} />}
-              </section>
+                  {filteredProjectResearchItems.length ? <div className="edc-research-project-grid">
+                    {filteredProjectResearchItems.slice(0, 4).map((project) => <button type="button" key={project.id}
+                      className="edc-research-project-card" onClick={() => switchResearchTab("projects")}>
+                      <span className="edc-research-project-icon"><BookOpen size={20} /></span>
+                      <span className="edc-research-project-content">
+                        <strong>{project.title}</strong>
+                        <small className={`edc-research-status ${String(project.status || "").toLowerCase().replace(/\s+/g, "-")}`}>{project.status || "Status not set"}</small>
+                        <span>{project.question || project.notes || "No project summary added yet."}</span>
+                        <small className="edc-research-project-date"><CalendarDays size={12} />{project.updatedAt ? `Updated ${new Date(project.updatedAt).toLocaleDateString()}` : "Date not recorded"}</small>
+                      </span>
+                      <ArrowRight size={14} className="edc-research-project-arrow" />
+                    </button>)}
+                  </div> : <EmptyState icon={BookOpen}
+                    title={researchDashboardSearch || researchProjectStatus !== "All Projects" ? "No matching projects" : "No research projects yet"}
+                    description={researchDashboardSearch || researchProjectStatus !== "All Projects" ? "Try another search or status filter." : "Create a project to start organizing your own research."} />}
+                  <p className="edc-research-disclaimer">Projects, papers, and other entries are saved in your browser and are not independently verified.</p>
+                </section>
+
+                <section className="edc-research-home-panel edc-research-recent-panel">
+                  <header className="edc-research-home-heading">
+                    <div><h2><NotebookPen size={19} />Recent Records</h2><p>Your most recently saved research entries.</p></div>
+                    <button type="button" onClick={() => switchResearchTab("projects")}>Manage <ArrowRight size={14} /></button>
+                  </header>
+                  {recentResearchRecords.length ? <div className="edc-research-recent-list">
+                    {recentResearchRecords.map((record) => <button key={`${record.sectionId}:${record.id}`} type="button"
+                      onClick={() => switchResearchTab(record.sectionId)}>
+                      <span className="edc-research-recent-icon"><BookText size={16} /></span>
+                      <span><strong>{record.title}</strong><small>{record.sectionTitle}</small></span>
+                      <small>{record.updatedAt ? new Date(record.updatedAt).toLocaleDateString() : "Date not recorded"}</small>
+                      <ArrowRight size={14} />
+                    </button>)}
+                  </div> : <EmptyState icon={NotebookPen} title="No research records yet"
+                    description="Records you add to this workspace will appear here." />}
+                </section>
+
+                <section className="edc-research-home-panel edc-research-tools-panel">
+                  <header className="edc-research-home-heading">
+                    <div><h2><Microscope size={19} />Research Tools</h2><p>Open a section to add or manage your own records.</p></div>
+                  </header>
+                  <div className="edc-research-tool-grid">
+                    {[
+                      { title: "Literature Review", description: "Save study notes, findings, and research gaps.", icon: NotebookPen, tab: "matrix" },
+                      { title: "References", description: "Keep source details and citation notes together.", icon: ClipboardList, tab: "references" },
+                      { title: "Datasets", description: "Record dataset sources, links, and formats.", icon: Database, tab: "datasets" },
+                      { title: "Experiments", description: "Track your hypotheses, methods, and results.", icon: Microscope, tab: "experiments" },
+                    ].map(({ title, description, icon: Icon, tab }) => <button key={tab} type="button" onClick={() => switchResearchTab(tab)}>
+                      <span><Icon size={19} /></span><span><strong>{title}</strong><small>{description}</small></span><ChevronRight size={15} />
+                    </button>)}
+                  </div>
+                </section>
+              </div>
+              <p className="edc-research-storage-note">Research entries are stored in this browser for this student account. They are not synced, uploaded, or automatically verified.</p>
             </div>
-            <p className="edc-research-disclaimer">Frontend demo only. Entries are saved in localStorage on this device; they are not synchronized, published, or automatically verified. Back up important research elsewhere.</p>
-          </div>
+          ) : (
+            <div className="edc-tab-content edc-research-page edc-research-section-view">
+              <button type="button" className="edc-research-back" onClick={showResearchOverview}><ArrowRight size={15} />Back to Research Workspace</button>
+              <SectionHeading eyebrow="RESEARCH WORKSPACE" title={currentResearchSection.title}
+                description="Manage the research records you have added to this account." />
+              <div className="edc-research-tabs" role="tablist" aria-label="Research workspace sections">
+                {RESEARCH_SECTIONS.map((section) => <button key={section.id} type="button" role="tab"
+                  aria-selected={researchTab === section.id} className={researchTab === section.id ? "active" : ""}
+                  onClick={() => switchResearchTab(section.id)}>{section.title}</button>)}
+              </div>
+              <div className="edc-research-layout">
+                <section className="edc-panel edc-research-editor">
+                  <h3>{researchEditId ? "Edit" : "Add to"} {currentResearchSection.title}</h3>
+                  <p className="edc-research-muted">Add your own information. Content is not checked against external sources.</p>
+                  <form onSubmit={saveResearchRecord} className="edc-research-form">
+                    {currentResearchSection.fields.map((field) => <label key={field.key}>
+                      <span>{field.label}{field.required ? " *" : ""}</span>
+                      {field.options ? <select value={researchForm[field.key] ?? field.options[0]}
+                        onChange={(event) => setResearchForm((prev) => ({ ...prev, [field.key]: event.target.value }))}>
+                        {field.options.map((option) => <option key={option} value={option}>{option}</option>)}
+                      </select> : field.multiline ? <textarea rows={3} maxLength={3000} value={researchForm[field.key] || ""}
+                        onChange={(event) => setResearchForm((prev) => ({ ...prev, [field.key]: event.target.value }))} />
+                      : <input type={field.type || "text"} maxLength={500} required={Boolean(field.required)}
+                        value={researchForm[field.key] || ""} onChange={(event) => setResearchForm((prev) => ({ ...prev, [field.key]: event.target.value }))} />}
+                    </label>)}
+                    <div className="edc-research-actions">
+                      <button className="edc-btn edc-btn-primary" type="submit"><Plus size={16} /> {researchEditId ? "Update Record" : "Save Record"}</button>
+                      {researchEditId && <button type="button" className="edc-btn edc-btn-light" onClick={() => { setResearchEditId(null); setResearchForm({}); setResearchNotice(""); }}>Cancel Edit</button>}
+                    </div>
+                    {researchNotice && <p role="status" className="edc-research-notice">{researchNotice}</p>}
+                  </form>
+                </section>
+                <section className="edc-panel edc-research-library">
+                  <div className="edc-research-library-head"><h3>{currentResearchSection.title} ({researchItems.length})</h3>
+                    <label className="edc-research-search"><Search size={17} /><input aria-label={`Search ${currentResearchSection.title}`}
+                      placeholder="Search saved records..." value={researchSearch}
+                      onChange={(event) => setResearchSearch(event.target.value)} /></label></div>
+                  {filteredResearchItems.length ? <div className="edc-research-list">
+                    {filteredResearchItems.map((item) => <article key={item.id} className="edc-research-item">
+                      <h4>{item.title}</h4>
+                      {currentResearchSection.fields.filter((field) => field.key !== "title" && item[field.key]).map((field) => <div key={field.key} className="edc-research-field">
+                        <strong>{field.label}:</strong> {field.key === "url" && /^https?:\/\//i.test(item[field.key])
+                          ? <a href={item[field.key]} target="_blank" rel="noopener noreferrer">Open link</a> : <span>{item[field.key]}</span>}
+                      </div>)}
+                      <small>{item.updatedAt ? `Updated ${new Date(item.updatedAt).toLocaleDateString()}` : "Date not recorded"}</small>
+                      <div className="edc-research-actions"><button type="button" className="edc-btn edc-btn-light" onClick={() => editResearchRecord(item)}>Edit</button>
+                        <button type="button" className="edc-btn edc-btn-light" onClick={() => deleteResearchRecord(item.id)}><Trash2 size={15} /> Delete</button></div>
+                    </article>)}
+                  </div> : <EmptyState icon={Microscope} title={researchSearch ? "No matching records" : "No records saved yet"}
+                    description={researchSearch ? "Try a different search term." : "Use the form to add your first research record."} />}
+                </section>
+              </div>
+              <p className="edc-research-disclaimer">Entries are stored in localStorage on this device; they are not synchronized, published, or automatically verified. Back up important research elsewhere.</p>
+            </div>
+          )
         )}
 
         <div className="edc-footer-note">

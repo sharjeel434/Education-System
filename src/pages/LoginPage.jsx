@@ -246,7 +246,12 @@ function LoginPage() {
           ? "/teacher/dashboard"
           : "/student/dashboard";
 
-    navigate(dashboardPath, { replace: true });
+    navigate(dashboardPath, {
+      replace: true,
+      ...(authenticatedUser.role === "Student" && typeof location.state?.studentTab === "string"
+        ? { state: { studentTab: location.state.studentTab } }
+        : {}),
+    });
   };
 
   const handleForgotPassword = () => {

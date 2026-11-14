@@ -49,24 +49,10 @@ import CartPage from "./components/Marketplace/CartPage";
 import ResilientImage from "./components/ResilientImage";
 import { ADMIN_DATA_CHANGED_EVENT, getAdminHelpFaqs } from "./components/admin/adminData";
 import { getCart, getStudentEmail } from "./utils/studentCart";
-import reactLogo from "./assets/partners/react.svg";
-import pythonLogo from "./assets/partners/python.svg";
-import tensorflowLogo from "./assets/partners/tensorflow.svg";
-import figmaLogo from "./assets/partners/figma.svg";
-import githubLogo from "./assets/partners/github.svg";
-import courseraLogo from "./assets/partners/coursera.svg";
-import googleScholarLogo from "./assets/partners/google-scholar.svg";
 import "./index.css";
-
-const studyPartnerCompanies = [
-  { name: "React", logo: reactLogo },
-  { name: "Python", logo: pythonLogo },
-  { name: "TensorFlow", logo: tensorflowLogo },
-  { name: "Figma", logo: figmaLogo },
-  { name: "GitHub", logo: githubLogo },
-  { name: "Coursera", logo: courseraLogo },
-  { name: "Google Scholar", logo: googleScholarLogo },
-];
+import LandingPage from "./components/landing/LandingPage";
+import StudyPartners from "./components/landing/StudyPartners";
+import { STUDY_PARTNERS } from "./components/landing/studyPartnerData";
 
 const categories = Array.from({ length: 12 }, (_, index) => ({
   name: `Class ${index + 1}`,
@@ -674,6 +660,10 @@ if (
   );
 }
 
+  if ((currentPage === "home" || location.pathname === "/teachers") && !showGlobalCart) {
+    return <LandingPage page={location.pathname === "/teachers" ? "teachers" : "home"} fields={professionalFields} faqs={helpFaqs} onOpenCart={openGlobalCart} cartCount={cartCount} />;
+  }
+
   return (
     <div className="website">
 
@@ -842,6 +832,7 @@ if (
           <ExploreCourses
             initialSearch={exploreRouteState.search}
             initialCategory={exploreRouteState.category}
+            initialProgramId={new URLSearchParams(location.search).get("program") || ""}
           />
 
         ) : (
@@ -1066,33 +1057,7 @@ if (
                 </button>
               </div>
 
-              <div className="study-partners">
-                <p>Explore popular tools and platforms across technology and learning</p>
-                <div className="study-partners-logos" aria-label="Technology and learning platforms">
-                  {/* The hidden duplicate keeps the logo marquee moving seamlessly. */}
-                  <div className="study-partners-track">
-                    {[false, true].map((isDuplicate) => (
-                      <div
-                        className="study-partners-group"
-                        key={isDuplicate ? "duplicate" : "original"}
-                        aria-hidden={isDuplicate}
-                      >
-                        {studyPartnerCompanies.map((company) => (
-                          <div
-                            className="study-partner-logo"
-                            key={company.name}
-                            data-tooltip={company.name}
-                            aria-label={isDuplicate ? undefined : company.name}
-                            tabIndex={isDuplicate ? -1 : 0}
-                          >
-                            <img src={company.logo} alt="" />
-                          </div>
-                        ))}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
+              <StudyPartners />
             </section>
 
             {/* TRENDING COURSES */}
@@ -1617,11 +1582,7 @@ if (
             <p>Explore school subjects, university programs and career skills with tools and learning platforms</p>
             {/* Shows accessible platform logos in the footer. */}
             <div className="footer-learning-logos" aria-label="Education and technology platforms">
-              {[
-                { name: "Coursera", logo: courseraLogo },
-                { name: "GitHub", logo: githubLogo },
-                { name: "Google Scholar", logo: googleScholarLogo },
-              ].map((company) => (
+              {STUDY_PARTNERS.filter(({ name }) => ["Coursera", "GitHub", "Google Scholar"].includes(name)).map((company) => (
                 <div
                   className="footer-learning-logo"
                   key={company.name}

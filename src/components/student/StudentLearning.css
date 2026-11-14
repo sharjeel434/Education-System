@@ -8,15 +8,17 @@
 .edc-ml-heading h2 { margin: 0 0 4px; color: #32104f; font-size: 27px; font-weight: 800; line-height: 1.2; letter-spacing: -.5px; }
 .edc-ml-heading p { margin: 0; color: #5a3b73; font-size: 12px; line-height: 1.5; }
 .edc-ml-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; padding: 6px; border-radius: 15px; background: #ffffffb3; box-shadow: 0 3px 10px #5e2c8b06; }
-.edc-my-learning .edc-ml-stat { display: flex; align-items: center; gap: 14px; min-width: 0; padding: 13px 14px; border: 1px solid transparent; border-radius: 13px; background: #eee5ff; color: #7e1be5; text-align: left; cursor: pointer; transition: transform .16s, box-shadow .16s; }
+.edc-my-learning .edc-ml-stat { --edc-ml-stat-border: #c5a5ff; display: flex; align-items: center; gap: 14px; min-width: 0; padding: 13px 14px; border: 1px solid var(--edc-ml-stat-border); border-radius: 13px; background: #eee7ff; color: #8010e5; text-align: left; cursor: pointer; transition: transform .16s, box-shadow .16s; }
 .edc-my-learning .edc-ml-stat:hover { transform: translateY(-2px); box-shadow: 0 5px 14px #58228a12; }
-.edc-my-learning .edc-ml-stat-amber { background: #fff6e8; color: #db7900; }
-.edc-my-learning .edc-ml-stat-green { background: #e7f7ed; color: #329c12; }
+.edc-my-learning .edc-ml-stat-amber { --edc-ml-stat-border: #f4dfac; background: #fff7e6; color: #d99100; }
+.edc-my-learning .edc-ml-stat-green { --edc-ml-stat-border: #c5eacb; background: #e8f7eb; color: #43a512; }
+.edc-my-learning .edc-ml-stat-blue { --edc-ml-stat-border: #cdd7ff; background: #edf1ff; color: #5574ff; }
 .edc-ml-stat-icon { display: grid; flex: 0 0 47px; width: 47px; height: 47px; place-items: center; border-radius: 12px; background: #e1d0ff; }
-.edc-ml-stat-amber .edc-ml-stat-icon { background: #ffebc7; }
-.edc-ml-stat-green .edc-ml-stat-icon { background: #d5efd9; }
+.edc-ml-stat-amber .edc-ml-stat-icon { background: #ffedc5; }
+.edc-ml-stat-green .edc-ml-stat-icon { background: #d6f1db; }
+.edc-ml-stat-blue .edc-ml-stat-icon { background: #dfe6ff; }
 .edc-ml-stat > span:last-child { display: grid; gap: 6px; min-width: 0; }
-.edc-ml-stat small { color: #56346e; font-size: 11px; white-space: nowrap; }
+.edc-ml-stat small { color: currentColor; font-size: 11px; white-space: nowrap; }
 .edc-ml-stat strong { color: #32104e; font-size: 25px; font-weight: 800; line-height: 1.1; white-space: nowrap; letter-spacing: -.45px; }
 .edc-ml-search { display: flex; align-items: center; gap: 9px; width: min(100%, 600px); min-width: 0; min-height: 42px; justify-self: start; padding: 0 11px; border: 1px solid #e2d4f9; border-radius: 10px; background: #eee6ff; color: #7f4baf; }
 .edc-my-learning .edc-ml-search input,.edc-my-learning .edc-ml-search input:focus,.edc-my-learning .edc-ml-search input:focus-visible { flex: 1; width: 100%; min-width: 0; padding: 0; border: 0; border-radius: 0; outline: 0; background: transparent; color: #543367; font-size: 12px; box-shadow: none; }

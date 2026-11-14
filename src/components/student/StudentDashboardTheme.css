@@ -4,8 +4,27 @@
 .edc-student-brand > svg { flex: none; color: #7817dc; }
 .edc-student-brand b { color: #7413d5; }
 .edc-student-topbar-actions { display: flex; align-items: center; gap: 18px; margin-left: auto; }
+.edc-topbar-notifications { position: relative; }
 .edc-topbar-bell { position: relative; display: grid; width: 30px; height: 35px; place-items: center; padding: 0; border: 0; border-radius: 8px; background: transparent; color: #3a1759; cursor: pointer; }
+.edc-topbar-bell:hover,.edc-topbar-bell[aria-expanded="true"] { background: #f0e7ff; color: #7413d5; }
 .edc-topbar-bell > span { position: absolute; top: 3px; right: 4px; width: 8px; height: 8px; border: 1px solid #fff; border-radius: 50%; background: #e71a4f; }
+.edc-topbar-notification-panel { position: absolute; z-index: 1001; top: calc(100% + 10px); right: 0; display: flex; width: min(360px, calc(100vw - 24px)); max-height: min(460px, calc(100dvh - 76px)); flex-direction: column; overflow: hidden; border: 1px solid #e7dcf7; border-radius: 12px; background: #fff; box-shadow: 0 12px 32px #35115424; color: #32164e; }
+.edc-topbar-notification-panel > header { display: flex; align-items: center; justify-content: space-between; padding: 13px 15px; border-bottom: 1px solid #efe8f8; background: #fcfaff; }
+.edc-topbar-notification-panel > header > div { display: grid; gap: 3px; }
+.edc-topbar-notification-panel > header strong { font-size: 13px; }
+.edc-topbar-notification-panel > header small { color: #77578d; font-size: 10px; }
+.edc-topbar-notification-panel ul { display: grid; max-height: 340px; margin: 0; padding: 0; overflow-y: auto; list-style: none; }
+.edc-topbar-notification-panel li { display: flex; gap: 9px; padding: 11px 14px; border-bottom: 1px solid #f1ecf7; }
+.edc-topbar-notification-panel li.is-unread { background: #fbf8ff; }
+.edc-topbar-notification-dot { width: 7px; height: 7px; flex: 0 0 7px; margin-top: 5px; border-radius: 50%; background: transparent; }
+.edc-topbar-notification-panel li.is-unread .edc-topbar-notification-dot { background: #e71a4f; }
+.edc-topbar-notification-panel li > div { display: grid; min-width: 0; gap: 3px; }
+.edc-topbar-notification-panel li strong { color: #32164e; font-size: 10px; }
+.edc-topbar-notification-panel li p { margin: 0; color: #684f7d; font-size: 10px; line-height: 1.4; }
+.edc-topbar-notification-panel li time { color: #9584a3; font-size: 9px; }
+.edc-topbar-notification-empty { margin: 0; padding: 24px 15px; color: #77578d; font-size: 11px; text-align: center; }
+.edc-topbar-notification-all { display: flex; min-height: 40px; flex: none; align-items: center; justify-content: center; gap: 6px; border: 0; border-top: 1px solid #efe8f8; background: #f8f2ff; color: #7413d5; font: inherit; font-size: 11px; font-weight: 750; cursor: pointer; }
+.edc-topbar-notification-all:hover { background: #efe3ff; }
 .edc-topbar-account { position: relative; padding-left: 17px; border-left: 1px solid #dfd2f2; }
 .edc-topbar-profile { display: flex; align-items: center; gap: 9px; padding: 0; border: 0; background: transparent; color: #32164e; font: inherit; cursor: pointer; }
 .edc-topbar-avatar { display: grid; flex: 0 0 35px; width: 35px; height: 35px; place-items: center; overflow: hidden; border: 2px solid #9b50f1; border-radius: 50%; background: #e9ddff; color: #6c21bd; font-size: 12px; font-weight: 750; }
@@ -24,10 +43,10 @@
 .dashboard-page .edc-student-shell .edc-nav-item { min-height: 36px; gap: 11px; padding: 8px 12px; border: 0; border-radius: 8px; background: transparent; color: #f0e4ff; font-size: 11px; font-weight: 450; line-height: 1.3; transform: none; }
 .dashboard-page .edc-student-shell .edc-nav-item svg { color: #ecdaff; width: 17px; height: 17px; }
 .dashboard-page .edc-student-shell .edc-nav-item:hover { background: #ffffff12; color: #fff; transform: none; }
-.dashboard-page .edc-student-shell .edc-nav-active,.dashboard-page .edc-student-shell .edc-nav-active:hover { background: linear-gradient(100deg, #a329f4, #9332fa); color: #fff; font-weight: 650; box-shadow: 0 3px 8px #24044622; }
-.dashboard-page .edc-student-shell .edc-nav-active svg { color: #fff; }
+.dashboard-page .edc-student-shell .edc-nav-active,.dashboard-page .edc-student-shell .edc-nav-active:hover { background: var(--student-button-gradient); color: var(--student-button-ink); font-weight: 650; box-shadow: 0 3px 8px #100a2426; }
+.dashboard-page .edc-student-shell .edc-nav-active svg { color: var(--student-button-ink); }
 .dashboard-page .edc-sidebar-bottom { display: grid; justify-items: center; flex: none; gap: 7px; margin-top: 14px; padding: 14px 11px; border: 1px solid #a360d54a; border-radius: 13px; background: linear-gradient(145deg, #7730c5, #6322a9); color: #fff; text-align: center; }
-.dashboard-page .edc-sidebar-bottom > svg { color: #f6c529; }
+.dashboard-page .edc-sidebar-bottom > svg { color: var(--student-button-yellow); }
 .dashboard-page .edc-sidebar-bottom strong { color: #fff; font-size: 12px; }
 .dashboard-page .edc-sidebar-bottom p { max-width: 150px; color: #efdcff; font-size: 10px; line-height: 1.5; }
 .edc-student-shell .edc-sidebar-planner { display: inline-flex; align-items: center; justify-content: center; gap: 7px; width: 100%; min-height: 29px; padding: 7px 10px; border: 0; border-radius: 18px; background: #f4e9ff; color: #5c1b9f; font: inherit; font-size: 10px; font-weight: 700; cursor: pointer; }
@@ -37,8 +56,9 @@
 .dashboard-page .edc-main[data-active-tab="overview"] .edc-breadcrumb { display: none; }
 .edc-page-description { margin: 3px 0 0; color: #5b3d75; font-size: 12px; line-height: 1.5; }
 .dashboard-page .edc-main[data-active-tab="analytics"] > .edc-main-header { display: none; }
-.dashboard-page .edc-student-shell .edc-btn-primary { border-color: #8822ec; background: linear-gradient(105deg, #8d26f1, #740ed2); color: #fff; }
-.dashboard-page .edc-student-shell .edc-btn-light { border-color: #e4d7f6; background: #f0e7ff; color: #7727bc; }
+.dashboard-page .edc-main[data-active-tab="mastery"] > .edc-main-header { display: none; }
+.dashboard-page .edc-student-shell .edc-btn-primary { border-color: var(--student-button-yellow); background: var(--student-button-gradient); color: var(--student-button-ink); }
+.dashboard-page .edc-student-shell .edc-btn-light { border-color: var(--student-button-yellow); background: var(--student-button-gradient); color: var(--student-button-ink); }
 .edc-student-topbar button:focus-visible { outline: 3px solid #cda5f6; outline-offset: 3px; }
 @media (min-width: 901px) {
   .dashboard-page .edc-student-shell > .edc-sidebar { position: fixed; top: 56px; bottom: 0; left: 0; width: var(--student-sidebar-width); height: auto; }
@@ -71,6 +91,282 @@
   .edc-topbar-profile { gap: 3px; }
   .edc-topbar-profile > svg { width: 12px; }
   .edc-topbar-avatar { flex-basis: 30px; width: 30px; height: 30px; }
+  .edc-topbar-notification-panel { position: fixed; top: 64px; right: 12px; left: 12px; width: auto; max-height: calc(100dvh - 76px); }
   .dashboard-page .edc-student-shell > .edc-main { padding: 14px 12px 22px; }
   .dashboard-page .edc-student-shell .edc-main-header h2 { font-size: 24px; }
+}
+
+/* Explicit filled/outlined action buttons only; text links and navigation retain their component styles. */
+.dashboard-page:has(.edc-student-topbar) :is(
+  button:is(
+    .edc-btn,
+    .edc-sidebar-planner,
+    .edc-ov-primary,
+    .edc-ml-primary,
+    .edc-ml-secondary,
+    .edc-ml-certificate,
+    .edc-mr-primary,
+    .edc-mr-secondary,
+    .edc-review-leave-button,
+    .edc-review-submit,
+    .edc-review-empty-action,
+    .edc-dq-primary,
+    .edc-dq-secondary,
+    .edc-nb-primary,
+    .edc-nb-secondary,
+    .edc-notes-create,
+    .edc-notes-primary,
+    .edc-quiz-primary,
+    .edc-quiz-submit-sidebar,
+    .edc-quiz-cancel-sidebar,
+    .edc-sq-primary,
+    .edc-sq-secondary,
+    .edc-sq-submit-confirm,
+    .edca-primary,
+    .edca-student-submit-button,
+    .edc-sa-primary,
+    .edc-sa-secondary,
+    .edc-sa-dashboard-action,
+    .edlp-primary,
+    .edc-lp-primary,
+    .edc-lp-secondary,
+    .edc-cc-primary,
+    .edc-cc-secondary,
+    .edc-pds-primary,
+    .edc-pds-secondary,
+    .edc-book-clear,
+    .edc-sp-primary,
+    .edc-sp-secondary,
+    .edc-wishlist-action,
+    .edc-cart-checkout,
+    .edc-portfolio-add,
+    .edc-portfolio-add-inline,
+    .edc-profile-edit-button,
+    .edc-profile-upload-button,
+    .edc-profile-remove-button,
+    .edc-profile-save-button,
+    .edc-user-support-status-link
+  ),
+  input[type="submit"],
+  input[type="button"],
+  input[type="reset"],
+  a.edc-btn,
+  a.edc-pds-primary,
+  a.edc-pds-secondary,
+  label.edc-btn,
+  label.ecc-upload,
+  form button[type="submit"],
+  .edc-ov-learning-goal > button,
+  .edc-ml-samples-heading > button,
+  .edc-mr-row-actions button,
+  .edc-qa-form button,
+  .edc-qa-reply-form button,
+  .edc-qa-actions button,
+  .edc-notes-workspace-empty button,
+  .edc-nb-empty button,
+  .edc-la-header-actions > button,
+  .edc-quiz-actions button,
+  .edc-quiz-listitem button,
+  .edc-quiz-question-controls button,
+  .edca-actions button,
+  .edca-student-row-actions button,
+  .edca-student-history article button,
+  .edc-cc-assessments button,
+  .edc-cc-resources > div > button,
+  .edc-book-actions button,
+  .edc-book-review-form button,
+  .edc-books-empty button,
+  .edc-sp-empty button,
+  .edc-tm-empty button,
+  .edc-tm-panel-heading > button,
+  .edc-wishlist-hero > button,
+  .edc-wishlist-empty > button,
+  .edc-purchase-actions button,
+  .edc-purchases-empty button,
+  .edc-ebooks-actions button,
+  .edc-ebooks-empty button,
+  .edc-cart-items-heading > div button,
+  .edc-cart-unavailable button,
+  .edc-cart-empty button,
+  .edc-cart-browse > button,
+  .edc-cart-course-list article > button,
+  .edc-portfolio-certificate-copy > button,
+  .edc-profile-panel-heading > button,
+  .edc-research-quick-actions button,
+  .edc-user-appeals-card > button,
+  .edc-user-appeal-reply button,
+  .edc-user-support-reply button,
+  .edc-user-support-ticket-actions button,
+  .edc-user-support-ticket-form > button,
+  .edc-user-support-search > button:not([aria-label]),
+  .edc-report-dialog > div:last-child button
+) {
+  background: var(--student-button-surface, var(--student-button-gradient)) !important;
+  border-color: var(--student-button-border, var(--student-button-yellow)) !important;
+  color: var(--student-button-ink) !important;
+
+  & > svg {
+    color: inherit !important;
+  }
+
+  &:hover:not(:disabled):not([aria-disabled="true"]) {
+    --student-button-surface: linear-gradient(180deg, var(--student-button-light), var(--student-button-yellow) 65%);
+  }
+
+  &:focus-visible {
+    outline: 3px solid #6D42D8;
+    outline-offset: 3px;
+  }
+
+  &:disabled,
+  &[aria-disabled="true"] {
+    opacity: .5;
+    cursor: not-allowed;
+  }
+}
+
+/* Selected student tabs and filters use the shared yellow surface. */
+.dashboard-page:has(.edc-student-topbar) :is(
+  .edc-ml-tabs button.active,
+  .edc-nb-tabs button[aria-pressed="true"],
+  .edc-lp-tabs button[aria-pressed="true"],
+  .edc-books-subject-chips button.active,
+  .edc-books-tabs button.active,
+  .edc-books-toolbar > button,
+  .edc-ebooks-tabs button.active,
+  .edc-sp-tabs button.active,
+  .edc-sa-dashboard-tabs button.active,
+  .edc-wishlist-tabs button.active,
+  .edc-purchases-tabs button.active,
+  .edc-portfolio-tab-active
+) {
+  background: var(--student-button-gradient);
+  border-color: var(--student-button-yellow);
+  color: var(--student-button-ink);
+  box-shadow: 0 2px 6px #b77f171a;
+
+  & > svg {
+    color: inherit;
+  }
+}
+
+/* Recolor progress indicators without changing their percentages or geometry. */
+.dashboard-page:has(.edc-student-topbar) .edc-ov-donut {
+  background: conic-gradient(from 0deg, var(--student-circle-color) 0%, var(--student-circle-color) var(--progress), var(--student-circle-track) var(--progress), var(--student-circle-track) 100%);
+}
+
+.dashboard-page:has(.edc-student-topbar) .edc-la-donut {
+  background: conic-gradient(var(--student-circle-color) var(--progress), var(--student-circle-light) 0 88%, var(--student-circle-track) 88%);
+}
+
+.dashboard-page:has(.edc-student-topbar) :is(.edc-tm-ring, .edc-sp-progress-ring) {
+  background: conic-gradient(var(--student-circle-color) var(--progress), var(--student-circle-track) 0);
+}
+
+.dashboard-page:has(.edc-student-topbar) .edc-sa-grade-ring {
+  background: conic-gradient(var(--student-circle-color) var(--grade), var(--student-circle-track) 0);
+}
+
+.dashboard-page:has(.edc-student-topbar) .edc-tm-ring.is-empty {
+  background: var(--student-circle-track);
+}
+
+.dashboard-page:has(.edc-student-topbar) .edc-quiz-timer-ring {
+  border-color: var(--student-circle-track);
+  border-top-color: var(--student-circle-color);
+}
+
+.dashboard-page:has(.edc-student-topbar) :is(
+  .edc-progress-track,
+  .edc-profile-progress,
+  .edc-ov-goal-progress > div,
+  .edc-ov-inline-progress > div,
+  .edc-ml-progress-track,
+  .edc-la-mini-track,
+  .edc-tm-progress,
+  .edc-sq-progress-track,
+  .edc-quiz-progress,
+  .edlp-track,
+  .edc-lp-track,
+  .edc-cc-track,
+  .edc-sp-goal-progress > div,
+  .edc-sp-chart-day > span,
+  .edc-sp-report-chart > div > i
+) {
+  background: var(--student-progress-track);
+}
+
+.dashboard-page:has(.edc-student-topbar) :is(
+  .edc-progress-fill,
+  .edc-profile-progress span,
+  .edc-ov-goal-progress > div > span,
+  .edc-ov-inline-progress > div > span,
+  .edc-ml-progress-track > span,
+  .edc-la-mini-track span,
+  .edc-tm-progress b,
+  .edc-sq-progress-track > span,
+  .edc-quiz-progress span,
+  .edlp-track > div,
+  .edc-lp-track > span,
+  .edc-cc-track > span,
+  .edc-sp-goal-progress > div i,
+  .edc-sp-chart-day i,
+  .edc-sp-report-chart > div > i > b
+) {
+  background: var(--student-progress-color);
+}
+
+.dashboard-page:has(.edc-student-topbar) :is(.edc-ov-progress-legend i, .edc-la-legend i) {
+  background: var(--student-circle-color);
+}
+
+.dashboard-page:has(.edc-student-topbar) :is(.edc-ov-progress-legend i.in-progress, .edc-la-legend i.active) {
+  background: var(--student-circle-light);
+}
+
+.dashboard-page:has(.edc-student-topbar) :is(.edc-ov-progress-legend i.not-started, .edc-la-legend i.not-started) {
+  background: var(--student-circle-track);
+}
+
+.dashboard-page:has(.edc-student-topbar) :is(.edc-la-line, .edc-la-point) {
+  stroke: var(--student-button-yellow);
+}
+
+.dashboard-page:has(.edc-student-topbar) .edc-la-chart stop {
+  stop-color: var(--student-button-yellow);
+}
+
+/* Book cover placeholders use the same gold accent as the student actions. */
+.dashboard-page:has(.edc-student-topbar) .edc-books-directory .edc-public-book-cover-empty {
+  color: var(--student-button-yellow);
+}
+
+.dashboard-page:has(.edc-student-topbar) .edc-books-directory .edc-books-toolbar > .edc-books-library-button {
+  background: var(--student-button-yellow);
+  border-color: var(--student-button-yellow);
+  color: var(--student-button-ink);
+}
+
+/* White action buttons in the review, library, assignment and workspace cards. */
+.dashboard-page:has(.edc-student-topbar) :is(
+  .edc-ml-course-actions > button,
+  .edc-mr-row-actions button,
+  .edc-books-directory .edc-book-actions button,
+  .edc-sa-dashboard-action,
+  .edc-purchase-actions button,
+  .edc-ebooks-actions button,
+  .edc-research-quick-actions button,
+  .edc-portfolio-certificate-copy > button
+) {
+  --student-button-surface: #FFFFFF !important;
+  --student-button-ink: #000000;
+  --student-button-border: #DEDEE4;
+}
+
+.dashboard-page:has(.edc-student-topbar) .edc-ml-course-actions > button:disabled {
+  opacity: 1 !important;
+
+  & > svg {
+    opacity: .5;
+  }
 }

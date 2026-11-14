@@ -1,5 +1,5 @@
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { appendAdminActivityRecord } from "../../components/admin/adminData";
 import { getStudentAcademicContext, getStudentAcademicSubjects, getProgramGroupsForDegreeLevel, INTERMEDIATE_STREAMS, isAcademicProfileComplete, ONLINE_COURSES } from "../../utils/studentRecommendations";
@@ -7,7 +7,6 @@ import {
   BookOpen,
   MessageCircle,
   CheckCircle2,
-  Clock3,
   Edit3,
   GraduationCap,
   Plus,
@@ -20,14 +19,19 @@ import {
   ClipboardList,
   ListTree,
   X,
-  Menu,
   Layers3,
+  MoreVertical,
+  Search,
+  Star,
+  ArrowLeft,
   ArrowRight,
   UserRound,
   LogOut,
   ShieldAlert,
   LifeBuoy,
   Bell,
+  Crown,
+  ChevronRight,
 } from "lucide-react";
 
 import { lessonVideoKey, saveLessonVideo, deleteLessonVideo } from "../../utils/lessonVideos";
@@ -40,8 +44,19 @@ import CurriculumBuilder from "../../components/curriculum/CurriculumBuilder";
 import TeacherBooks from "../../components/books/TeacherBooks";
 import UserModerationAppeals, { UserSupportCenter } from "../../components/moderation/UserModerationAppeals";
 import NotificationsCenter from "../../components/notifications/NotificationsCenter";
+import TeacherCourseEditor from "./TeacherCourseEditor";
 import { NOTIFICATIONS_EVENT } from "../../utils/demoNotifications";
 import "../../components/notifications/NotificationsCenter.css";
+
+import TeacherOverview, { TeacherWorkspaceHeader } from "../../components/teacher/TeacherOverview";
+import TeacherLessons from "../../components/teacher/TeacherLessons";
+import TeacherStudents from "../../components/teacher/TeacherStudents";
+import TeacherEarnings from "../../components/teacher/TeacherEarnings";
+import { collectInstructorCourseAnalytics } from "../../utils/instructorAnalytics";
+import { REVIEW_EVENT } from "../../utils/courseReviews";
+import { ORDERS_EVENT } from "../../utils/studentCart";
+import { ASSIGNMENT_EVENT } from "../../components/assignments/assignmentStorage";
+import { DISCUSSIONS_EVENT } from "../../utils/courseDiscussions";
 
 const purple = "#6d28d9";
 
@@ -95,6 +110,76 @@ function readSaved(key, fallback) {
   }
 }
 
+function compressCourseThumbnail(file) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    const objectUrl = URL.createObjectURL(file);
+
+    image.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      const maxDimension = 1280;
+      const scale = Math.min(
+        1,
+        maxDimension / Math.max(image.naturalWidth, image.naturalHeight)
+      );
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+      canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+
+      try {
+        const context = canvas.getContext("2d");
+        if (!context) {
+          throw new Error("Image compression is unavailable.");
+        }
+
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        let thumbnail = canvas.toDataURL("image/webp", 0.76);
+
+        if (!thumbnail.startsWith("data:image/webp")) {
+          throw new Error("WebP image compression is unavailable.");
+        }
+
+        if (thumbnail.length > 450 * 1024) {
+          thumbnail = canvas.toDataURL("image/webp", 0.6);
+        }
+
+        if (thumbnail.length > 450 * 1024) {
+          canvas.width = Math.max(1, Math.round(canvas.width * 0.75));
+          canvas.height = Math.max(1, Math.round(canvas.height * 0.75));
+          context.drawImage(image, 0, 0, canvas.width, canvas.height);
+          thumbnail = canvas.toDataURL("image/webp", 0.6);
+        }
+
+        if (thumbnail.length > 450 * 1024) {
+          throw new Error("The selected image is too large to store.");
+        }
+
+        resolve(thumbnail);
+      } catch (error) {
+        reject(error);
+      }
+    };
+
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error("Unable to read the selected image."));
+    };
+
+    image.src = objectUrl;
+  });
+}
+
+function formatCourseUpdatedAt(value) {
+  const date = new Date(value);
+  return value && Number.isFinite(date.getTime())
+    ? date.toLocaleDateString(undefined, {
+        month: "short",
+        day: "2-digit",
+        year: "numeric",
+      })
+    : "—";
+}
+
 
 const emptyCourse = {
   title: "",
@@ -128,6 +213,17 @@ const navigation = [
 function TeacherDashboard({ email = "teacher@example.com" }) {
   const location = useLocation();
   const navigate = useNavigate();
+  const courseEditMatch = location.pathname.match(
+    /^\/teacher\/dashboard\/courses\/([^/]+)\/edit\/?$/
+  );
+  let requestedCourseId = null;
+  try {
+    requestedCourseId = courseEditMatch
+      ? decodeURIComponent(courseEditMatch[1])
+      : null;
+  } catch {
+    requestedCourseId = null;
+  }
   const courseKey = `educonnect.teacher.${email}.courses`;
   const profileKey = `educonnect.teacher.${email}.profile`;
   const teacherNotificationKey = `educonnect.teacher.${String(email || "").trim().toLowerCase()}.notifications`;
@@ -141,6 +237,35 @@ function TeacherDashboard({ email = "teacher@example.com" }) {
   const [courses, setCourses] = useState(() =>
     readSaved(courseKey, [])
   );
+  const coursesRef = useRef(courses);
+  const [courseStorageError, setCourseStorageError] = useState("");
+
+  function updateCourses(updater) {
+    const updatedCourses =
+      typeof updater === "function" ? updater(coursesRef.current) : updater;
+
+    try {
+      localStorage.setItem(courseKey, JSON.stringify(updatedCourses));
+    } catch (error) {
+      console.error("Could not save teacher courses", error);
+      setCourseStorageError(
+        error?.name === "QuotaExceededError"
+          ? "Browser storage is full. Remove an older course image or free storage, then try saving again."
+          : "Could not save your courses in browser storage. Please try again."
+      );
+      return false;
+    }
+
+    coursesRef.current = updatedCourses;
+    setCourses(updatedCourses);
+    setCourseStorageError("");
+    window.dispatchEvent(new Event("educonnect:teacher-courses-changed"));
+    return true;
+  }
+
+  const courseForEdit = requestedCourseId
+    ? courses.find((item) => String(item.id) === requestedCourseId)
+    : null;
 
   const [profile, setProfile] = useState(() =>
     readSaved(profileKey, {
@@ -155,16 +280,13 @@ function TeacherDashboard({ email = "teacher@example.com" }) {
       ? "students"
       : location.pathname.startsWith("/teacher/dashboard/earnings/")
         ? "earnings"
+        : location.pathname.startsWith("/teacher/dashboard/courses/")
+          ? "courses"
         : "overview"
   );
   
-const [earningsPeriod, setEarningsPeriod] = useState("6months");
-const [transactionSearch, setTransactionSearch] = useState("");
-const [showWithdrawalForm, setShowWithdrawalForm] = useState(false);
-const [withdrawalAmount, setWithdrawalAmount] = useState("");
 const [notifications, setNotifications] = useState(() => readSaved(teacherNotificationKey, []));
 const unreadNotifications = notifications.filter((item) => !item.read).length;
-const [demoWithdrawalRequests, setDemoWithdrawalRequests] = useState([]);
 
 useEffect(() => {
   const refresh = () => setNotifications(readSaved(teacherNotificationKey, []));
@@ -187,154 +309,66 @@ function markNotificationRead(id) { setNotifications((current) => current.map((i
 function markAllNotificationsRead() { setNotifications((current) => current.map((item) => item.read ? item : { ...item, read: true })); }
 function deleteNotification(id) { setNotifications((current) => current.filter((item) => item.id !== id)); }
 
-const demoRevenue = [
-  { month: "Jun", revenue: 12000 },
-  { month: "Jul", revenue: 18500 },
-  { month: "Aug", revenue: 15000 },
-  { month: "Sep", revenue: 27000 },
-  { month: "Oct", revenue: 32000 },
-  { month: "Nov", revenue: 24500 },
-];
+const [workspaceRevision, setWorkspaceRevision] = useState(0);
+useEffect(() => {
+  const refresh = event => {
+    if (event.type === "storage" && event.key === courseKey) {
+      const saved = readSaved(courseKey, []);
+      if (Array.isArray(saved)) {
+        coursesRef.current = saved;
+        setCourses(saved);
+      }
+    }
+    if (event.type === "storage" && event.key === profileKey) {
+      const saved = readSaved(profileKey, null);
+      if (saved && typeof saved === "object") setProfile(saved);
+    }
+    setWorkspaceRevision(value => value + 1);
+  };
+  const events = ["storage", "focus", "educonnect:student-data-changed", "educonnect:student-header-changed", "educonnect:teacher-profile-changed", "educonnect:moderation-visibility-changed", REVIEW_EVENT, ORDERS_EVENT, ASSIGNMENT_EVENT, DISCUSSIONS_EVENT];
+  events.forEach(event => window.addEventListener(event, refresh));
+  return () => events.forEach(event => window.removeEventListener(event, refresh));
+}, [courseKey, profileKey]);
+const courseAnalytics = useMemo(() => collectInstructorCourseAnalytics(email, courses), [email, courses, workspaceRevision]);
+const transactions = courseAnalytics.flatMap(course => course.salesRecords).map(record => ({ ...record, date: String(record.purchasedAt || "").slice(0, 10) }));
+const now = new Date();
+const currentMonthKey = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0");
+const currentMonthLabel = now.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+const completedSales = transactions.length;
 
-const demoTransactions = [
-  {
-    id: "TXN-1001",
-    student: "Ali Ahmed",
-    course: "React Developer Course",
-    date: "2026-11-01",
-    amount: 2500,
-    status: "Completed",
-  },
-  {
-    id: "TXN-1002",
-    student: "Ayesha Khan",
-    course: "React Developer Course",
-    date: "2026-10-28",
-    amount: 2500,
-    status: "Completed",
-  },
-  {
-    id: "TXN-1003",
-    student: "Hamza Malik",
-    course: "Python for Beginners",
-    date: "2026-10-25",
-    amount: 3000,
-    status: "Completed",
-  },
-  {
-    id: "TXN-1004",
-    student: "Fatima Noor",
-    course: "UI UX Design",
-    date: "2026-10-20",
-    amount: 2000,
-    status: "Pending",
-  },
-  {
-    id: "TXN-1005",
-    student: "Usman Khan",
-    course: "React Developer Course",
-    date: "2026-10-15",
-    amount: 2500,
-    status: "Completed",
-  },
-];
-
-const filteredTransactions = demoTransactions.filter((transaction) => {
-  const search = transactionSearch.toLowerCase().trim();
-
-  return (
-    transaction.student.toLowerCase().includes(search) ||
-    transaction.course.toLowerCase().includes(search) ||
-    transaction.id.toLowerCase().includes(search)
-  );
-});
-
-const totalDemoEarnings = demoRevenue.reduce(
-  (total, item) => total + item.revenue,
-  0
-);
-
-const demoMonthlyEarnings = demoRevenue[demoRevenue.length - 1].revenue;
-
-const demoCompletedSales = demoTransactions.filter(
-  (transaction) => transaction.status === "Completed"
-).length;
-
-const demoChartData =
-  earningsPeriod === "3months"
-    ? demoRevenue.slice(-3)
-    : demoRevenue;
-
-  
-const [studentSearch, setStudentSearch] = useState("");
-const [studentCourseFilter, setStudentCourseFilter] = useState("All");
 const [selectedStudent, setSelectedStudent] = useState(null);
 
-const demoStudents = [
-  {
-    id: 1,
-    name: "Ali Ahmed",
-    email: "ali.demo@example.com",
-    courseTitle: "React Developer Course",
-    enrolledAt: "2026-10-10",
-    progress: 75,
-    completedLessons: 9,
-    totalLessons: 12,
-  },
-  {
-    id: 2,
-    name: "Ayesha Khan",
-    email: "ayesha.demo@example.com",
-    courseTitle: "React Developer Course",
-    enrolledAt: "2026-10-15",
-    progress: 45,
-    completedLessons: 5,
-    totalLessons: 11,
-  },
-  {
-    id: 3,
-    name: "Hamza Malik",
-    email: "hamza.demo@example.com",
-    courseTitle: "Python for Beginners",
-    enrolledAt: "2026-10-20",
-    progress: 90,
-    completedLessons: 9,
-    totalLessons: 10,
-  },
-  {
-    id: 4,
-    name: "Fatima Noor",
-    email: "fatima.demo@example.com",
-    courseTitle: "UI UX Design",
-    enrolledAt: "2026-10-25",
-    progress: 30,
-    completedLessons: 3,
-    totalLessons: 10,
-  },
-];
+const enrolledStudents = courseAnalytics.flatMap(course => course.enrollmentRecords);
+const uniqueStudents = [...new Map(enrolledStudents.map(student => [student.email, student])).values()];
+const courseAnalyticsById = new Map(courseAnalytics.map(course => [String(course.id), course]));
+const courseRatings = courseAnalytics.flatMap(course => course.ratings);
+const averageCourseRating = courseRatings.length
+  ? courseRatings.reduce((sum, rating) => sum + rating, 0) / courseRatings.length
+  : null;
+const totalCourseLessons = courses.reduce(
+  (total, course) => total + (Array.isArray(course.lessons) ? course.lessons.length : Math.max(0, Number(course.lessons) || 0)),
+  0,
+);
 
 const studentCourses = [
-  ...new Set(demoStudents.map((student) => student.courseTitle)),
+  ...new Set(enrolledStudents.map((student) => student.courseTitle)),
 ];
-
-const filteredStudents = demoStudents.filter((student) => {
-  const search = studentSearch.toLowerCase().trim();
-
-  const matchesSearch =
-    student.name.toLowerCase().includes(search) ||
-    student.email.toLowerCase().includes(search);
-
-  const matchesCourse =
-    studentCourseFilter === "All" ||
-    student.courseTitle === studentCourseFilter;
-
-  return matchesSearch && matchesCourse;
-});
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showForm, setShowForm] = useState(false);
-  const [editingId, setEditingId] = useState(null);
-  const [courseForm, setCourseForm] = useState({ ...emptyCourse });
+  const [editingId, setEditingId] = useState(() => courseForEdit?.id ?? null);
+  const [courseForm, setCourseForm] = useState(() =>
+    courseForEdit
+      ? {
+          title: courseForEdit.title || "",
+          category: courseForEdit.category || "Development",
+          level: courseForEdit.level || "Beginner",
+          description: courseForEdit.description || "",
+          price: String(courseForEdit.price ?? ""),
+          thumbnail: courseForEdit.thumbnail || "",
+        }
+      : { ...emptyCourse }
+  );
   const [lessonInputs, setLessonInputs] = useState({});
   
 const [selectedLessonCourse, setSelectedLessonCourse] = useState("");
@@ -356,6 +390,7 @@ const [previewCourse, setPreviewCourse] = useState(null);
 const [courseSearch, setCourseSearch] = useState("");
 const [categoryFilter, setCategoryFilter] = useState("All");
 const [statusFilter, setStatusFilter] = useState("All");
+const [openCourseMenu, setOpenCourseMenu] = useState("");
 
 const filteredCourses = courses.filter((course) => {
   const matchesSearch = (course.title || "")
@@ -373,38 +408,32 @@ const filteredCourses = courses.filter((course) => {
   return matchesSearch && matchesCategory && matchesStatus;
 });
 
-  useEffect(() => {
-    localStorage.setItem(courseKey, JSON.stringify(courses));
-    window.dispatchEvent(new Event("educonnect:teacher-courses-changed"));
-  }, [courses, courseKey]);
+const courseStatusTabs = [
+  { value: "All", label: "All Courses" },
+  { value: "Published", label: "Published" },
+  { value: "Draft", label: "Draft" },
+  { value: "Pending Approval", label: "Under Review" },
+  { value: "Approved", label: "Approved" },
+  ...[...new Set(courses.map(course => course.status || "Draft"))]
+    .filter(status => !["Published", "Draft", "Pending Approval", "Approved"].includes(status))
+    .map(status => ({ value: status, label: status })),
+].map(tabItem => ({
+  ...tabItem,
+  count: tabItem.value === "All"
+    ? courses.length
+    : courses.filter(course => (course.status || "Draft") === tabItem.value).length,
+}));
 
-
-  const totalCourses = courses.length;
-
-  const draftCount = courses.filter(
-    (course) => (course.status || "Draft") === "Draft"
-  ).length;
-
-  const pendingCount = courses.filter(
-    (course) => course.status === "Pending Approval"
-  ).length;
-
-  const approvedCount = courses.filter(
-    (course) => course.status === "Approved"
-  ).length;
-
-  const totalLessons = courses.reduce(
-    (total, course) => total + (course.lessons || []).length,
-    0
-  );
-
-  const recentCourses = [...courses]
-    .sort(
-      (a, b) =>
-        new Date(b.createdAt || 0) -
-        new Date(a.createdAt || 0)
-    )
-    .slice(0, 5);
+useEffect(() => {
+  if (!openCourseMenu) return undefined;
+  const closeMenu = event => {
+    if (!event.target.closest(".edc-teacher-course-actions-menu")) {
+      setOpenCourseMenu("");
+    }
+  };
+  document.addEventListener("pointerdown", closeMenu);
+  return () => document.removeEventListener("pointerdown", closeMenu);
+}, [openCourseMenu]);
 
   function navigateTo(nextTab) {
     setTab(nextTab);
@@ -432,7 +461,12 @@ const filteredCourses = courses.filter((course) => {
       thumbnail: course.thumbnail || "",
 
     });
-    setShowForm(true);
+    setTab("courses");
+    setMobileMenuOpen(false);
+    navigate(`/teacher/dashboard/courses/${encodeURIComponent(course.id)}/edit`);
+  }
+
+  function closeCourseEditor() {
     navigateTo("courses");
   }
   
@@ -459,20 +493,19 @@ function handleThumbnailUpload(event) {
     return;
   }
 
-  const reader = new FileReader();
-
-  reader.onload = () => {
+  compressCourseThumbnail(file).then((thumbnail) => {
     setCourseForm((previous) => ({
       ...previous,
-      thumbnail: String(reader.result),
+      thumbnail,
     }));
-  };
-
-  reader.onerror = () => {
-    alert("Unable to read the image. Please try again.");
-  };
-
-  reader.readAsDataURL(file);
+  }).catch((error) => {
+    console.error("Could not prepare course thumbnail", error);
+    alert(
+      error?.message === "The selected image is too large to store."
+        ? "This image could not be compressed enough for browser storage. Please choose a smaller image."
+        : "Unable to prepare the image. Please try another JPG, PNG or WebP file."
+    );
+  });
   event.target.value = "";
 }
 
@@ -504,9 +537,10 @@ function removeThumbnail() {
       return;
     }
 
+    let updatedCourses;
+
     if (editingId) {
-      setCourses((previous) =>
-        previous.map((course) =>
+      updatedCourses = courses.map((course) =>
           course.id === editingId
             ? {
                 ...course,
@@ -514,18 +548,18 @@ function removeThumbnail() {
                 title,
                 description,
                 price,
-                status: "Draft",
+                updatedAt: new Date().toISOString(),
+                status: course.status === "Published" ? "Published" : "Draft",
               }
             : course
-        )
       );
     } else {
       const id =
         window.crypto?.randomUUID?.() ||
         `${Date.now()}-${Math.random()}`;
 
-      setCourses((previous) => [
-        ...previous,
+      updatedCourses = [
+        ...courses,
         {
           id,
           ...courseForm,
@@ -536,12 +570,15 @@ function removeThumbnail() {
           lessons: [],
           createdAt: new Date().toISOString(),
         },
-      ]);
+      ];
     }
+
+    if (!updateCourses(updatedCourses)) return;
 
     setShowForm(false);
     setEditingId(null);
     setCourseForm({ ...emptyCourse });
+    navigateTo("courses");
   }
 
   function deleteCourse(id) {
@@ -551,7 +588,7 @@ function removeThumbnail() {
       deleteLessonVideo(lessonVideoKey(email, id, lesson.id)).catch(console.error);
     });
 
-    setCourses((previous) =>
+    updateCourses((previous) =>
       previous.filter((course) => course.id !== id)
     );
   }
@@ -568,7 +605,7 @@ function removeThumbnail() {
       window.crypto?.randomUUID?.() ||
       `${Date.now()}-${Math.random()}`;
 
-    setCourses((previous) =>
+    updateCourses((previous) =>
       previous.map((course) =>
         course.id === courseId
           ? {
@@ -593,7 +630,7 @@ function removeThumbnail() {
     if (!window.confirm("Remove this lesson?")) return;
     deleteLessonVideo(lessonVideoKey(email, courseId, lessonId)).catch(console.error);
 
-    setCourses((previous) =>
+    updateCourses((previous) =>
       previous.map((course) =>
         course.id === courseId
           ? {
@@ -651,7 +688,7 @@ async function saveLesson(event) {
     }
   }
 
-  setCourses((previous) =>
+  updateCourses((previous) =>
     previous.map((course) => {
       if (course.id !== selectedLessonCourse) {
         return course;
@@ -695,7 +732,7 @@ async function saveLesson(event) {
 }
 
 function moveLesson(courseId, lessonId, direction) {
-  setCourses((previous) =>
+  updateCourses((previous) =>
     previous.map((course) => {
       if (course.id !== courseId) return course;
       const lessons = [...(course.lessons || [])];
@@ -775,35 +812,6 @@ function handleTeacherProfileImage(event) {
   event.target.value = "";
 }
 
-function handleDemoWithdrawal(event) {
-  event.preventDefault();
-
-  const amount = Number(withdrawalAmount);
-
-  if (!Number.isFinite(amount) || amount <= 0) {
-    alert("Please enter a valid amount.");
-    return;
-  }
-
-  if (amount > totalDemoEarnings) {
-    alert("Amount exceeds the demo earnings balance.");
-    return;
-  }
-
-  setDemoWithdrawalRequests((previous) => [
-    {
-      id: `DEMO-${Date.now()}`,
-      amount,
-      status: "Demo Pending",
-      date: new Date().toLocaleDateString(),
-    },
-    ...previous,
-  ]);
-
-  setWithdrawalAmount("");
-  setShowWithdrawalForm(false);
-}
-
   function submitForApproval(courseId) {
     const course = courses.find(
       (item) => item.id === courseId
@@ -817,7 +825,7 @@ function handleDemoWithdrawal(event) {
       return;
     }
 
-    setCourses((previous) =>
+    if (!updateCourses((previous) =>
       previous.map((item) =>
         item.id === courseId
           ? {
@@ -827,7 +835,7 @@ function handleDemoWithdrawal(event) {
             }
           : item
       )
-    );
+    )) return;
 
     try {
       appendAdminActivityRecord({
@@ -849,7 +857,7 @@ function handleDemoWithdrawal(event) {
       // A local audit write error must not block course submission.
     }
 
-    alert("Course marked as Pending Approval in this demo.");
+    alert("Course submitted for approval.");
   }
 
   function publishApprovedCourse(courseId) {
@@ -862,13 +870,13 @@ function handleDemoWithdrawal(event) {
       return;
     }
 
-    setCourses((previous) =>
+    if (!updateCourses((previous) =>
       previous.map((item) =>
         item.id === courseId
           ? { ...item, status: "Published", publishedAt: new Date().toISOString() }
           : item
       )
-    );
+    )) return;
 
     try {
       appendAdminActivityRecord({
@@ -892,29 +900,6 @@ function handleDemoWithdrawal(event) {
 
     alert("Course published. It is now available in Explore Courses.");
   }
-
-  const statCards = [
-    {
-      label: "Total Courses",
-      value: totalCourses,
-      icon: BookOpen,
-    },
-    {
-      label: "Draft Courses",
-      value: draftCount,
-      icon: Edit3,
-    },
-    {
-      label: "Pending Approval",
-      value: pendingCount,
-      icon: Clock3,
-    },
-    {
-      label: "Approved Courses",
-      value: approvedCount,
-      icon: CheckCircle2,
-    },
-  ];
 
   const teacherStatDetailSlug = location.pathname.startsWith("/teacher/dashboard/overview/")
     ? location.pathname.split("/").at(-1)
@@ -951,112 +936,137 @@ function handleDemoWithdrawal(event) {
     : "";
   const teacherStudentDetailConfig = {
     "total-students": {
-      title: "Total Demo Students",
-      description: "Student enrollment records shown in this frontend demo.",
-      items: demoStudents.map((student) => ({
+      title: "Total Students",
+      description: "Student enrollments saved for your courses in this browser.",
+      items: enrolledStudents.map((student) => ({
         id: student.id,
         title: student.name,
         detail: `${student.email} · ${student.courseTitle} · Enrolled ${student.enrolledAt}`,
         status: `${student.progress}% progress`,
         progress: student.progress,
       })),
-      emptyMessage: "No demo student records are available.",
+      emptyMessage: "No student enrollment records are available yet.",
     },
     "demo-courses": {
-      title: "Demo Courses",
-      description: "Courses with sample student enrollments and progress.",
+      title: "Enrolled Courses",
+      description: "Your courses with saved student enrollments and progress.",
       items: studentCourses.map((courseTitle) => {
-        const enrolledStudents = demoStudents.filter((student) => student.courseTitle === courseTitle);
-        const averageCourseProgress = enrolledStudents.length
-          ? Math.round(enrolledStudents.reduce((total, student) => total + student.progress, 0) / enrolledStudents.length)
+        const courseStudents = enrolledStudents.filter((student) => student.courseTitle === courseTitle);
+        const averageCourseProgress = courseStudents.length
+          ? Math.round(courseStudents.reduce((total, student) => total + student.progress, 0) / courseStudents.length)
           : 0;
         return {
           id: courseTitle,
           title: courseTitle,
-          detail: enrolledStudents.map((student) => `${student.name} (${student.progress}%)`).join(" · "),
-          status: `${enrolledStudents.length} ${enrolledStudents.length === 1 ? "student" : "students"}`,
+          detail: courseStudents.map((student) => `${student.name} (${student.progress}%)`).join(" · "),
+          status: `${courseStudents.length} ${courseStudents.length === 1 ? "student" : "students"}`,
           progress: averageCourseProgress,
         };
       }),
-      emptyMessage: "No demo courses have student enrollments.",
+      emptyMessage: "No course enrollments are available yet.",
     },
     "average-progress": {
-      title: "Average Demo Progress",
-      description: `Average learning progress across all demo enrollments is ${demoStudents.length ? Math.round(demoStudents.reduce((total, student) => total + student.progress, 0) / demoStudents.length) : 0}%. Individual progress is listed below.`,
-      items: [...demoStudents].sort((a, b) => a.progress - b.progress).map((student) => ({
+      title: "Average Progress",
+      description: `Average learning progress across your saved course enrollments is ${enrolledStudents.length ? Math.round(enrolledStudents.reduce((total, student) => total + student.progress, 0) / enrolledStudents.length) : 0}%. Individual progress is listed below.`,
+      items: [...enrolledStudents].sort((a, b) => a.progress - b.progress).map((student) => ({
         id: student.id,
         title: student.name,
         detail: `${student.courseTitle} · ${student.completedLessons} of ${student.totalLessons} lessons completed`,
         status: `${student.progress}%`,
         progress: student.progress,
       })),
-      emptyMessage: "No demo progress records are available.",
+      emptyMessage: "No progress records are available yet.",
     },
   }[teacherStudentDetailSlug];
 
   const teacherEarningsDetailSlug = location.pathname.startsWith("/teacher/dashboard/earnings/")
     ? location.pathname.split("/").at(-1)
     : "";
+  const transactionDetails = records => records.map(record => ({
+    id: record.id,
+    title: record.course,
+    detail: [record.student, record.date].filter(Boolean).join(" / "),
+    amount: record.amount,
+    status: record.status,
+  }));
   const teacherEarningsDetailConfig = {
     "total-earnings": {
-      title: "Total Demo Earnings",
-      description: "Sample revenue by month. The monthly revenue figures are demo data and are not calculated from the sample transactions.",
-      items: demoRevenue.map((month) => ({
-        id: month.month,
-        title: `${month.month} 2026`,
-        detail: "Sample monthly revenue",
-        amount: month.revenue,
-        status: "Demo revenue",
-      })),
-      emptyMessage: "No sample revenue data is available.",
+      title: "Recorded Course Sales",
+      description: "Saved checkout and legacy purchase records for your courses in this browser.",
+      items: transactionDetails(transactions),
+      emptyMessage: "No course purchase records are available yet.",
     },
     "monthly-earnings": {
-      title: "November Demo Earnings",
-      description: "Sample November revenue and transactions recorded for November.",
-      items: [
-        {
-          id: "november-revenue",
-          title: "November sample revenue",
-          detail: "Monthly demo revenue figure",
-          amount: demoMonthlyEarnings,
-          status: "Demo revenue",
-        },
-        ...demoTransactions.filter((transaction) => transaction.date.startsWith("2026-11")).map((transaction) => ({
-          id: transaction.id,
-          title: transaction.id,
-          detail: `${transaction.student} · ${transaction.course} · ${transaction.date}`,
-          amount: transaction.amount,
-          status: transaction.status,
-        })),
-      ],
-      emptyMessage: "No November earnings data is available.",
+      title: currentMonthLabel + " Course Sales",
+      description: "Saved course purchase records for the current month.",
+      items: transactionDetails(transactions.filter(transaction => transaction.date.startsWith(currentMonthKey))),
+      emptyMessage: "No course purchases are recorded for this month.",
     },
     "completed-sales": {
-      title: "Demo Completed Sales",
-      description: `${demoCompletedSales} completed sample transactions. These are fictional sales for this frontend demo.`,
-      items: demoTransactions.filter((transaction) => transaction.status === "Completed").map((transaction) => ({
-        id: transaction.id,
-        title: transaction.id,
-        detail: `${transaction.student} · ${transaction.course} · ${transaction.date}`,
-        amount: transaction.amount,
-        status: transaction.status,
-      })),
-      emptyMessage: "There are no completed demo sales.",
+      title: "Recorded Purchases",
+      description: completedSales + " course purchase records saved in this browser.",
+      items: transactionDetails(transactions),
+      emptyMessage: "No course purchase records are available yet.",
     },
   }[teacherEarningsDetailSlug];
+
+  if (requestedCourseId) {
+    const course = courses.find(
+      (item) => String(item.id) === requestedCourseId
+    );
+
+    return (
+      <section className="edc-teacher-course-edit-page">
+        <div className="edc-teacher-course-edit-content">
+          <button
+            type="button"
+            className="edc-teacher-course-edit-back"
+            onClick={closeCourseEditor}
+          >
+            <ArrowLeft size={17} />
+            Back to My Courses
+          </button>
+
+          {course ? (
+            <>
+              {courseStorageError && (
+                <p className="edc-teacher-storage-error" role="alert">
+                  {courseStorageError}
+                </p>
+              )}
+              <header className="edc-teacher-course-edit-heading">
+                <span>COURSE MANAGEMENT</span>
+                <h1>Edit Course</h1>
+                <p>Update the details for “{course.title}”.</p>
+              </header>
+              <TeacherCourseEditor
+                courseForm={courseForm}
+                setCourseForm={setCourseForm}
+                editingId={editingId}
+                teacherFocusLabel={teacherFocusLabel}
+                onSave={saveCourse}
+                onCancel={closeCourseEditor}
+                onThumbnailUpload={handleThumbnailUpload}
+                onRemoveThumbnail={removeThumbnail}
+              />
+            </>
+          ) : (
+            <section className="edc-teacher-course-edit-not-found" role="alert">
+              <h1>Course not found</h1>
+              <p>This course may have been deleted or is no longer available.</p>
+              <button type="button" onClick={closeCourseEditor}>
+                Return to My Courses
+              </button>
+            </section>
+          )}
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="edc-teacher-shell">
       {/* MOBILE MENU */}
-
-      <button
-        type="button"
-        className="edc-teacher-mobile-toggle"
-        onClick={() => setMobileMenuOpen(true)}
-      >
-        <Menu size={20} />
-        Menu
-      </button>
 
       {mobileMenuOpen && (
         <button
@@ -1080,7 +1090,7 @@ function handleDemoWithdrawal(event) {
           </div>
 
           <div>
-            <strong>EduConnect AI</strong>
+            <strong>EduConnect <b>AI</b></strong>
             <span>Teacher Workspace</span>
           </div>
 
@@ -1104,9 +1114,9 @@ function handleDemoWithdrawal(event) {
           </div>
 
           <div style={{ minWidth: 0 }}>
-            <strong>{profile.name || "Instructor"}</strong>
+            <strong>{teacherDisplayName}</strong>
             <span style={{ overflowWrap: "anywhere" }}>
-              {email}
+              Teacher
             </span>
           </div>
         </div>
@@ -1135,25 +1145,58 @@ function handleDemoWithdrawal(event) {
           ))}
         </nav>
 
+        <div className="edc-teacher-sidebar-tip">
+          <Crown size={27} fill="currentColor" />
+          <strong>Keep Growing</strong>
+          <p>Build your courses and share your knowledge.</p>
+          <button type="button" onClick={startCreate}>Create Course <ChevronRight size={15} /></button>
+        </div>
+
       </aside>
 
       {/* MAIN CONTENT */}
 
       <main className="edc-teacher-main">
-        <header className="edc-teacher-topbar">
-          <div>
-            <span className="edc-teacher-breadcrumb">
-              Teacher Workspace / {teacherEarningsDetailConfig ? `Earnings / ${teacherEarningsDetailConfig.title}` : teacherStudentDetailConfig ? `My Students / ${teacherStudentDetailConfig.title}` : teacherStatDetailConfig ? `Overview / ${teacherStatDetailConfig.title}` : navigation.find(([id]) => id === tab)?.[1]}
-            </span>
+        <TeacherWorkspaceHeader
+          profile={{ ...profile, name: teacherDisplayName }}
+          courses={courses}
+          students={uniqueStudents}
+          navigation={navigation}
+          unread={unreadNotifications}
+          onNavigate={navigateTo}
+          onEdit={startEdit}
+          onStudent={studentEmail => {
+            setStudentSearch(studentEmail);
+            setStudentCourseFilter("All");
+            navigateTo("students");
+          }}
+          onLogout={signOut}
+          onOpenMenu={() => setMobileMenuOpen(true)}
+        />
+        {tab !== "courses" && (
+          <header className="edc-teacher-topbar">
+            <div>
+              <span className="edc-teacher-breadcrumb">
+                Teacher Workspace / {teacherEarningsDetailConfig ? `Earnings / ${teacherEarningsDetailConfig.title}` : teacherStudentDetailConfig ? `My Students / ${teacherStudentDetailConfig.title}` : teacherStatDetailConfig ? `Overview / ${teacherStatDetailConfig.title}` : navigation.find(([id]) => id === tab)?.[1]}
+              </span>
 
-            <h2>
-              {teacherEarningsDetailConfig?.title || teacherStudentDetailConfig?.title || teacherStatDetailConfig?.title || navigation.find(([id]) => id === tab)?.[1]}
-            </h2>
-          </div>
-          <button type="button" className="edc-dashboard-logout" onClick={signOut}>
-            <LogOut size={17} /> Log out
-          </button>
-        </header>
+              {!["reviews", "discussions", "lessons", "analytics", "quizzes", "course-assignments"].includes(tab) && !(tab === "students" && !teacherStudentDetailConfig) && !(tab === "earnings" && !teacherEarningsDetailConfig) && (
+                <h2>
+                  {teacherEarningsDetailConfig?.title || teacherStudentDetailConfig?.title || teacherStatDetailConfig?.title || navigation.find(([id]) => id === tab)?.[1]}
+                </h2>
+              )}
+            </div>
+            <button type="button" className="edc-dashboard-logout" onClick={signOut}>
+              <LogOut size={17} /> Log out
+            </button>
+          </header>
+        )}
+
+        {courseStorageError && (
+          <p className="edc-teacher-storage-error" role="alert">
+            {courseStorageError}
+          </p>
+        )}
 
         {teacherStatDetailConfig && (
           <section className="edc-teacher-stat-detail-page">
@@ -1251,207 +1294,17 @@ function handleDemoWithdrawal(event) {
           </section>
         )}
 
-        {/* STEP 1: OVERVIEW */}
-
         {tab === "overview" && !teacherStatDetailConfig && (
-          <div className="edc-teacher-overview">
-            <section className="edc-teacher-hero">
-              <div>
-                <span
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 700,
-                    letterSpacing: 1,
-                  }}
-                >
-                  INSTRUCTOR OVERVIEW
-                </span>
-
-                <h3>
-                  Welcome back, {profile.name || "Instructor"}!
-                </h3>
-
-                <p>
-                  Manage your courses, organize lessons,
-                  and track your teaching progress
-                  from one place.
-                </p>
-
-                <button
-                  type="button"
-                  className="edc-teacher-white-btn"
-                  onClick={startCreate}
-                >
-                  <Plus size={16} />
-                  Create New Course
-                </button>
-              </div>
-
-              <GraduationCap
-                size={90}
-                style={{ flexShrink: 0, opacity: 0.35 }}
-              />
-            </section>
-
-            {/* STATISTICS */}
-
-            <section className="edc-teacher-stats">
-              {statCards.map(({ label, value, icon: Icon }) => (
-                <button
-                  type="button"
-                  key={label}
-                  className="edc-teacher-stat edc-teacher-stat-button"
-                  onClick={() => navigate(`/teacher/dashboard/overview/${{
-                    "Total Courses": "total-courses",
-                    "Draft Courses": "draft-courses",
-                    "Pending Approval": "pending-approval",
-                    "Approved Courses": "approved-courses",
-                  }[label]}`)}
-                >
-                  <div className="edc-teacher-stat-icon">
-                    <Icon size={23} />
-                  </div>
-
-                  <strong>{value}</strong>
-
-                  <span style={{ color: "#80758e" }}>
-                    {label}
-                  </span>
-                </button>
-              ))}
-            </section>
-
-            <div className="edc-teacher-overview-grid">
-              {/* RECENT COURSES */}
-
-              <section className="edc-teacher-panel">
-                <div className="edc-teacher-panel-heading">
-                  <h3>Recent Courses</h3>
-
-                  <button
-                    type="button"
-                    style={styles.lightButton}
-                    onClick={() => navigateTo("courses")}
-                  >
-                    View All
-                    <ArrowRight size={15} />
-                  </button>
-                </div>
-
-                {recentCourses.length === 0 ? (
-                  <div
-                    style={{
-                      padding: "25px 10px",
-                      textAlign: "center",
-                    }}
-                  >
-                    <BookOpen
-                      size={38}
-                      color={purple}
-                      style={{ margin: "0 auto" }}
-                    />
-
-                    <h4>No courses yet</h4>
-
-                    <p style={{ color: "#80758e" }}>
-                      Create your first course to get started.
-                    </p>
-
-                    <button
-                      type="button"
-                      style={styles.button}
-                      onClick={startCreate}
-                    >
-                      <Plus size={16} />
-                      Create Course
-                    </button>
-                  </div>
-                ) : (
-                  recentCourses.map((course) => (
-                    <div
-                      key={course.id}
-                      className="edc-teacher-course-row"
-                    >
-                      <BookOpen size={22} color={purple} />
-
-                      <div className="edc-teacher-course-info">
-                        <strong>{course.title}</strong>
-
-                        <span>
-                          {course.category} ·{" "}
-                          {(course.lessons || []).length} lessons
-                        </span>
-                      </div>
-
-                      <span
-                        style={{
-                          fontSize: 11,
-                          color:
-                            course.status === "Approved"
-                              ? "#15803d"
-                              : course.status === "Pending Approval"
-                              ? "#b45309"
-                              : "#6d28d9",
-                        }}
-                      >
-                        {course.status || "Draft"}
-                      </span>
-
-                      <button
-                        type="button"
-                        style={styles.lightButton}
-                        onClick={() => startEdit(course)}
-                        aria-label={`Edit ${course.title}`}
-                      >
-                        <Edit3 size={15} />
-                      </button>
-                    </div>
-                  ))
-                )}
-              </section>
-
-              {/* TEACHING SUMMARY */}
-
-              <div className="edc-teacher-overview-side">
-                <section className="edc-teacher-panel">
-                  <div className="edc-teacher-panel-heading">
-                    <h3>Teaching Summary</h3>
-                  </div>
-
-                  <div className="edc-teacher-summary-row">
-                    <span>Total Lessons</span>
-                    <strong>{totalLessons}</strong>
-                  </div>
-
-                  <div className="edc-teacher-summary-row">
-                    <span>Draft Courses</span>
-                    <strong>{draftCount}</strong>
-                  </div>
-
-                  <div className="edc-teacher-summary-row">
-                    <span>Pending Approval</span>
-                    <strong>{pendingCount}</strong>
-                  </div>
-
-                  <div className="edc-teacher-summary-row">
-                    <span>Approved Courses</span>
-                    <strong>{approvedCount}</strong>
-                  </div>
-
-                  <p
-                    style={{
-                      fontSize: 12,
-                      color: "#90849d",
-                      lineHeight: 1.6,
-                    }}
-                  >
-                    Student enrollments and verified earnings
-                    will be connected through the backend.
-                  </p>
-                </section>
-              </div>
-            </div>
-          </div>
+          <TeacherOverview
+            email={email}
+            profile={{ ...profile, name: teacherDisplayName }}
+            courses={courses}
+            data={courseAnalytics}
+            onNavigate={navigateTo}
+            onCreate={startCreate}
+            onEdit={startEdit}
+            onLessons={course => { setSelectedLessonCourse(course.id); navigateTo("lessons"); }}
+          />
         )}
 
         {/* MY COURSES */}
@@ -1461,8 +1314,8 @@ function handleDemoWithdrawal(event) {
 {tab === "quizzes" && <CourseQuizzes role="teacher" email={email} courses={courses.map(c => ({ ...c, teacherEmail: email }))} />}
 {tab === "course-assignments" && <CourseAssignments role="teacher" email={email} courses={courses.map(c => ({ ...c, teacherEmail: email }))} />}
 {tab === "curriculum" && <CurriculumBuilder role="teacher" email={email} courses={courses.map(c => ({ ...c, teacherEmail: email }))}
-  onAddLesson={(courseId, lesson) => setCourses(prev => prev.map(c => String(c.id)===String(courseId) ? {...c,lessons:[...(Array.isArray(c.lessons)?c.lessons:[]),lesson]} : c))}
-  onReorderLessons={(courseId, orderedIds) => setCourses(prev => prev.map(c => {
+  onAddLesson={(courseId, lesson) => updateCourses(prev => prev.map(c => String(c.id)===String(courseId) ? {...c,lessons:[...(Array.isArray(c.lessons)?c.lessons:[]),lesson]} : c))}
+  onReorderLessons={(courseId, orderedIds) => updateCourses(prev => prev.map(c => {
     if(String(c.id)!==String(courseId))return c;
     const old=Array.isArray(c.lessons)?c.lessons:[];
     const picked=orderedIds.map(id=>old.find(l=>String(l.id)===String(id))).filter(Boolean);
@@ -1478,20 +1331,72 @@ function handleDemoWithdrawal(event) {
 {tab === "notifications" && <NotificationsCenter notifications={notifications} onRead={markNotificationRead} onReadAll={markAllNotificationsRead} onDelete={deleteNotification} onNavigate={navigateTo} audience="teacher" />}
 
 {tab === "courses" && (
-  <div style={{ display: "grid", gap: 20 }}>
-    {/* SEARCH AND FILTERS */}
+  <div className="edc-teacher-courses-page">
+    <header className="edc-teacher-courses-heading">
+      <div>
+        <GraduationCap size={33} aria-hidden="true" />
+        <div>
+          <h1>My Courses</h1>
+          <p>Create, manage and track the performance of your courses.</p>
+        </div>
+      </div>
+      <button type="button" className="edc-teacher-create-course" onClick={startCreate}>
+        <Plus size={19} />
+        Create New Course
+      </button>
+    </header>
 
-    <section className="edc-teacher-course-filters">
-      <input
-        type="search"
-        placeholder="Search courses..."
-        value={courseSearch}
-        onChange={(e) => setCourseSearch(e.target.value)}
-      />
+    <section className="edc-teacher-course-stats" aria-label="Course summary">
+      {[
+        { label: "Total Courses", value: courses.length, icon: BookOpen, color: "purple" },
+        { label: "Total Lessons", value: totalCourseLessons, icon: Layers3, color: "gold" },
+        { label: "Total Students", value: uniqueStudents.length, icon: Users, color: "purple" },
+        {
+          label: "Avg. Rating",
+          value: averageCourseRating === null ? "—" : averageCourseRating.toFixed(1),
+          suffix: averageCourseRating === null ? "" : "/ 5",
+          icon: Star,
+          color: "gold",
+        },
+      ].map(({ label, value, suffix, icon: Icon, color }) => (
+        <article className={`edc-teacher-course-stat ${color}`} key={label}>
+          <span><Icon size={25} fill={label === "Avg. Rating" ? "currentColor" : "none"} /></span>
+          <div>
+            <small>{label}</small>
+            <strong>{value}{suffix && <em>{suffix}</em>}</strong>
+          </div>
+        </article>
+      ))}
+    </section>
 
+    <div className="edc-teacher-course-toolbar">
+      <nav className="edc-teacher-course-status-tabs" aria-label="Filter courses by status">
+        {courseStatusTabs.map(({ value, label, count }) => (
+          <button
+            type="button"
+            key={value}
+            className={statusFilter === value ? "active" : ""}
+            aria-pressed={statusFilter === value}
+            onClick={() => setStatusFilter(value)}
+          >
+            {label} <span>({count})</span>
+          </button>
+        ))}
+      </nav>
+      <div className="edc-teacher-course-search">
+        <Search size={18} />
+        <input
+          type="search"
+          aria-label="Search your courses"
+          placeholder="Search your courses..."
+          value={courseSearch}
+          onChange={event => setCourseSearch(event.target.value)}
+        />
+      </div>
       <select
+        aria-label="Filter courses by category"
         value={categoryFilter}
-        onChange={(e) => setCategoryFilter(e.target.value)}
+        onChange={event => setCategoryFilter(event.target.value)}
       >
         <option value="All">All Categories</option>
         <option value="Development">Development</option>
@@ -1501,442 +1406,180 @@ function handleDemoWithdrawal(event) {
         <option value="IT & Software">IT & Software</option>
         <option value="Personal Growth">Personal Growth</option>
       </select>
+    </div>
 
-      <select
-        value={statusFilter}
-        onChange={(e) => setStatusFilter(e.target.value)}
-      >
-        <option value="All">All Statuses</option>
-        <option value="Draft">Draft</option>
-        <option value="Pending Approval">
-          Pending Approval
-        </option>
-        <option value="Approved">Approved</option>
-        <option value="Rejected">Rejected</option>
-      </select>
-    </section>
-
-    {/* HEADER */}
-
-    <section style={styles.panel}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          gap: 12,
-          flexWrap: "wrap",
-        }}
-      >
-        <div>
-          <h3>My Courses</h3>
-          <p>Create, edit and manage your courses.</p>
-        </div>
-
-        <button
-          type="button"
-          style={styles.button}
-          onClick={startCreate}
-        >
-          <Plus size={17} />
-          Add Course
-        </button>
-      </div>
-    </section>
-
-    {/* CREATE / EDIT FORM */}
-
-  
-{showForm && (
-  <form
-    onSubmit={saveCourse}
-    className="edc-course-editor"
-  >
-    <div className="edc-course-editor-header">
-      <div>
-        <span className="edc-course-editor-eyebrow">
-          COURSE MANAGEMENT
-        </span>
-        <h2>
-          {editingId ? "Edit Course" : "Create New Course"}
-        </h2>
-        <p>
-          Add your course information and a thumbnail
-          to make your course stand out.
-        </p>
-      </div>
-
-      <button
-        type="button"
-        className="edc-course-editor-close"
-        onClick={() => {
+    {showForm && (
+      <TeacherCourseEditor
+        courseForm={courseForm}
+        setCourseForm={setCourseForm}
+        editingId={editingId}
+        teacherFocusLabel={teacherFocusLabel}
+        onSave={saveCourse}
+        onCancel={() => {
           setShowForm(false);
           setEditingId(null);
         }}
-        aria-label="Close form"
-      >
-        <X size={20} />
-      </button>
-    </div>
+        onThumbnailUpload={handleThumbnailUpload}
+        onRemoveThumbnail={removeThumbnail}
+      />
+    )}
 
-    <div className="edc-course-editor-layout">
-      <div className="edc-course-editor-fields">
-        <h3>Course Information</h3>
+    {filteredCourses.length ? (
+      <div className="edc-teacher-course-table-wrap">
+        <table className="edc-teacher-course-table">
+          <thead>
+            <tr>
+              <th scope="col">Course</th>
+              <th scope="col">Students</th>
+              <th scope="col">Lessons</th>
+              <th scope="col">Rating</th>
+              <th scope="col">Status</th>
+              <th scope="col">Last Updated</th>
+              <th scope="col">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredCourses.map(course => {
+              const status = course.status || "Draft";
+              const analytics = courseAnalyticsById.get(String(course.id));
+              const ratings = analytics?.ratings || [];
+              const courseRating = ratings.length
+                ? ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length
+                : null;
+              const thumbnail = course.thumbnail || course.image;
+              const lessonCount = Array.isArray(course.lessons)
+                ? course.lessons.length
+                : Math.max(0, Number(course.lessons) || 0);
+              const statusClass = status === "Published"
+                ? "published"
+                : status === "Approved"
+                  ? "approved"
+                  : status === "Pending Approval"
+                    ? "pending"
+                    : status === "Rejected" || status === "Suspended"
+                      ? "rejected"
+                      : status === "Changes Requested"
+                        ? "changes-requested"
+                        : "draft";
+              const canSubmit = !["Pending Approval", "Approved", "Published"].includes(status);
 
-        <div className="edc-course-editor-field">
-          <label htmlFor="edc-course-title">
-            Course Title
-          </label>
-          <input
-            id="edc-course-title"
-            required
-            value={courseForm.title}
-            onChange={(e) =>
-              setCourseForm({
-                ...courseForm,
-                title: e.target.value,
-              })
-            }
-            placeholder="e.g. Complete React Developer Course"
-          />
-        </div>
-
-        <div className="edc-course-editor-two-cols">
-          <div className="edc-course-editor-field">
-            <label htmlFor="edc-course-category">
-              Category
-            </label>
-            <select
-              id="edc-course-category"
-              value={courseForm.category}
-              onChange={(e) =>
-                setCourseForm({
-                  ...courseForm,
-                  category: e.target.value,
-                })
-              }
-            >
-              <option>Development</option>
-              <option>Design</option>
-              <option>Business</option>
-              <option>Data Science</option>
-              <option>IT & Software</option>
-              <option>Personal Growth</option>
-            </select>
-          </div>
-
-          <div className="edc-course-editor-field">
-            <label htmlFor="edc-course-level">
-              Course Level
-            </label>
-            <select
-              id="edc-course-level"
-              value={courseForm.level}
-              onChange={(e) =>
-                setCourseForm({
-                  ...courseForm,
-                  level: e.target.value,
-                })
-              }
-            >
-              <option>Beginner</option>
-              <option>Intermediate</option>
-              <option>Advanced</option>
-            </select>
-          </div>
-        </div>
-
-        <div className="edc-course-editor-field">
-          <label htmlFor="edc-course-description">
-            Course Description
-          </label>
-          <textarea
-            id="edc-course-description"
-            required
-            rows={5}
-            value={courseForm.description}
-            onChange={(e) =>
-              setCourseForm({
-                ...courseForm,
-                description: e.target.value,
-              })
-            }
-            placeholder="Explain what students will learn..."
-          />
-        </div>
-
-        <div className="edc-course-editor-field edc-course-audience">
-          <span>Recommended student audience</span>
-          <strong>{teacherFocusLabel}</strong>
-          <p>Published courses and video lectures use the teaching focus saved in My Profile to appear in related student recommendations.</p>
-        </div>
-
-        <div className="edc-course-editor-field">
-          <label htmlFor="edc-course-price">
-            Course Price (PKR)
-          </label>
-          <input
-            id="edc-course-price"
-            type="number"
-            min="0"
-            required
-            value={courseForm.price}
-            onChange={(e) =>
-              setCourseForm({
-                ...courseForm,
-                price: e.target.value,
-              })
-            }
-            placeholder="e.g. 2500"
-          />
-        </div>
+              return (
+                <tr key={course.id}>
+                  <td>
+                    <div className="edc-teacher-course-table-item">
+                      {thumbnail ? (
+                        <img src={thumbnail} alt="" />
+                      ) : (
+                        <span className="edc-teacher-course-table-placeholder"><BookOpen size={22} /></span>
+                      )}
+                      <div>
+                        <strong>{course.title || "Untitled course"}</strong>
+                        <span className="edc-teacher-course-tags">
+                          <small>{course.category || "Uncategorized"}</small>
+                          <small>{course.level || "Level not set"}</small>
+                        </span>
+                        {course.revisionNotes && (
+                          <span className="edc-teacher-course-revision-inline">{course.revisionNotes}</span>
+                        )}
+                      </div>
+                    </div>
+                  </td>
+                  <td>{analytics?.students || 0}</td>
+                  <td>{lessonCount}</td>
+                  <td>
+                    {courseRating === null ? (
+                      <span className="edc-teacher-course-no-rating">—</span>
+                    ) : (
+                      <span className="edc-teacher-course-rating"><Star size={15} fill="currentColor" />{courseRating.toFixed(1)}</span>
+                    )}
+                  </td>
+                  <td>
+                    <span className={`edc-teacher-course-table-status ${statusClass}`}>
+                      {status === "Pending Approval" ? "Under Review" : status}
+                    </span>
+                  </td>
+                  <td className="edc-teacher-course-updated">
+                    {formatCourseUpdatedAt(course.updatedAt || course.createdAt)}
+                  </td>
+                  <td>
+                    <div className="edc-teacher-course-row-actions">
+                      <button
+                        type="button"
+                        className="edc-teacher-course-icon-action"
+                        aria-label={`Edit ${course.title || "course"}`}
+                        title="Edit course"
+                        onClick={() => startEdit(course)}
+                      >
+                        <Edit3 size={17} />
+                      </button>
+                      <button
+                        type="button"
+                        className="edc-teacher-course-icon-action"
+                        aria-label="Open learning analytics"
+                        title="Learning analytics"
+                        onClick={() => navigateTo("analytics")}
+                      >
+                        <ChartNoAxesCombined size={17} />
+                      </button>
+                      <div className="edc-teacher-course-actions-menu">
+                        <button
+                          type="button"
+                          className="edc-teacher-course-icon-action"
+                          aria-label={`More actions for ${course.title || "course"}`}
+                          aria-haspopup="menu"
+                          aria-expanded={openCourseMenu === String(course.id)}
+                          onClick={() => setOpenCourseMenu(openCourseMenu === String(course.id) ? "" : String(course.id))}
+                        >
+                          <MoreVertical size={18} />
+                        </button>
+                        {openCourseMenu === String(course.id) && (
+                          <div className="edc-teacher-course-actions-popover" role="menu">
+                            <button type="button" role="menuitem" onClick={() => { setOpenCourseMenu(""); navigateTo("lessons"); }}>
+                              <BookOpen size={15} /> Manage Lessons
+                            </button>
+                            <button type="button" role="menuitem" onClick={() => { setOpenCourseMenu(""); setPreviewCourse(course); }}>
+                              <ArrowRight size={15} /> Preview Course
+                            </button>
+                            {status === "Approved" && (
+                              <button type="button" role="menuitem" onClick={() => { setOpenCourseMenu(""); publishApprovedCourse(course.id); }}>
+                                <CheckCircle2 size={15} /> Publish Course
+                              </button>
+                            )}
+                            {canSubmit && (
+                              <button type="button" role="menuitem" onClick={() => { setOpenCourseMenu(""); submitForApproval(course.id); }}>
+                                <Send size={15} /> Submit for Approval
+                              </button>
+                            )}
+                            <button type="button" role="menuitem" className="danger" onClick={() => { setOpenCourseMenu(""); deleteCourse(course.id); }}>
+                              <Trash2 size={15} /> Delete Course
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
-
-      <div className="edc-course-editor-media">
-        <h3>Course Thumbnail</h3>
-        <p>
-          Upload a cover image for your course.
-        </p>
-
-        <div className="edc-course-editor-image-box">
-          {courseForm.thumbnail ? (
-            <img
-              src={courseForm.thumbnail}
-              alt="Course thumbnail preview"
-            />
-          ) : (
-            <div className="edc-course-editor-image-empty">
-              <BookOpen size={42} />
-              <strong>Course Cover</strong>
-              <span>Recommended ratio 16:9</span>
-            </div>
-          )}
-        </div>
-
-        <label className="edc-course-editor-upload">
-          <Plus size={17} />
-          {courseForm.thumbnail
-            ? "Change Image"
-            : "Upload Image"}
-
-          <input
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            onChange={handleThumbnailUpload}
-            hidden
-          />
-        </label>
-
-        {courseForm.thumbnail && (
-          <button
-            type="button"
-            className="edc-course-editor-remove"
-            onClick={removeThumbnail}
-          >
-            <Trash2 size={16} />
-            Remove Image
-          </button>
-        )}
-
-        <p className="edc-course-editor-image-help">
-          JPG, PNG or WebP · Maximum 1 MB
-        </p>
-
-        <div className="edc-course-editor-tip">
-          <strong>Course Tip</strong>
-          <p>
-            Use a clear title, useful description,
-            and attractive thumbnail to help
-            students understand your course.
-          </p>
-        </div>
-      </div>
-    </div>
-
-    <div className="edc-course-editor-footer">
-      <button
-        type="button"
-        className="edc-course-editor-cancel"
-        onClick={() => {
-          setShowForm(false);
-          setEditingId(null);
-        }}
-      >
-        Cancel
-      </button>
-
-      <button
-        type="submit"
-        className="edc-course-editor-save"
-      >
-        <CheckCircle2 size={18} />
-        {editingId ? "Update Course" : "Save Course"}
-      </button>
-    </div>
-  </form>
-)}
-
-    {/* PROFESSIONAL COURSE CARDS */}
-
-    {filteredCourses.length === 0 ? (
+    ) : (
       <section className="edc-teacher-empty-courses">
         <BookOpen size={40} color="#7042d8" />
-
-        <h3>No Courses Found</h3>
-
+        <h3>{courses.length === 0 ? "You have no courses yet" : "No courses found"}</h3>
         <p>
           {courses.length === 0
             ? "Create your first course to get started."
             : "No courses match your search or filters."}
         </p>
-
         {courses.length === 0 && (
-          <button
-            type="button"
-            className="edc-teacher-primary"
-            onClick={startCreate}
-          >
+          <button type="button" className="edc-teacher-primary" onClick={startCreate}>
             <Plus size={17} />
             Create Course
           </button>
         )}
       </section>
-    ) : (
-      <div className="edc-teacher-course-grid">
-        {filteredCourses.map((course) => (
-          <article
-            key={course.id}
-            className="edc-teacher-course-card"
-          >
-            <div className="edc-teacher-course-thumbnail">
-              {course.thumbnail ? (
-                <img
-                  src={course.thumbnail}
-                  alt={course.title}
-                />
-              ) : (
-                <div className="edc-teacher-course-placeholder">
-                  <BookOpen size={48} />
-                  <span>EduConnect AI</span>
-                </div>
-              )}
-
-              <span
-                className={`edc-teacher-status-badge ${
-                  course.status === "Approved"
-                    ? "approved"
-                    : course.status === "Pending Approval"
-                    ? "pending"
-                    : course.status === "Rejected" ||
-                        course.status === "Suspended"
-                    ? "rejected"
-                    : course.status === "Changes Requested"
-                    ? "changes-requested"
-                    : "draft"
-                }`}
-              >
-                {course.status || "Draft"}
-              </span>
-            </div>
-
-            <div className="edc-teacher-course-card-body">
-              <span className="edc-teacher-course-category">
-                {course.category}
-              </span>
-
-              <h3>{course.title}</h3>
-
-              <p className="edc-teacher-course-description">
-                {course.description || "No description added."}
-              </p>
-
-              {typeof course.revisionNotes === "string" &&
-                course.revisionNotes.trim() && (
-                  <p className="edc-teacher-course-revision-note">
-                    <strong>Admin revision notes</strong>
-                    <span>{course.revisionNotes}</span>
-                  </p>
-                )}
-
-              <div className="edc-teacher-course-meta">
-                <span>
-                  <GraduationCap size={15} />
-                  {course.level}
-                </span>
-
-                <span>
-                  <BookOpen size={15} />
-                  {(course.lessons || []).length} Lessons
-                </span>
-              </div>
-
-              <div className="edc-teacher-course-price">
-                PKR{" "}
-                {Number(course.price || 0).toLocaleString()}
-              </div>
-
-              <div className="edc-teacher-course-actions">
-                <button
-                  type="button"
-                  onClick={() => startEdit(course)}
-                >
-                  <Edit3 size={15} />
-                  Edit
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => navigateTo("lessons")}
-                >
-                  <BookOpen size={15} />
-                  Lessons
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setPreviewCourse(course)}
-                >
-                  <ArrowRight size={15} />
-                  Preview
-                </button>
-
-                <button
-                  type="button"
-                  disabled={course.status !== "Approved"}
-                  onClick={() => publishApprovedCourse(course.id)}
-                >
-                  <CheckCircle2 size={15} />
-                  Publish
-                </button>
-
-                <button
-                  type="button"
-                  disabled={
-                    course.status === "Pending Approval" ||
-                    course.status === "Approved" ||
-                    course.status === "Published"
-                  }
-                  onClick={() =>
-                    submitForApproval(course.id)
-                  }
-                >
-                  <Send size={15} />
-                  Submit
-                </button>
-
-                <button
-                  type="button"
-                  className="delete"
-                  onClick={() => deleteCourse(course.id)}
-                >
-                  <Trash2 size={15} />
-                  Delete
-                </button>
-              </div>
-            </div>
-          </article>
-        ))}
-      </div>
     )}
   </div>
 )}
@@ -1945,198 +1588,18 @@ function handleDemoWithdrawal(event) {
         {/* LESSONS */}
 
 {tab === "lessons" && (
-  <div className="edc-lessons-page">
-    <div className="edc-lessons-page-header">
-      <div>
-        <span className="edc-lessons-eyebrow">
-          COURSE CONTENT
-        </span>
-        <h2>Lessons Management</h2>
-        <p>
-          Create, organize and manage your course lessons.
-        </p>
-      </div>
-
-      <div className="edc-lessons-header-actions">
-        <button
-          type="button"
-          className="edc-lessons-add-button"
-          disabled={!courses.length}
-          onClick={() => openLessonForm(courses[0]?.id || "")}
-        >
-          <Plus size={17} /> Add Lesson
-        </button>
-
-        <div className="edc-lessons-count">
-        <BookOpen size={20} />
-        <span>
-          {courses.reduce(
-            (total, course) =>
-              total + (course.lessons || []).length,
-            0
-          )}{" "}
-          Total Lessons
-        </span>
-        </div>
-      </div>
-    </div>
-
-    {courses.length === 0 ? (
-      <div className="edc-lessons-empty">
-        <BookOpen size={42} />
-        <h3>No Courses Yet</h3>
-        <p>
-          Create your first course before adding lessons.
-        </p>
-
-        <button
-          type="button"
-          onClick={() => {
-            startCreate();
-            navigateTo("courses");
-          }}
-        >
-          <Plus size={17} />
-          Create Course
-        </button>
-      </div>
-    ) : (
-      <div className="edc-lessons-course-list">
-        {courses.map((course) => (
-          <section
-            key={course.id}
-            className="edc-lessons-course-card"
-          >
-            <div className="edc-lessons-course-header">
-              <div className="edc-lessons-course-info">
-                <div className="edc-lessons-course-icon">
-                  <BookOpen size={23} />
-                </div>
-
-                <div>
-                  <h3>{course.title}</h3>
-                  <p>
-                    {course.category} ·{" "}
-                    {(course.lessons || []).length} lessons
-                  </p>
-                </div>
-              </div>
-
-            </div>
-
-            {(course.lessons || []).length === 0 ? (
-              <div className="edc-lessons-no-content">
-                <Layers3 size={30} />
-                <p>No lessons added yet.</p>
-                <span>
-                  Use the Add Lesson button above to create your first lesson.
-                </span>
-              </div>
-            ) : (
-              <div className="edc-lessons-items">
-                {(course.lessons || []).map(
-                  (lesson, index) => (
-                    <div
-                      key={lesson.id}
-                      className="edc-lessons-item"
-                    >
-                      <div className="edc-lessons-item-number">
-                        {index + 1}
-                      </div>
-
-                      <div className="edc-lessons-item-info">
-                        <h4>{lesson.title}</h4>
-
-                        {lesson.description && (
-                          <p>{lesson.description}</p>
-                        )}
-
-                        <div className="edc-lessons-item-meta">
-                          {lesson.duration && (
-                            <span>
-                              <Clock3 size={14} />
-                              {lesson.duration} min
-                            </span>
-                          )}
-
-                          {lesson.isFreePreview && (
-                            <span className="edc-lessons-free-badge">
-                              Free Preview
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="edc-lessons-item-actions">
-                        <button
-                          type="button"
-                          title="Move up"
-                          disabled={index === 0}
-                          onClick={() =>
-                            moveLesson(
-                              course.id,
-                              lesson.id,
-                              -1
-                            )
-                          }
-                        >
-                          ↑
-                        </button>
-
-                        <button
-                          type="button"
-                          title="Move down"
-                          disabled={
-                            index ===
-                            (course.lessons || []).length - 1
-                          }
-                          onClick={() =>
-                            moveLesson(
-                              course.id,
-                              lesson.id,
-                              1
-                            )
-                          }
-                        >
-                          ↓
-                        </button>
-
-                        <button
-                          type="button"
-                          title="Edit lesson"
-                          onClick={() =>
-                            openLessonForm(
-                              course.id,
-                              lesson
-                            )
-                          }
-                        >
-                          <Edit3 size={17} />
-                        </button>
-
-                        <button
-                          type="button"
-                          title="Delete lesson"
-                          className="delete"
-                          onClick={() =>
-                            removeLesson(
-                              course.id,
-                              lesson.id
-                            )
-                          }
-                        >
-                          <Trash2 size={17} />
-                        </button>
-                      </div>
-                    </div>
-                  )
-                )}
-              </div>
-            )}
-          </section>
-        ))}
-      </div>
-    )}
+  <>
+    <TeacherLessons
+      courses={courses}
+      courseAnalytics={courseAnalytics}
+      preferredCourseId={selectedLessonCourse}
+      onCourseChange={setSelectedLessonCourse}
+      onAddLesson={courseId => openLessonForm(courseId)}
+      onEditLesson={openLessonForm}
+      onDeleteLesson={removeLesson}
+      onMoveLesson={moveLesson}
+      onCreateCourse={() => { startCreate(); navigateTo("courses"); }}
+    />
 
     {showLessonForm && (
       <div
@@ -2235,6 +1698,7 @@ function handleDemoWithdrawal(event) {
               <label>Lesson Video</label>
 
               <input
+                id="edc-lesson-video"
                 type="file"
                 accept="video/mp4,video/webm"
                 onChange={(e) =>
@@ -2291,7 +1755,7 @@ function handleDemoWithdrawal(event) {
         </form>
       </div>
     )}
-  </div>
+  </>
 )}
 
 
@@ -2301,152 +1765,11 @@ function handleDemoWithdrawal(event) {
 {/* STUDENTS */}
 
 {tab === "students" && !teacherStudentDetailConfig && (
-  <div className="edc-students-page">
-    <div className="edc-students-header">
-      <div>
-        <span className="edc-students-eyebrow">
-          STUDENT MANAGEMENT
-        </span>
-        <h2>My Students</h2>
-        <p>
-          View student enrollments and learning progress.
-        </p>
-      </div>
-
-      <span className="edc-students-demo-badge">
-        Demo Data
-      </span>
-    </div>
-
-    <div className="edc-students-stats">
-      <button type="button" className="edc-students-stat-card edc-students-stat-button"
-        onClick={() => navigate("/teacher/dashboard/students/total-students")}>
-        <Users size={23} />
-        <div>
-          <h3>{demoStudents.length}</h3>
-          <p>Total Demo Students</p>
-        </div>
-      </button>
-
-      <button type="button" className="edc-students-stat-card edc-students-stat-button"
-        onClick={() => navigate("/teacher/dashboard/students/demo-courses")}>
-        <BookOpen size={23} />
-        <div>
-          <h3>{studentCourses.length}</h3>
-          <p>Demo Courses</p>
-        </div>
-      </button>
-
-      <button type="button" className="edc-students-stat-card edc-students-stat-button"
-        onClick={() => navigate("/teacher/dashboard/students/average-progress")}>
-        <CheckCircle2 size={23} />
-        <div>
-          <h3>
-            {Math.round(
-              demoStudents.reduce(
-                (total, student) => total + student.progress,
-                0
-              ) / demoStudents.length
-            )}
-            %
-          </h3>
-          <p>Average Demo Progress</p>
-        </div>
-      </button>
-    </div>
-
-    <div className="edc-students-main-card">
-      <div className="edc-students-toolbar">
-        <input
-          type="search"
-          placeholder="Search by name or email..."
-          value={studentSearch}
-          onChange={(e) => setStudentSearch(e.target.value)}
-        />
-
-        <select
-          value={studentCourseFilter}
-          onChange={(e) =>
-            setStudentCourseFilter(e.target.value)
-          }
-        >
-          <option value="All">All Courses</option>
-
-          {studentCourses.map((courseTitle) => (
-            <option key={courseTitle} value={courseTitle}>
-              {courseTitle}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div className="edc-students-table-wrap">
-        <table className="edc-students-table">
-          <thead>
-            <tr>
-              <th>Student</th>
-              <th>Enrolled Course</th>
-              <th>Enrollment Date</th>
-              <th>Progress</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {filteredStudents.map((student) => (
-              <tr key={student.id}>
-                <td>
-                  <div className="edc-students-person">
-                    <div className="edc-students-avatar">
-                      {student.name.charAt(0)}
-                    </div>
-
-                    <div>
-                      <strong>{student.name}</strong>
-                      <small>{student.email}</small>
-                    </div>
-                  </div>
-                </td>
-
-                <td>{student.courseTitle}</td>
-
-                <td>{student.enrolledAt}</td>
-
-                <td>
-                  <div className="edc-students-progress">
-                    <div className="edc-students-progress-track">
-                      <div
-                        className="edc-students-progress-fill"
-                        style={{
-                          width: `${student.progress}%`,
-                        }}
-                      />
-                    </div>
-                    <span>{student.progress}%</span>
-                  </div>
-                </td>
-
-                <td>
-                  <button
-                    type="button"
-                    className="edc-students-view-button"
-                    onClick={() => setSelectedStudent(student)}
-                  >
-                    View Details
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        {filteredStudents.length === 0 && (
-          <div className="edc-students-empty">
-            No students match your search.
-          </div>
-        )}
-      </div>
-    </div>
+  <>
+    <TeacherStudents
+      enrollments={enrolledStudents}
+      onViewStudent={setSelectedStudent}
+    />
 
     {selectedStudent && (
       <div
@@ -2517,282 +1840,19 @@ function handleDemoWithdrawal(event) {
             </div>
 
             <p className="edc-students-demo-note">
-              This is demonstration data, not a verified
-              student enrollment.
+              Progress is summarized from this student’s saved course enrollments.
             </p>
           </div>
         </div>
       </div>
     )}
-  </div>
+  </>
 )}
 
 
-        {/* EARNINGS */}
-
-      
-{/* EARNINGS */}
-
-{tab === "earnings" && !teacherEarningsDetailConfig && (
-  <div className="edc-earnings-page">
-    <div className="edc-earnings-header">
-      <div>
-        <span className="edc-earnings-eyebrow">
-          FINANCIAL OVERVIEW
-        </span>
-        <h2>Teacher Earnings</h2>
-        <p>
-          Track your course revenue, sales and transactions.
-        </p>
-      </div>
-
-      <span className="edc-earnings-demo-badge">
-        Demo Financial Data
-      </span>
-    </div>
-
-    <div className="edc-earnings-stats">
-      <button type="button" className="edc-earnings-stat-card edc-earnings-stat-button"
-        onClick={() => navigate("/teacher/dashboard/earnings/total-earnings")}>
-        <div className="edc-earnings-stat-icon">
-          <Wallet size={24} />
-        </div>
-        <p>Total Demo Earnings</p>
-        <h3>PKR {totalDemoEarnings.toLocaleString()}</h3>
-        <span>Sample revenue across 6 months</span>
-      </button>
-
-      <button type="button" className="edc-earnings-stat-card edc-earnings-stat-button"
-        onClick={() => navigate("/teacher/dashboard/earnings/monthly-earnings")}>
-        <div className="edc-earnings-stat-icon">
-          <Clock3 size={24} />
-        </div>
-        <p>November Demo Earnings</p>
-        <h3>PKR {demoMonthlyEarnings.toLocaleString()}</h3>
-        <span>Sample monthly revenue</span>
-      </button>
-
-      <button type="button" className="edc-earnings-stat-card edc-earnings-stat-button"
-        onClick={() => navigate("/teacher/dashboard/earnings/completed-sales")}>
-        <div className="edc-earnings-stat-icon">
-          <BookOpen size={24} />
-        </div>
-        <p>Demo Completed Sales</p>
-        <h3>{demoCompletedSales}</h3>
-        <span>Completed sample transactions</span>
-      </button>
-    </div>
-
-    <div className="edc-earnings-chart-card">
-      <div className="edc-earnings-section-header">
-        <div>
-          <h3>Revenue Overview</h3>
-          <p>Sample monthly earnings in PKR</p>
-        </div>
-
-        <select
-          value={earningsPeriod}
-          onChange={(e) => setEarningsPeriod(e.target.value)}
-        >
-          <option value="3months">Last 3 Months</option>
-          <option value="6months">Last 6 Months</option>
-        </select>
-      </div>
-
-      <div className="edc-earnings-chart">
-        {demoChartData.map((item) => (
-          <div
-            key={item.month}
-            className="edc-earnings-chart-column"
-          >
-            <strong>
-              {(item.revenue / 1000).toFixed(1)}k
-            </strong>
-
-            <div className="edc-earnings-chart-bar-track">
-              <div
-                className="edc-earnings-chart-bar"
-                style={{
-                  height: `${
-                    (item.revenue /
-                      Math.max(
-                        ...demoChartData.map(
-                          (entry) => entry.revenue
-                        )
-                      )) * 100
-                  }%`,
-                }}
-              />
-            </div>
-
-            <span>{item.month}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-
-    <div className="edc-earnings-withdrawal-card">
-      <div>
-        <h3>Withdrawal Requests</h3>
-        <p>
-          Test the withdrawal request interface using
-          demo earnings. No real money will be transferred.
-        </p>
-      </div>
-
-      <button
-        type="button"
-        onClick={() => setShowWithdrawalForm(true)}
-      >
-        <Wallet size={17} />
-        Demo Withdrawal
-      </button>
-    </div>
-
-    {demoWithdrawalRequests.length > 0 && (
-      <div className="edc-earnings-transactions-card">
-        <h3>Demo Withdrawal Requests</h3>
-
-        {demoWithdrawalRequests.map((request) => (
-          <div
-            key={request.id}
-            className="edc-earnings-request-row"
-          >
-            <div>
-              <strong>{request.id}</strong>
-              <p>{request.date}</p>
-            </div>
-
-            <strong>
-              PKR {request.amount.toLocaleString()}
-            </strong>
-
-            <span className="edc-earnings-status pending">
-              {request.status}
-            </span>
-          </div>
-        ))}
-      </div>
-    )}
-
-    <div className="edc-earnings-transactions-card">
-      <div className="edc-earnings-section-header">
-        <div>
-          <h3>Transaction History</h3>
-          <p>Sample course purchase transactions</p>
-        </div>
-
-        <input
-          type="search"
-          placeholder="Search transactions..."
-          value={transactionSearch}
-          onChange={(e) =>
-            setTransactionSearch(e.target.value)
-          }
-        />
-      </div>
-
-      <div className="edc-earnings-table-wrap">
-        <table className="edc-earnings-table">
-          <thead>
-            <tr>
-              <th>Transaction</th>
-              <th>Student</th>
-              <th>Course</th>
-              <th>Date</th>
-              <th>Amount</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {filteredTransactions.map((transaction) => (
-              <tr key={transaction.id}>
-                <td>{transaction.id}</td>
-                <td>{transaction.student}</td>
-                <td>{transaction.course}</td>
-                <td>{transaction.date}</td>
-                <td>
-                  PKR {transaction.amount.toLocaleString()}
-                </td>
-                <td>
-                  <span
-                    className={`edc-earnings-status ${
-                      transaction.status === "Completed"
-                        ? "completed"
-                        : "pending"
-                    }`}
-                  >
-                    {transaction.status}
-                  </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        {filteredTransactions.length === 0 && (
-          <div className="edc-earnings-empty">
-            No matching transactions found.
-          </div>
+        {tab === "earnings" && !teacherEarningsDetailConfig && (
+          <TeacherEarnings email={email} courses={courses} />
         )}
-      </div>
-    </div>
-
-    {showWithdrawalForm && (
-      <div
-        className="edc-earnings-modal-overlay"
-        onClick={() => setShowWithdrawalForm(false)}
-      >
-        <form
-          className="edc-earnings-modal"
-          onSubmit={handleDemoWithdrawal}
-          onClick={(event) => event.stopPropagation()}
-        >
-          <div className="edc-earnings-modal-header">
-            <h3>Demo Withdrawal Request</h3>
-
-            <button
-              type="button"
-              onClick={() => setShowWithdrawalForm(false)}
-              aria-label="Close withdrawal form"
-            >
-              <X size={20} />
-            </button>
-          </div>
-
-          <div className="edc-earnings-modal-body">
-            <p>
-              This is a frontend demonstration only.
-              No actual payout will be processed.
-            </p>
-
-            <label htmlFor="edc-withdrawal-amount">
-              Demo Amount (PKR)
-            </label>
-
-            <input
-              id="edc-withdrawal-amount"
-              type="number"
-              min="1"
-              max={totalDemoEarnings}
-              required
-              value={withdrawalAmount}
-              onChange={(e) =>
-                setWithdrawalAmount(e.target.value)
-              }
-              placeholder="Enter amount"
-            />
-
-            <button type="submit">
-              Submit Demo Request
-            </button>
-          </div>
-        </form>
-      </div>
-    )}
-  </div>
-)}
 
 
         {/* PROFILE */}

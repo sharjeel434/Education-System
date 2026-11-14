@@ -175,6 +175,11 @@ export default function StudentStudyPlanner({
     }
   }
 
+  function openSummaryView(view, sectionId) {
+    setActiveView(view);
+    window.requestAnimationFrame(() => document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  }
+
   function addPlan(event) {
     event.preventDefault();
     const title = planTitle.trim();
@@ -351,10 +356,18 @@ export default function StudentStudyPlanner({
       </header>
 
       <section className="edc-sp-stats" aria-label="Study summary">
-        <article className="tone-purple"><span><Target size={23} /></span><div><small>Weekly Goal</small><strong>{plannerData.weeklyGoalHours ? `${plannerData.weeklyGoalHours} hrs` : "Not set"}</strong></div></article>
-        <article className="tone-blue"><span><Clock3 size={23} /></span><div><small>Planned Time</small><strong>{formatDuration(plannedMinutes)}</strong></div></article>
-        <article className="tone-green"><span><CheckCircle2 size={23} /></span><div><small>Completed</small><strong>{formatDuration(Math.round(completedSeconds / 60))}</strong></div></article>
-        <article className="tone-purple"><span><Flame size={23} /></span><div><small>Study Streak</small><strong>{studyStreak(activityDays)} days</strong></div></article>
+        <button type="button" className="tone-purple" onClick={() => openSummaryView("goals", "edc-sp-weekly-goal")} aria-label={`Weekly Goal: ${plannerData.weeklyGoalHours ? `${plannerData.weeklyGoalHours} hours` : "not set"}. Open goal settings`}>
+          <span><Target size={23} /></span><div><small>Weekly Goal</small><strong>{plannerData.weeklyGoalHours ? `${plannerData.weeklyGoalHours} hrs` : "Not set"}</strong></div>
+        </button>
+        <button type="button" className="tone-blue" onClick={() => openSummaryView("week", "edc-sp-week-schedule")} aria-label={`Planned Time: ${formatDuration(plannedMinutes)}. View weekly schedule`}>
+          <span><Clock3 size={23} /></span><div><small>Planned Time</small><strong>{formatDuration(plannedMinutes)}</strong></div>
+        </button>
+        <button type="button" className="tone-green" onClick={() => openSummaryView("reports", "edc-sp-recorded-time")} aria-label={`Completed: ${formatDuration(Math.round(completedSeconds / 60))}. View study reports`}>
+          <span><CheckCircle2 size={23} /></span><div><small>Completed</small><strong>{formatDuration(Math.round(completedSeconds / 60))}</strong></div>
+        </button>
+        <button type="button" className="tone-purple" onClick={() => openSummaryView("reports", "edc-sp-weekly-summary")} aria-label={`Study Streak: ${studyStreak(activityDays)} days. View weekly summary`}>
+          <span><Flame size={23} /></span><div><small>Study Streak</small><strong>{studyStreak(activityDays)} days</strong></div>
+        </button>
       </section>
 
       <div className="edc-sp-toolbar">
@@ -379,7 +392,7 @@ export default function StudentStudyPlanner({
       </form>}
 
       {activeView === "week" && <div className="edc-sp-week-layout">
-        <section className="edc-sp-panel edc-sp-schedule">
+        <section className="edc-sp-panel edc-sp-schedule" id="edc-sp-week-schedule">
           <header><h3><CalendarDays size={17} />Weekly Study Schedule</h3><span>{weekPlans.length} planned</span></header>
           {renderCalendar()}
           <div className="edc-sp-legend"><span><i className="tone-purple" />Study plan</span><small>Plans you add appear in your schedule.</small></div>
@@ -404,7 +417,7 @@ export default function StudentStudyPlanner({
       </div>}
 
       {activeView === "goals" && <div className="edc-sp-secondary-layout">
-        <section className="edc-sp-panel edc-sp-goal-setting">
+        <section className="edc-sp-panel edc-sp-goal-setting" id="edc-sp-weekly-goal">
           <header><h3><Target size={17} />Weekly Study Goal</h3></header>
           <p>Set a weekly learning-time target. Completed time is based on recorded course video activity.</p>
           <form onSubmit={saveGoal}><label>Hours per week<input type="number" min="0.5" max="168" step="0.5" value={goalHours} onChange={(event) => setGoalHours(event.target.value)} placeholder="Enter your target" /></label><button type="submit" className="edc-sp-primary">Save Goal</button></form>
@@ -414,7 +427,7 @@ export default function StudentStudyPlanner({
       </div>}
 
       {activeView === "reports" && <div className="edc-sp-reports">
-        <section className="edc-sp-panel">
+        <section className="edc-sp-panel" id="edc-sp-recorded-time">
           <header><h3><BarChart3 size={17} />Recorded Study Time</h3><span>{weekLabel}</span></header>
           <p>Only course learning time recorded in your account is included.</p>
           <div className="edc-sp-report-chart">{weekDays.map((date, index) => (
@@ -422,7 +435,7 @@ export default function StudentStudyPlanner({
           ))}</div>
           <footer><span>Total this week</span><strong>{formatDuration(Math.round(completedSeconds / 60))}</strong></footer>
         </section>
-        <section className="edc-sp-panel edc-sp-report-summary"><header><h3><Trophy size={17} />Weekly Summary</h3></header><dl><div><dt>Weekly goal</dt><dd>{plannerData.weeklyGoalHours ? `${plannerData.weeklyGoalHours} hrs` : "Not set"}</dd></div><div><dt>Planned time</dt><dd>{formatDuration(plannedMinutes)}</dd></div><div><dt>Recorded time</dt><dd>{formatDuration(Math.round(completedSeconds / 60))}</dd></div><div><dt>Current streak</dt><dd>{studyStreak(activityDays)} days</dd></div></dl></section>
+        <section className="edc-sp-panel edc-sp-report-summary" id="edc-sp-weekly-summary"><header><h3><Trophy size={17} />Weekly Summary</h3></header><dl><div><dt>Weekly goal</dt><dd>{plannerData.weeklyGoalHours ? `${plannerData.weeklyGoalHours} hrs` : "Not set"}</dd></div><div><dt>Planned time</dt><dd>{formatDuration(plannedMinutes)}</dd></div><div><dt>Recorded time</dt><dd>{formatDuration(Math.round(completedSeconds / 60))}</dd></div><div><dt>Current streak</dt><dd>{studyStreak(activityDays)} days</dd></div></dl></section>
       </div>}
     </section>
   );

@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 
 import { getPublishedTeacherCourses } from "../../utils/teacherCourses";
-import { getCart, getStudentEmail } from "../../utils/studentCart";
+import { getStudentEmail } from "../../utils/studentCart";
 import { courseReviewKey, getReviews, REVIEW_EVENT } from "../../utils/courseReviews";
 import { matchesCourseSearch } from "../../utils/studentSearch";
 import {
@@ -103,6 +103,7 @@ export default function PublishedCourses({
   subjectFilter = "All",
   relatedTo = null,
   searchQuery = "",
+  categoryFilter = "All",
 }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -124,7 +125,8 @@ export default function PublishedCourses({
   const [showCart, setShowCart] = useState(false);
 
   const visibleCourses = useMemo(() => {
-    let matching = courses.filter((course) => matchesEducationProfileLevel(course, educationProfile) && matchesCourseSearch(course, searchQuery));
+    let matching = courses.filter((course) => matchesEducationProfileLevel(course, educationProfile) && matchesCourseSearch(course, searchQuery)
+      && (categoryFilter === "All" || normalizeRecommendationText(course.category) === normalizeRecommendationText(categoryFilter)));
     if (educationProfile && isAcademicProfileComplete(educationProfile)) {
       matching = getRelatedPublishedCourses(matching, educationProfile);
     }
@@ -147,7 +149,7 @@ export default function PublishedCourses({
       });
     }
     return matching;
-  }, [courses, educationProfile, subjectFilter, relatedTo, searchQuery]);
+  }, [courses, educationProfile, subjectFilter, relatedTo, searchQuery, categoryFilter]);
 
   // Refresh published courses when teacher or admin data changes.
   useEffect(() => {
@@ -464,6 +466,7 @@ export default function PublishedCourses({
         <div className="marketplace-course-grid">
           {visibleCourses.map((course) => {
             const descriptionKey = `${course.teacherEmail || ""}:${course.id}`;
+            const courseImage = course.thumbnail || course.image;
             const fullDescription = course.description || "Learn with EduConnect AI.";
             const teacherRating = teacherRatingSummary(course, courses, reviews);
             const isLongDescription = fullDescription.length > 150;
@@ -478,10 +481,10 @@ export default function PublishedCourses({
               key={descriptionKey}
             >
               {/* Course Thumbnail */}
-              <div className="marketplace-course-image">
-                {course.thumbnail ? (
+              <div className={`marketplace-course-image${courseImage ? " has-thumbnail" : ""}`}>
+                {courseImage ? (
                   <img
-                    src={course.thumbnail}
+                    src={courseImage}
                     alt={course.title}
                   />
                 ) : (

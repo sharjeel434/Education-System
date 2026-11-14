@@ -46,7 +46,9 @@
 }
 
 .marketplace-course-image {
-  height: 185px;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
   background: #ede9fe;
   color: #6d28d9;
   display: flex;
@@ -54,10 +56,14 @@
   justify-content: center;
 }
 
+.marketplace-course-image.has-thumbnail {
+  background: #1d1c39;
+}
+
 .marketplace-course-image img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
 }
 
 .marketplace-course-body {

@@ -910,88 +910,22 @@ section[id] {
   margin-top: 12px;
 }
 
-.study-partners {
-  margin-top: 40px;
-  padding: 28px 0 20px;
-  border-top: 1px solid #e8e4f0;
-  text-align: center;
-}
-
-.study-partners > p {
-  margin: 0 0 24px;
-  color: #77718a;
-  font-size: 14px;
-}
-
-.study-partners-logos {
-  overflow-x: clip;
-  overflow-y: visible;
-  width: 100%;
-}
-
-.study-partners-track,
-.study-partners-group {
-  display: flex;
-  width: max-content;
-  align-items: center;
-}
-
-/* Moves the duplicated study-platform logos continuously across the page. */
-.study-partners-track {
-  animation: study-partners-marquee 32s linear infinite;
-}
-
-.study-partners-logos:hover .study-partners-track,
-.study-partners-logos:focus-within .study-partners-track {
-  animation-play-state: paused;
-}
-
-.study-partners-group {
-  gap: clamp(32px, 5vw, 72px);
-  flex: 0 0 auto;
-  padding-right: clamp(32px, 5vw, 72px);
-}
-
-.study-partner-logo {
-  display: flex;
-  flex: 0 0 72px;
-  align-items: center;
-  justify-content: center;
-  height: 42px;
-}
-
-@keyframes study-partners-marquee {
-  from {
-    transform: translateX(-50%);
-  }
-  to {
-    transform: translateX(0);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .study-partners-track {
-    animation: none;
-  }
-
   .popular-skill-arrow svg {
     animation: none;
   }
 }
 
-.study-partner-logo:focus-visible,
 .footer-learning-logo:focus-visible {
   outline: 2px solid #7048e8;
   outline-offset: 3px;
 }
 
 /* Positions the hover/focus company-name labels above each logo. */
-.study-partner-logo,
 .footer-learning-logo {
   position: relative;
 }
 
-.study-partner-logo::after,
 .footer-learning-logo::after {
   position: absolute;
   z-index: 5;
@@ -1012,21 +946,11 @@ section[id] {
   transition: opacity 0.1s ease, transform 0.1s ease, visibility 0.1s ease;
 }
 
-.study-partner-logo:hover::after,
-.study-partner-logo:focus-visible::after,
 .footer-learning-logo:hover::after,
 .footer-learning-logo:focus-visible::after {
   opacity: 1;
   visibility: visible;
   transform: translate(-50%, 0);
-}
-
-.study-partner-logo img {
-  display: block;
-  width: 72px;
-  height: 28px;
-  object-fit: contain;
-  opacity: 1;
 }
 
 /* =========================================
@@ -3000,28 +2924,6 @@ section[id] {
 
   .study-fields-carousel {
     gap: 7px;
-  }
-
-  .study-partners {
-    margin-top: 30px;
-    padding: 24px 0 12px;
-  }
-
-  .study-partners > p {
-    font-size: 12px;
-  }
-
-  .study-partners-logos {
-    width: 100%;
-  }
-
-  .study-partner-logo {
-    flex-basis: 58px;
-  }
-
-  .study-partners-group {
-    gap: 26px;
-    padding-right: 26px;
   }
 
   .study-fields-scroll-button {
