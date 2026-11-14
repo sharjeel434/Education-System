@@ -29,9 +29,15 @@ import {
   LogOut,
   ShieldAlert,
   LifeBuoy,
-  Bell,
   Crown,
   ChevronRight,
+  Eye,
+  Mail,
+  BriefcaseBusiness,
+  Camera,
+  Award,
+  ShieldCheck,
+  Zap,
 } from "lucide-react";
 
 import { lessonVideoKey, saveLessonVideo, deleteLessonVideo } from "../../utils/lessonVideos";
@@ -43,10 +49,8 @@ import CourseAssignments from "../../components/assignments/CourseAssignments";
 import CurriculumBuilder from "../../components/curriculum/CurriculumBuilder";
 import TeacherBooks from "../../components/books/TeacherBooks";
 import UserModerationAppeals, { UserSupportCenter } from "../../components/moderation/UserModerationAppeals";
-import NotificationsCenter from "../../components/notifications/NotificationsCenter";
 import TeacherCourseEditor from "./TeacherCourseEditor";
 import { NOTIFICATIONS_EVENT } from "../../utils/demoNotifications";
-import "../../components/notifications/NotificationsCenter.css";
 
 import TeacherOverview, { TeacherWorkspaceHeader } from "../../components/teacher/TeacherOverview";
 import TeacherLessons from "../../components/teacher/TeacherLessons";
@@ -57,8 +61,10 @@ import { REVIEW_EVENT } from "../../utils/courseReviews";
 import { ORDERS_EVENT } from "../../utils/studentCart";
 import { ASSIGNMENT_EVENT } from "../../components/assignments/assignmentStorage";
 import { DISCUSSIONS_EVENT } from "../../utils/courseDiscussions";
+import "../../components/teacher/TeacherColorTheme.css";
+import "../../components/DashboardCardClarity.css";
 
-const purple = "#6d28d9";
+const purple = "#8822ec";
 
 const styles = {
   panel: {
@@ -110,7 +116,25 @@ function readSaved(key, fallback) {
   }
 }
 
-function compressCourseThumbnail(file) {
+function readTeacherProfile(profileKey, email) {
+  let accountName = "";
+  try {
+    const users = JSON.parse(localStorage.getItem("educonnect.registeredUsers") || "[]");
+    const account = Array.isArray(users)
+      ? users.find((user) => String(user.email || "").trim().toLowerCase() === String(email || "").trim().toLowerCase())
+      : null;
+    accountName = account?.name || "";
+  } catch (error) {
+    console.error("Could not read the teacher account profile.", error);
+  }
+  const saved = readSaved(profileKey, null);
+  if (saved && typeof saved === "object" && !Array.isArray(saved)) {
+    return { ...saved, name: saved.name || accountName };
+  }
+  return { name: accountName, headline: "", bio: "" };
+}
+
+function compressImageForStorage(file) {
   return new Promise((resolve, reject) => {
     const image = new Image();
     const objectUrl = URL.createObjectURL(file);
@@ -132,29 +156,28 @@ function compressCourseThumbnail(file) {
           throw new Error("Image compression is unavailable.");
         }
 
-        context.drawImage(image, 0, 0, canvas.width, canvas.height);
-        let thumbnail = canvas.toDataURL("image/webp", 0.76);
-
-        if (!thumbnail.startsWith("data:image/webp")) {
-          throw new Error("WebP image compression is unavailable.");
-        }
-
-        if (thumbnail.length > 450 * 1024) {
-          thumbnail = canvas.toDataURL("image/webp", 0.6);
-        }
-
-        if (thumbnail.length > 450 * 1024) {
-          canvas.width = Math.max(1, Math.round(canvas.width * 0.75));
-          canvas.height = Math.max(1, Math.round(canvas.height * 0.75));
+        let quality = 0.82;
+        for (let attempt = 0; attempt < 48; attempt += 1) {
           context.drawImage(image, 0, 0, canvas.width, canvas.height);
-          thumbnail = canvas.toDataURL("image/webp", 0.6);
+          const compressedImage = canvas.toDataURL("image/webp", quality);
+          if (!compressedImage.startsWith("data:image/webp")) {
+            throw new Error("WebP image compression is unavailable.");
+          }
+          if (compressedImage.length <= 450 * 1024) {
+            resolve(compressedImage);
+            return;
+          }
+          if (quality > 0.5) {
+            quality = Math.max(0.5, quality - 0.12);
+          } else if (Math.max(canvas.width, canvas.height) > 64) {
+            canvas.width = Math.max(1, Math.round(canvas.width * 0.75));
+            canvas.height = Math.max(1, Math.round(canvas.height * 0.75));
+            quality = 0.82;
+          } else {
+            throw new Error("This image could not be compressed for browser storage.");
+          }
         }
-
-        if (thumbnail.length > 450 * 1024) {
-          throw new Error("The selected image is too large to store.");
-        }
-
-        resolve(thumbnail);
+        throw new Error("This image could not be compressed for browser storage.");
       } catch (error) {
         reject(error);
       }
@@ -206,9 +229,205 @@ const navigation = [
   ["books", "My PDF/eBooks", BookOpen],
   ["profile", "My Profile", UserRound],
   ["help-support", "Help & Support", LifeBuoy],
-  ["notifications", "Notifications", Bell],
   ["appeals", "Moderation & Appeals", ShieldAlert],
 ];
+
+function TeacherProfileOverview({
+  profile,
+  email,
+  courses,
+  studentCount,
+  averageRating,
+  reviewCount,
+  completion,
+  skills,
+  teachingAreas,
+  profileSaved,
+  onEdit,
+  onNavigate,
+}) {
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [activeProfileSection, setActiveProfileSection] = useState("profile");
+  const publicCourses = courses.filter((course) => String(course.status || "").toLowerCase() === "published");
+  const displayName = String(profile.name || "").trim();
+  const availability = String(profile.availability || "").trim();
+  const experience = String(profile.experience || "").trim();
+  const qualification = String(profile.qualification || "").trim();
+  const teachingLevel = {
+    school: "School",
+    intermediate: "College / Intermediate",
+    university: "University",
+    online: "Interest / Online Courses",
+  }[profile.teachingEducationLevel] || "Teaching level not selected";
+
+  return (
+    <div className="edc-profile-dashboard">
+      <header className="edc-pd-heading">
+        <div>
+          <span className="edc-pd-heading-icon"><UserRound size={27} /></span>
+          <div>
+            <h1>Teacher Profile</h1>
+            <p>Manage your personal information, teaching profile, and professional details.</p>
+          </div>
+        </div>
+        <div className="edc-pd-heading-actions">
+          <button type="button" className="edc-pd-secondary" onClick={() => setPreviewOpen(true)}><Eye size={16} />Preview Public Profile</button>
+          <button type="button" className="edc-pd-primary" onClick={onEdit}><Edit3 size={16} />Edit Profile</button>
+        </div>
+      </header>
+
+      {profileSaved && <p className="edc-pd-saved" role="status"><CheckCircle2 size={16} />Profile saved successfully.</p>}
+
+      <div className="edc-pd-layout">
+        <main className="edc-pd-main">
+          <section className="edc-pd-hero">
+            <div className="edc-pd-avatar">
+              {profile.avatar ? <img src={profile.avatar} alt="" /> : <UserRound size={44} aria-hidden="true" />}
+            </div>
+            <div className="edc-pd-identity">
+              <h2>{displayName || "Name not added"}</h2>
+              <p>{profile.headline || "Professional headline not added"}</p>
+              {skills.length > 0 && <div className="edc-pd-hero-tags">{skills.slice(0, 5).map((skill) => <span key={skill}>{skill}</span>)}</div>}
+            </div>
+            <button type="button" className="edc-pd-photo-action" onClick={onEdit}><Camera size={15} />Update Photo</button>
+          </section>
+
+          <section className="edc-pd-contact-strip" aria-label="Profile details">
+            <div><Mail size={17} /><span>{email || "Email not available"}</span></div>
+            <div><Award size={17} /><span>{qualification || "Qualification not added"}</span></div>
+            <div><BriefcaseBusiness size={17} /><span>{experience || "Experience not added"}</span></div>
+            {availability && <div><ShieldCheck size={17} /><span>{availability}</span></div>}
+          </section>
+
+          <div className="edc-pd-tabs" role="tablist" aria-label="Profile sections">
+            {[
+              ["profile", "Profile"],
+              ["teaching", "Teaching"],
+              ["education", "Education"],
+              ["experience", "Experience"],
+            ].map(([section, label], index, sections) => (
+              <button
+                key={section}
+                id={`edc-pd-tab-${section}`}
+                type="button"
+                role="tab"
+                aria-selected={activeProfileSection === section}
+                aria-controls="edc-pd-tab-panel"
+                tabIndex={activeProfileSection === section ? 0 : -1}
+                onClick={() => setActiveProfileSection(section)}
+                onKeyDown={(event) => {
+                  let nextIndex;
+                  if (event.key === "ArrowRight") nextIndex = (index + 1) % sections.length;
+                  else if (event.key === "ArrowLeft") nextIndex = (index - 1 + sections.length) % sections.length;
+                  else if (event.key === "Home") nextIndex = 0;
+                  else if (event.key === "End") nextIndex = sections.length - 1;
+                  else return;
+                  event.preventDefault();
+                  const nextSection = sections[nextIndex][0];
+                  setActiveProfileSection(nextSection);
+                  document.getElementById(`edc-pd-tab-${nextSection}`)?.focus();
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <div
+            className="edc-pd-tab-panel"
+            id="edc-pd-tab-panel"
+            role="tabpanel"
+            aria-labelledby={`edc-pd-tab-${activeProfileSection}`}
+            tabIndex={0}
+          >
+            {activeProfileSection === "profile" && (
+              <div className="edc-pd-profile-section">
+                <section className="edc-pd-card edc-pd-about">
+                  <header><h2><UserRound size={19} />About Me</h2><button type="button" onClick={onEdit}><Edit3 size={14} />Edit</button></header>
+                  <p>{profile.bio || "No biography added yet."}</p>
+                </section>
+                <section className="edc-pd-card" id="edc-pd-skills">
+                  <header><h2><Layers3 size={19} />Skills &amp; Expertise</h2><button type="button" onClick={onEdit}><Edit3 size={14} />Edit</button></header>
+                  {skills.length ? <div className="edc-pd-chips">{skills.map((skill) => <span key={skill}>{skill}</span>)}</div> : <p className="edc-pd-empty">Add your skills and expertise to your profile.</p>}
+                </section>
+              </div>
+            )}
+            {activeProfileSection === "teaching" && (
+              <section className="edc-pd-card">
+                <header><h2><GraduationCap size={19} />Teaching Areas</h2><button type="button" onClick={onEdit}><Edit3 size={14} />Edit</button></header>
+                {teachingAreas.length ? <ul className="edc-pd-area-list">{teachingAreas.map((area) => <li key={area}><CheckCircle2 size={15} />{area}</li>)}</ul> : <p className="edc-pd-empty">No teaching areas added yet. Set your teaching level or add subjects in your profile.</p>}
+              </section>
+            )}
+            {activeProfileSection === "education" && (
+              <section className="edc-pd-card">
+                <header><h2><Award size={19} />Education</h2><button type="button" onClick={onEdit}><Edit3 size={14} />Edit</button></header>
+                <p>{qualification || "Qualification not added yet."}</p>
+                <p className="edc-pd-subtle">{teachingLevel}</p>
+              </section>
+            )}
+            {activeProfileSection === "experience" && (
+              <section className="edc-pd-card">
+                <header><h2><BriefcaseBusiness size={19} />Experience</h2><button type="button" onClick={onEdit}><Edit3 size={14} />Edit</button></header>
+                <p>{experience || "Teaching experience not added yet."}</p>
+                {profile.teachingProgram && <p className="edc-pd-subtle">{profile.teachingProgram}</p>}
+              </section>
+            )}
+          </div>
+        </main>
+
+        <aside className="edc-pd-sidebar">
+          <section className="edc-pd-card edc-pd-stats">
+            <h2><ChartNoAxesCombined size={19} />Teacher Stats</h2>
+            <div className="edc-pd-stat-grid">
+              <div><span><BookOpen size={19} /></span><strong>{courses.length.toLocaleString()}</strong><small>Courses</small></div>
+              <div><span><Users size={19} /></span><strong>{studentCount.toLocaleString()}</strong><small>Students</small></div>
+              <div><span><Star size={19} /></span><strong>{averageRating === null ? "—" : averageRating.toFixed(1)}</strong><small>Average Rating</small></div>
+              <div><span><Layers3 size={19} /></span><strong>{reviewCount.toLocaleString()}</strong><small>Reviews</small></div>
+            </div>
+            {averageRating === null && <p className="edc-pd-subtle">No course ratings have been recorded yet.</p>}
+          </section>
+
+          <section className="edc-pd-card edc-pd-completion">
+            <header><h2><ShieldCheck size={19} />Account Completion</h2><strong>{completion}%</strong></header>
+            <div className="edc-pd-progress" role="progressbar" aria-label="Profile completion" aria-valuenow={completion} aria-valuemin={0} aria-valuemax={100}><span style={{ width: `${completion}%` }} /></div>
+            <p>Calculated from your saved profile details.</p>
+          </section>
+
+          <section className="edc-pd-card edc-pd-quick-actions">
+            <h2><Zap size={19} aria-hidden="true" />Quick Actions</h2>
+            <div>
+              <button type="button" onClick={onEdit}><Edit3 size={16} />Edit Profile</button>
+              <button type="button" onClick={() => onNavigate("courses")}><GraduationCap size={16} />Manage Courses</button>
+              <button type="button" onClick={onEdit}><Camera size={16} />Update Photo</button>
+              <button type="button" onClick={() => onNavigate("analytics")}><ChartNoAxesCombined size={16} />View Analytics</button>
+            </div>
+          </section>
+        </aside>
+      </div>
+
+      {previewOpen && (
+        <div className="edc-pd-preview-backdrop" onClick={() => setPreviewOpen(false)}>
+          <section className="edc-pd-preview-dialog" role="dialog" aria-modal="true" aria-label="Public teacher profile preview" onClick={(event) => event.stopPropagation()}>
+            <header><h2>Public Profile Preview</h2><button type="button" aria-label="Close preview" onClick={() => setPreviewOpen(false)}><X size={19} /></button></header>
+            <div className="edc-pd-preview-identity">
+              <div className="edc-pd-avatar">{profile.avatar ? <img src={profile.avatar} alt="" /> : <UserRound size={36} />}</div>
+              <div><h3>{displayName || "Name not added"}</h3><p>{profile.headline || "Professional headline not added"}</p></div>
+            </div>
+            <p>{profile.bio || "No biography added yet."}</p>
+            <dl>
+              <div><dt>Email</dt><dd>{email || "Email not available"}</dd></div>
+              <div><dt>Qualification</dt><dd>{qualification || "Not added"}</dd></div>
+              <div><dt>Experience</dt><dd>{experience || "Not added"}</dd></div>
+              <div><dt>Teaching Areas</dt><dd>{teachingAreas.join(", ") || "Not added"}</dd></div>
+            </dl>
+            <h3>Published Courses</h3>
+            {publicCourses.length ? <ul>{publicCourses.map((course) => <li key={course.id}>{course.title}</li>)}</ul> : <p>No published courses yet.</p>}
+          </section>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function TeacherDashboard({ email = "teacher@example.com" }) {
   const location = useLocation();
@@ -267,13 +486,7 @@ function TeacherDashboard({ email = "teacher@example.com" }) {
     ? courses.find((item) => String(item.id) === requestedCourseId)
     : null;
 
-  const [profile, setProfile] = useState(() =>
-    readSaved(profileKey, {
-      name: email.split("@")[0],
-      headline: "",
-      bio: "",
-    })
-  );
+  const [profile, setProfile] = useState(() => readTeacherProfile(profileKey, email));
 
   const [tab, setTab] = useState(() =>
     location.pathname.startsWith("/teacher/dashboard/students/")
@@ -384,6 +597,10 @@ const [lessonForm, setLessonForm] = useState({
 });
 
   const [profileSaved, setProfileSaved] = useState(false);
+  const [showProfileEditor, setShowProfileEditor] = useState(false);
+  const profileImageUploadRequest = useRef(0);
+  const [profileImageProcessing, setProfileImageProcessing] = useState(false);
+  const [profileImageError, setProfileImageError] = useState("");
   
 const [previewCourse, setPreviewCourse] = useState(null);
 
@@ -493,7 +710,7 @@ function handleThumbnailUpload(event) {
     return;
   }
 
-  compressCourseThumbnail(file).then((thumbnail) => {
+  compressImageForStorage(file).then((thumbnail) => {
     setCourseForm((previous) => ({
       ...previous,
       thumbnail,
@@ -626,23 +843,27 @@ function removeThumbnail() {
     }));
   }
 
-  function removeLesson(courseId, lessonId) {
-    if (!window.confirm("Remove this lesson?")) return;
-    deleteLessonVideo(lessonVideoKey(email, courseId, lessonId)).catch(console.error);
-
-    updateCourses((previous) =>
+  function removeLesson(courseId, lessonId, options) {
+    if (!options?.skipConfirm && !window.confirm("Remove this lesson?")) return false;
+    const saved = updateCourses((previous) =>
       previous.map((course) =>
-        course.id === courseId
+        String(course.id) === String(courseId)
           ? {
               ...course,
               status: "Draft",
               lessons: (course.lessons || []).filter(
-                (lesson) => lesson.id !== lessonId
+                (lesson) => String(lesson.id) !== String(lessonId)
               ),
             }
           : course
       )
     );
+    if (!saved) return false;
+    deleteLessonVideo(lessonVideoKey(email, courseId, lessonId)).catch((error) => {
+      console.error("Could not remove the lesson video", error);
+      setCourseStorageError("Lesson removed, but its video file could not be deleted.");
+    });
+    return true;
   }
 
 function openLessonForm(courseId, lesson = null) {
@@ -749,7 +970,7 @@ function moveLesson(courseId, lessonId, direction) {
 
 const teacherProfileImage = profile.avatar || "";
 const teacherExpertise = profile.expertise || "";
-const teacherDisplayName = profile.name || "Instructor";
+const teacherDisplayName = profile.name || "Name not added";
 const teacherTeachingProfile = {
   educationLevel: profile.teachingEducationLevel || "",
   classNumber: profile.teachingClassNumber || "",
@@ -765,6 +986,45 @@ const teacherFocusSubjects = teacherFocusComplete ? getStudentAcademicSubjects(t
 const teacherFocusLabel = teacherFocusComplete
   ? `${teacherFocusContext.title}${teacherTeachingProfile.degreeLevel ? ` · ${teacherTeachingProfile.degreeLevel.toUpperCase()}` : ""}`
   : "Choose a level and area of expertise";
+const teacherSkillTags = [...new Set(String(teacherExpertise).split(/[,\n;]+/).map((item) => item.trim()).filter(Boolean))];
+const profileList = (value) => Array.isArray(value) ? value : value ? [value] : [];
+const teacherProfileAreas = [...new Set([
+  ...teacherFocusSubjects,
+  ...profileList(profile.subjects),
+  ...profileList(profile.teachingSubjects),
+  ...courses.flatMap((course) => [
+    ...profileList(course.subject),
+    ...profileList(course.subjects),
+    ...profileList(course.specialization),
+  ]),
+].map((item) => String(item || "").trim()).filter(Boolean))];
+const profileCompletionFields = [
+  profile.name,
+  profile.avatar,
+  profile.headline,
+  profile.bio,
+  teacherExpertise,
+  profile.qualification,
+  profile.experience,
+  profile.availability,
+  teacherFocusComplete,
+];
+const profileCompletion = Math.round(profileCompletionFields.filter(Boolean).length / profileCompletionFields.length * 100);
+
+function startProfileEdit() {
+  setProfileSaved(false);
+  setShowProfileEditor(true);
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function cancelProfileEdit() {
+  profileImageUploadRequest.current += 1;
+  setProfileImageProcessing(false);
+  setProfileImageError("");
+  setProfile(readTeacherProfile(profileKey, email));
+  setProfileSaved(false);
+  setShowProfileEditor(false);
+}
 
 function updateTeacherTeachingProfile(field, value) {
   setProfileSaved(false);
@@ -789,27 +1049,36 @@ function updateTeacherTeachingProfile(field, value) {
   });
 }
 
-function handleTeacherProfileImage(event) {
+async function handleTeacherProfileImage(event) {
   const file = event.target.files?.[0];
   if (!file) return;
+  const requestId = profileImageUploadRequest.current + 1;
+  profileImageUploadRequest.current = requestId;
+  setProfileImageProcessing(false);
   if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
-    alert("Only JPG, PNG or WebP images allowed.");
+    setProfileImageError("Choose a JPG, PNG or WebP image.");
     event.target.value = "";
     return;
   }
-  if (file.size > 1024 * 1024) {
-    alert("Image must be smaller than 1MB.");
-    event.target.value = "";
-    return;
-  }
-  const reader = new FileReader();
-  reader.onload = () => {
-    setProfile((previous) => ({ ...previous, avatar: String(reader.result) }));
-    setProfileSaved(false);
-  };
-  reader.onerror = () => alert("Unable to read image.");
-  reader.readAsDataURL(file);
+
+  setProfileImageProcessing(true);
+  setProfileImageError("");
   event.target.value = "";
+
+  try {
+    const avatar = await compressImageForStorage(file);
+    if (profileImageUploadRequest.current !== requestId) return;
+    setProfile((previous) => ({ ...previous, avatar }));
+    setProfileSaved(false);
+  } catch (error) {
+    if (profileImageUploadRequest.current === requestId) {
+      setProfileImageError(error.message || "Unable to process this image.");
+    }
+  } finally {
+    if (profileImageUploadRequest.current === requestId) {
+      setProfileImageProcessing(false);
+    }
+  }
 }
 
   function submitForApproval(courseId) {
@@ -1140,7 +1409,6 @@ function handleTeacherProfileImage(event) {
             >
               <Icon size={19} />
               <span>{label}</span>
-              {id === "notifications" && unreadNotifications > 0 && <span className="edc-notification-count" aria-label={`${unreadNotifications} unread`}>{unreadNotifications > 99 ? "99+" : unreadNotifications}</span>}
             </button>
           ))}
         </nav>
@@ -1163,13 +1431,13 @@ function handleTeacherProfileImage(event) {
           students={uniqueStudents}
           navigation={navigation}
           unread={unreadNotifications}
+          notifications={notifications}
+          onReadNotification={markNotificationRead}
+          onReadAllNotifications={markAllNotificationsRead}
+          onDeleteNotification={deleteNotification}
           onNavigate={navigateTo}
           onEdit={startEdit}
-          onStudent={studentEmail => {
-            setStudentSearch(studentEmail);
-            setStudentCourseFilter("All");
-            navigateTo("students");
-          }}
+          onStudent={() => navigateTo("students")}
           onLogout={signOut}
           onOpenMenu={() => setMobileMenuOpen(true)}
         />
@@ -1180,7 +1448,7 @@ function handleTeacherProfileImage(event) {
                 Teacher Workspace / {teacherEarningsDetailConfig ? `Earnings / ${teacherEarningsDetailConfig.title}` : teacherStudentDetailConfig ? `My Students / ${teacherStudentDetailConfig.title}` : teacherStatDetailConfig ? `Overview / ${teacherStatDetailConfig.title}` : navigation.find(([id]) => id === tab)?.[1]}
               </span>
 
-              {!["reviews", "discussions", "lessons", "analytics", "quizzes", "course-assignments"].includes(tab) && !(tab === "students" && !teacherStudentDetailConfig) && !(tab === "earnings" && !teacherEarningsDetailConfig) && (
+              {!["reviews", "discussions", "lessons", "analytics", "quizzes", "course-assignments", "curriculum"].includes(tab) && !(tab === "students" && !teacherStudentDetailConfig) && !(tab === "earnings" && !teacherEarningsDetailConfig) && (
                 <h2>
                   {teacherEarningsDetailConfig?.title || teacherStudentDetailConfig?.title || teacherStatDetailConfig?.title || navigation.find(([id]) => id === tab)?.[1]}
                 </h2>
@@ -1314,7 +1582,7 @@ function handleTeacherProfileImage(event) {
 {tab === "quizzes" && <CourseQuizzes role="teacher" email={email} courses={courses.map(c => ({ ...c, teacherEmail: email }))} />}
 {tab === "course-assignments" && <CourseAssignments role="teacher" email={email} courses={courses.map(c => ({ ...c, teacherEmail: email }))} />}
 {tab === "curriculum" && <CurriculumBuilder role="teacher" email={email} courses={courses.map(c => ({ ...c, teacherEmail: email }))}
-  onAddLesson={(courseId, lesson) => updateCourses(prev => prev.map(c => String(c.id)===String(courseId) ? {...c,lessons:[...(Array.isArray(c.lessons)?c.lessons:[]),lesson]} : c))}
+  onAddLesson={(courseId, lesson) => updateCourses(prev => prev.map(c => String(c.id)===String(courseId) ? {...c,status:"Draft",lessons:[...(Array.isArray(c.lessons)?c.lessons:[]),lesson]} : c))}
   onReorderLessons={(courseId, orderedIds) => updateCourses(prev => prev.map(c => {
     if(String(c.id)!==String(courseId))return c;
     const old=Array.isArray(c.lessons)?c.lessons:[];
@@ -1322,14 +1590,16 @@ function handleTeacherProfileImage(event) {
     const remaining=old.filter(l=>!orderedIds.some(id=>String(id)===String(l.id)));
     return {...c,lessons:[...picked,...remaining]};
   }))}
+  onNavigate={navigateTo}
+  onEditCourse={(courseId) => { const target = courses.find(item => String(item.id) === String(courseId)); if (target) startEdit(target); }}
+  onOpenLesson={(courseId, lessonId) => { const target = courses.find(item => String(item.id) === String(courseId)); const lesson = (target?.lessons || []).find(item => String(item.id) === String(lessonId)); openLessonForm(courseId, lesson || null); navigateTo("lessons"); }}
+  onDeleteLesson={removeLesson}
 />}
 {tab === "books" && <TeacherBooks email={email} profile={profile} />}
 {tab === "reviews" && <CourseReviews role="teacher" email={email} courses={courses} />}
 {tab === "discussions" && <CourseDiscussions role="teacher" email={email} courses={courses.map(course => ({ ...course, teacherEmail: email }))} />}
 {tab === "appeals" && <UserModerationAppeals email={email} name={profile.fullName || profile.name || "Teacher"} role="Teacher" />}
-{tab === "help-support" && <UserSupportCenter email={email} name={profile.fullName || profile.name || "Teacher"} role="Teacher" />}
-{tab === "notifications" && <NotificationsCenter notifications={notifications} onRead={markNotificationRead} onReadAll={markAllNotificationsRead} onDelete={deleteNotification} onNavigate={navigateTo} audience="teacher" />}
-
+{tab === "help-support" && <UserSupportCenter email={email} name={profile.fullName || profile.name || "Teacher"} role="Teacher" onNavigate={navigateTo} />}
 {tab === "courses" && (
   <div className="edc-teacher-courses-page">
     <header className="edc-teacher-courses-heading">
@@ -1858,14 +2128,11 @@ function handleTeacherProfileImage(event) {
         {/* PROFILE */}
         {tab === "profile" && (
           <div className="edc-profile-page">
-            <div className="edc-profile-heading">
-              <div>
-                <span className="edc-profile-eyebrow">INSTRUCTOR SETTINGS</span>
-                <h2>Teacher Profile</h2>
-                <p>Manage your professional instructor information.</p>
-              </div>
-              <span className="edc-profile-local-badge">Browser Storage</span>
-            </div>
+            {showProfileEditor && <div className="edc-profile-heading">
+              <div className="edc-profile-heading-copy"><h2>Edit Teacher Profile</h2><p>Changes will appear after you save.</p></div>
+              <button type="button" className="edc-pd-secondary" onClick={cancelProfileEdit}><X size={16} />Cancel</button>
+            </div>}
+            {showProfileEditor ? (
             <div className="edc-profile-layout">
               <section className="edc-profile-editor">
                 <div className="edc-profile-card-heading">
@@ -1876,10 +2143,15 @@ function handleTeacherProfileImage(event) {
                   className="edc-profile-form"
                   onSubmit={(event) => {
                     event.preventDefault();
+                    if (profileImageProcessing) {
+                      setProfileImageError("Wait for the profile picture to finish processing before saving.");
+                      return;
+                    }
                     try {
                       localStorage.setItem(profileKey, JSON.stringify(profile));
                       window.dispatchEvent(new Event("educonnect:teacher-profile-changed"));
                       setProfileSaved(true);
+                      setShowProfileEditor(false);
                     } catch {
                       setProfileSaved(false);
                       alert("Profile could not be saved. Check browser storage.");
@@ -1896,7 +2168,7 @@ function handleTeacherProfileImage(event) {
                     </div>
                     <div className="edc-profile-upload-actions">
                       <label className="edc-profile-upload-button" htmlFor="edc-profile-picture">
-                        Upload Picture
+                        {profileImageProcessing ? "Processing Picture..." : "Upload Picture"}
                       </label>
                       <input
                         id="edc-profile-picture"
@@ -1910,6 +2182,9 @@ function handleTeacherProfileImage(event) {
                           type="button"
                           className="edc-profile-remove-button"
                           onClick={() => {
+                            profileImageUploadRequest.current += 1;
+                            setProfileImageProcessing(false);
+                            setProfileImageError("");
                             setProfile((previous) => ({ ...previous, avatar: "" }));
                             setProfileSaved(false);
                           }}
@@ -1917,7 +2192,8 @@ function handleTeacherProfileImage(event) {
                           Remove Picture
                         </button>
                       )}
-                      <small>JPG, PNG or WebP, maximum 1 MB</small>
+                      <small>JPG, PNG or WebP. No file-size cap; images are optimized for browser storage.</small>
+                      {profileImageError && <small className="edc-profile-upload-error" role="alert">{profileImageError}</small>}
                     </div>
                   </div>
                   <div className="edc-profile-field">
@@ -2031,11 +2307,11 @@ function handleTeacherProfileImage(event) {
                   </>}
                   <div className="edc-profile-subject-preview">
                     <strong>Subjects and courses you teach</strong>
-                    <p>{teacherFocusSubjects.length ? teacherFocusSubjects.join(" · ") : teacherFocusComplete ? (teacherExpertise || "Add additional expertise above.") : "Select your teaching level and specialization to see related subjects."}</p>
+                    <p>{teacherFocusSubjects.length ? teacherFocusSubjects.join(" · ") : teacherFocusComplete ? "No subjects are configured for this teaching focus." : "Select your teaching level and specialization to see related subjects."}</p>
                   </div>
                   <div className="edc-profile-field">
                     <label htmlFor="edc-profile-availability">Availability</label>
-                    <select id="edc-profile-availability" value={profile.availability || "Available"} onChange={(event) => { setProfileSaved(false); setProfile((previous) => ({ ...previous, availability: event.target.value })); }}><option>Available</option><option>Busy</option><option>Unavailable</option></select>
+                    <select id="edc-profile-availability" value={profile.availability || ""} onChange={(event) => { setProfileSaved(false); setProfile((previous) => ({ ...previous, availability: event.target.value })); }}><option value="">Select availability</option><option>Available</option><option>Busy</option><option>Unavailable</option></select>
                   </div>
                   <div className="edc-profile-field">
                     <label htmlFor="edc-profile-bio">About Me</label>
@@ -2051,14 +2327,10 @@ function handleTeacherProfileImage(event) {
                     />
                   </div>
                   <div className="edc-profile-form-footer">
-                    <button className="edc-profile-save-button" type="submit">
+                    <button className="edc-profile-save-button" type="submit" disabled={profileImageProcessing}>
                       <CheckCircle2 size={18} /> Save Profile
                     </button>
-                    {profileSaved && (
-                      <span className="edc-profile-success">
-                        <CheckCircle2 size={17} /> Profile saved successfully
-                      </span>
-                    )}
+                    <button className="edc-profile-remove-button" type="button" onClick={cancelProfileEdit}>Cancel</button>
                   </div>
                 </form>
               </section>
@@ -2078,7 +2350,7 @@ function handleTeacherProfileImage(event) {
                   </div>
                   <h3>{teacherDisplayName}</h3>
                   <p className="edc-profile-preview-headline">
-                    {profile.headline || "Professional Instructor"}
+                    {profile.headline || "Professional headline not added"}
                   </p>
                   <span className="edc-profile-preview-role">
                     <GraduationCap size={15} /> EduConnect AI Instructor
@@ -2086,7 +2358,7 @@ function handleTeacherProfileImage(event) {
                   <div className="edc-profile-preview-divider" />
                   <div className="edc-profile-preview-detail">
                     <strong>Expertise</strong>
-                    <p>{teacherExpertise || "Add your expertise"}</p>
+                    <p>{teacherExpertise || "Expertise not added yet"}</p>
                   </div>
                   <div className="edc-profile-preview-detail">
                     <strong>Teaching Focus</strong>
@@ -2098,7 +2370,7 @@ function handleTeacherProfileImage(event) {
                   </div>}
                   <div className="edc-profile-preview-detail">
                     <strong>About Instructor</strong>
-                    <p>{profile.bio || "Your instructor biography will appear here."}</p>
+                    <p>{profile.bio || "No biography added yet."}</p>
                   </div>
                   <div className="edc-profile-preview-detail">
                     <strong>Contact Email</strong>
@@ -2107,6 +2379,22 @@ function handleTeacherProfileImage(event) {
                 </div>
               </aside>
             </div>
+            ) : (
+              <TeacherProfileOverview
+                profile={profile}
+                email={email}
+                courses={courses}
+                studentCount={uniqueStudents.length}
+                averageRating={averageCourseRating}
+                reviewCount={courseRatings.length}
+                completion={profileCompletion}
+                skills={teacherSkillTags}
+                teachingAreas={teacherProfileAreas}
+                profileSaved={profileSaved}
+                onEdit={startProfileEdit}
+                onNavigate={navigateTo}
+              />
+            )}
           </div>
         )}
 

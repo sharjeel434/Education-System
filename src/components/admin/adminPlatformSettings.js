@@ -56,23 +56,68 @@ function mergeSettings(value) {
   };
 }
 
+export function validateAdminPlatformSettings(settings) {
+  if (!isRecord(settings)) throw new Error("Platform settings are invalid.");
+  ["general", "appearance", "rules", "marketplace", "system", "notifications"].forEach((group) => {
+    if (settings[group] !== undefined && !isRecord(settings[group])) {
+      throw new Error("One or more settings values are invalid.");
+    }
+  });
+
+  const value = mergeSettings(settings);
+  const stringFields = ["websiteName", "tagline", "logoUrl", "faviconUrl", "supportEmail", "language", "timezone"];
+  if (stringFields.some((field) => typeof value.general[field] !== "string")) {
+    throw new Error("One or more settings values are invalid.");
+  }
+  if (!value.general.websiteName.trim()) throw new Error("Enter a website name.");
+  if (!value.general.supportEmail.trim()) throw new Error("Enter a support email.");
+  if (
+    !["light", "dark", "system"].includes(value.appearance.theme) ||
+    !["expanded", "compact"].includes(value.appearance.sidebar)
+  ) throw new Error("One or more settings values are invalid.");
+
+  const booleanFields = {
+    rules: ["teacherVerificationRequired", "courseApprovalRequired", "ebookApprovalRequired"],
+    marketplace: ["allowFreeContent", "allowPaidContent", "demoCheckoutMode"],
+    system: ["maintenanceMode", "registrationEnabled", "courseUploadEnabled"],
+    notifications: [
+      "newTeacherApplicationAlerts",
+      "courseApprovalAlerts",
+      "pdfApprovalAlerts",
+      "studentHelpRequestAlerts",
+      "systemAnnouncements",
+    ],
+  };
+  if (Object.entries(booleanFields).some(([group, fields]) =>
+    fields.some((field) => typeof value[group][field] !== "boolean")
+  )) throw new Error("One or more settings values are invalid.");
+
+  if (!["Approved content only", "Admin review required", "Allow teacher publishing"].includes(value.rules.contentPublishingRules)) {
+    throw new Error("One or more settings values are invalid.");
+  }
+  if (!["PKR", "USD", "GBP", "AED"].includes(value.marketplace.currency)) {
+    throw new Error("One or more settings values are invalid.");
+  }
+  if (
+    !Number.isFinite(Number(value.marketplace.commissionRate)) ||
+    Number(value.marketplace.commissionRate) < 0 ||
+    Number(value.marketplace.commissionRate) > 50
+  ) throw new Error("Commission must be between 0 and 50%.");
+  if (
+    !Number.isFinite(Number(value.system.pdfUploadLimitMb)) ||
+    Number(value.system.pdfUploadLimitMb) < 1 ||
+    Number(value.system.pdfUploadLimitMb) > 500
+  ) throw new Error("PDF upload size must be from 1 to 500 MB.");
+
+  return value;
+}
+
 export function getAdminPlatformSettings() {
   try {
     const raw = window.localStorage.getItem(ADMIN_PLATFORM_SETTINGS_KEY);
     if (!raw) return { ...DEFAULT_ADMIN_PLATFORM_SETTINGS, error: null };
     const parsed = JSON.parse(raw);
-    if (!isRecord(parsed)) throw new Error("Invalid settings format.");
-    const value = mergeSettings(parsed);
-    if (
-      !["light", "dark", "system"].includes(value.appearance.theme) ||
-      !["expanded", "compact"].includes(value.appearance.sidebar) ||
-      !Number.isFinite(Number(value.marketplace.commissionRate)) ||
-      Number(value.marketplace.commissionRate) < 0 ||
-      Number(value.marketplace.commissionRate) > 50 ||
-      !Number.isFinite(Number(value.system.pdfUploadLimitMb)) ||
-      Number(value.system.pdfUploadLimitMb) < 1 ||
-      Number(value.system.pdfUploadLimitMb) > 500
-    ) throw new Error("One or more settings values are invalid.");
+    const value = validateAdminPlatformSettings(parsed);
     return { ...value, error: null };
   } catch {
     return {
@@ -83,16 +128,7 @@ export function getAdminPlatformSettings() {
 }
 
 export function saveAdminPlatformSettings(settings) {
-  if (!isRecord(settings)) throw new Error("Platform settings are invalid.");
-  const value = mergeSettings(settings);
-  if (!value.general.websiteName.trim()) throw new Error("Enter a website name.");
-  if (!value.general.supportEmail.trim()) throw new Error("Enter a support email.");
-  if (!Number.isFinite(Number(value.marketplace.commissionRate)) || Number(value.marketplace.commissionRate) < 0 || Number(value.marketplace.commissionRate) > 50) {
-    throw new Error("Commission must be between 0 and 50%.");
-  }
-  if (!Number.isFinite(Number(value.system.pdfUploadLimitMb)) || Number(value.system.pdfUploadLimitMb) < 1 || Number(value.system.pdfUploadLimitMb) > 500) {
-    throw new Error("PDF upload size must be from 1 to 500 MB.");
-  }
+  const value = validateAdminPlatformSettings(settings);
   window.localStorage.setItem(ADMIN_PLATFORM_SETTINGS_KEY, JSON.stringify(value));
   window.dispatchEvent(new Event(ADMIN_PLATFORM_SETTINGS_CHANGED_EVENT));
 }

@@ -25,6 +25,8 @@ import {
   X,
   Zap,
 } from "lucide-react";
+import NotificationsCenter from "../notifications/NotificationsCenter";
+import "../notifications/NotificationsCenter.css";
 import {
   allSubmissions,
   assignmentKey,
@@ -65,6 +67,10 @@ export function TeacherWorkspaceHeader({
   students,
   navigation,
   unread,
+  notifications = [],
+  onReadNotification,
+  onReadAllNotifications,
+  onDeleteNotification,
   onNavigate,
   onEdit,
   onStudent,
@@ -74,18 +80,26 @@ export function TeacherWorkspaceHeader({
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [showAllNotifications, setShowAllNotifications] = useState(false);
+  const notificationButton = useRef(null);
   const root = useRef(null);
   useEffect(() => {
     const close = (event) => {
       if (!root.current?.contains(event.target)) {
         setSearchOpen(false);
         setAccountOpen(false);
+        setNotificationsOpen(false);
+        setShowAllNotifications(false);
       }
     };
     const escape = (event) => {
       if (event.key === "Escape") {
         setSearchOpen(false);
         setAccountOpen(false);
+        setNotificationsOpen(false);
+        setShowAllNotifications(false);
+        if (notificationsOpen) notificationButton.current?.focus();
       }
     };
     document.addEventListener("pointerdown", close);
@@ -94,7 +108,7 @@ export function TeacherWorkspaceHeader({
       document.removeEventListener("pointerdown", close);
       document.removeEventListener("keydown", escape);
     };
-  }, []);
+  }, [notificationsOpen]);
   const search = query.trim().toLowerCase();
   const matches = (value) =>
     String(value || "")
@@ -138,7 +152,10 @@ export function TeacherWorkspaceHeader({
         type="button"
         className="edc-to-menu-toggle"
         aria-label="Open teacher navigation"
-        onClick={onOpenMenu}
+        onClick={() => {
+          setNotificationsOpen(false);
+          onOpenMenu();
+        }}
       >
         <Menu size={23} />
       </button>
@@ -156,7 +173,11 @@ export function TeacherWorkspaceHeader({
           aria-label="Search your courses, students and workspace"
           placeholder="Search courses, students, or content..."
           value={query}
-          onFocus={() => setSearchOpen(true)}
+          onFocus={() => {
+            setSearchOpen(true);
+            setAccountOpen(false);
+            setNotificationsOpen(false);
+          }}
           onChange={(event) => {
             setQuery(event.target.value);
             setSearchOpen(true);
@@ -198,15 +219,68 @@ export function TeacherWorkspaceHeader({
           </div>
         )}
       </form>
-      <button
-        type="button"
-        className="edc-to-notifications"
-        aria-label={`Notifications, ${unread} unread`}
-        onClick={() => onNavigate("notifications")}
-      >
-        <Bell size={24} />
-        {unread > 0 && <span>{unread > 99 ? "99+" : unread}</span>}
-      </button>
+      <div className="edc-to-notification-menu">
+        <button
+          ref={notificationButton}
+          type="button"
+          className="edc-to-notifications"
+          aria-label={`Notifications, ${unread} unread`}
+          aria-haspopup="dialog"
+          aria-expanded={notificationsOpen}
+          aria-controls="edc-to-notification-panel"
+          onClick={() => {
+            setNotificationsOpen((open) => !open);
+            setShowAllNotifications(false);
+            setSearchOpen(false);
+            setAccountOpen(false);
+          }}
+        >
+          <Bell size={24} />
+          {unread > 0 && <span>{unread > 99 ? "99+" : unread}</span>}
+        </button>
+        {notificationsOpen && (
+          <section
+            className={`edc-to-notification-panel${showAllNotifications ? " is-showing-all" : ""}`}
+            id="edc-to-notification-panel"
+            role="dialog"
+            aria-label="All teacher notifications"
+          >
+            <header className="edc-to-notification-heading">
+              <div>
+                <strong>Notifications</strong>
+                <small>{unread ? `${unread} unread` : "You’re all caught up"}</small>
+              </div>
+              <button type="button" onClick={onReadAllNotifications} disabled={!unread}>
+                Mark all as read
+              </button>
+            </header>
+            <div className={`edc-to-notification-list${showAllNotifications ? " is-expanded" : ""}`}>
+              <NotificationsCenter
+                notifications={showAllNotifications ? notifications : notifications.slice(0, 5)}
+                onRead={onReadNotification}
+                onReadAll={onReadAllNotifications}
+                onDelete={onDeleteNotification}
+                onNavigate={(destination) => {
+                  setNotificationsOpen(false);
+                  setShowAllNotifications(false);
+                  onNavigate(destination);
+                }}
+                audience="teacher"
+              />
+            </div>
+            {notifications.length > 5 && (
+              <button
+                type="button"
+                className="edc-to-notification-all"
+                onClick={() => setShowAllNotifications((show) => !show)}
+              >
+                {showAllNotifications ? "Show fewer notifications" : "See all notifications"}
+                <ArrowRight size={15} aria-hidden="true" />
+              </button>
+            )}
+          </section>
+        )}
+      </div>
       <div className="edc-to-account">
         <button
           type="button"
@@ -216,6 +290,7 @@ export function TeacherWorkspaceHeader({
           onClick={() => {
             setAccountOpen((value) => !value);
             setSearchOpen(false);
+            setNotificationsOpen(false);
           }}
         >
           <TeacherAvatar profile={profile} />

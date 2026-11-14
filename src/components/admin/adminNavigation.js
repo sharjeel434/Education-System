@@ -6,7 +6,6 @@ import {
   BookCopy,
   LifeBuoy,
   BrainCircuit,
-  Building2,
   ClipboardCheck,
   FileDown,
   FileUp,
@@ -80,13 +79,6 @@ export const ADMIN_SECTIONS = [
     icon: UsersRound,
   },
   {
-    id: "institutions",
-    path: "/admin/institutions",
-    title: "Institution Management",
-    description: "Manage institution profiles, memberships, and platform access.",
-    icon: Building2,
-  },
-  {
     id: "tutors",
     path: "/admin/tutors",
     title: "Tutor Marketplace",
@@ -105,7 +97,7 @@ export const ADMIN_SECTIONS = [
     id: "ai-operations",
     path: "/admin/ai-operations",
     title: "AI Operations",
-    description: "Monitor and manage the platform's AI services.",
+    description: "Review saved AI knowledge proposals and the AI model, usage, and runtime data available in this browser.",
     icon: Activity,
   },
   {
@@ -166,7 +158,7 @@ export const ADMIN_SECTIONS = [
     id: "reports",
     path: "/admin/reports",
     title: "Reports & Analytics",
-    description: "View the summary counts currently available from demo browser data.",
+    description: "Review saved browser-local users, courses, enrollments, activity, and data availability.",
     icon: BarChart3,
   },
   {
@@ -205,7 +197,7 @@ export const ADMIN_SECTIONS = [
     path: "/admin/settings",
     title: "Admin Settings",
     navTitle: "Settings & Configuration",
-    description: "Manage local Admin interface display preferences for this browser.",
+    description: "Manage browser-local platform, appearance, marketplace, and notification settings.",
     icon: Settings,
   },
   {
@@ -280,7 +272,7 @@ export const ADMIN_NAV_GROUPS = [
   {
     id: "users-access",
     label: "USERS & ACCESS",
-    items: getSectionsById(["users", "teachers", "institutions"]),
+    items: getSectionsById(["users", "teachers"]),
   },
   {
     id: "content-governance",

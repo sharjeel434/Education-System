@@ -9,92 +9,8 @@ import {
 export const ADMIN_OPERATIONS_SETTINGS_KEY =
   "educonnect.adminOperationsSettings";
 
-export const DEMO_TUTORS = [
-  {
-    id: "tutor-react",
-    name: "Areeba Khan",
-    subject: "React & JavaScript",
-    level: "Beginner",
-    experience: "4 years (demo)",
-    rating: 4.9,
-    about: "Learn frontend fundamentals with practical projects.",
-    availability: ["Mon 4:00 PM", "Wed 5:00 PM", "Sat 11:00 AM"],
-  },
-  {
-    id: "tutor-python",
-    name: "Hamza Ali",
-    subject: "Python Programming",
-    level: "Beginner",
-    experience: "3 years (demo)",
-    rating: 4.8,
-    about: "Build confidence with Python exercises and examples.",
-    availability: ["Tue 3:00 PM", "Thu 6:00 PM", "Sun 12:00 PM"],
-  },
-  {
-    id: "tutor-design",
-    name: "Sara Malik",
-    subject: "UI/UX Design",
-    level: "Intermediate",
-    experience: "5 years (demo)",
-    rating: 4.9,
-    about: "Explore wireframes, prototyping, and design thinking.",
-    availability: ["Mon 6:00 PM", "Fri 4:00 PM", "Sat 2:00 PM"],
-  },
-];
-
-export const FINANCIAL_DEMO_RECORDS = {
-  transactions: [
-    { id: "DEMO-TXN-1001", date: "2026-11-01", description: "Course purchase", amount: 2500, status: "Completed" },
-    { id: "DEMO-TXN-1002", date: "2026-10-28", description: "Course purchase", amount: 2500, status: "Completed" },
-    { id: "DEMO-TXN-1003", date: "2026-10-25", description: "Course purchase", amount: 3000, status: "Completed" },
-  ],
-  payouts: [
-    { id: "DEMO-PAY-201", recipient: "Demo Instructor A", period: "October 2026", amount: 4250, status: "Sample pending" },
-    { id: "DEMO-PAY-202", recipient: "Demo Instructor B", period: "October 2026", amount: 3100, status: "Sample paid" },
-  ],
-  licenses: [
-    { id: "DEMO-LIC-301", customer: "Demo Learning Institute", plan: "Institution annual", amount: 120000, renewal: "2027-01-01", status: "Sample active" },
-    { id: "DEMO-SUB-302", customer: "Demo Individual", plan: "Learner monthly", amount: 2500, renewal: "2026-12-01", status: "Sample active" },
-  ],
-  adjustments: [
-    { id: "DEMO-ADJ-401", type: "Refund", reference: "DEMO-TXN-1002", amount: 2500, status: "Sample review" },
-    { id: "DEMO-ADJ-402", type: "Chargeback", reference: "DEMO-TXN-1003", amount: 3000, status: "Sample closed" },
-  ],
-  invoices: [
-    { id: "DEMO-INV-501", customer: "Demo Learning Institute", issued: "2026-10-01", amount: 120000, status: "Sample issued" },
-    { id: "DEMO-INV-502", customer: "Demo Individual", issued: "2026-11-01", amount: 2500, status: "Sample issued" },
-  ],
-};
-
-export const AI_DEMO_RECORDS = {
-  models: [
-    { id: "demo-model-1", provider: "Example Provider", model: "EduConnect Demo Assistant", version: "v1.2 (sample)", promptVersion: "prompt-3 (sample)", status: "Configuration example" },
-    { id: "demo-model-2", provider: "Local Demo", model: "Knowledge Classifier", version: "v0.8 (sample)", promptVersion: "prompt-2 (sample)", status: "Not deployed" },
-  ],
-  metrics: [
-    { id: "usage", label: "Requests", value: "1,240", note: "Illustrative sample" },
-    { id: "latency", label: "Median latency", value: "820 ms", note: "Illustrative sample" },
-    { id: "cost", label: "Estimated cost", value: "PKR 1,860", note: "Illustrative sample" },
-  ],
-  incidents: [
-    { id: "DEMO-AI-INC-1", title: "Sample response quality review", severity: "Low (sample)", status: "Open", detail: "Illustrative incident only; no live AI output is connected." },
-  ],
-  evaluations: [
-    { id: "DEMO-EVAL-1", suite: "Educational answer quality", result: "Sample pass", threshold: "80%", score: "86% (sample)" },
-    { id: "DEMO-EVAL-2", suite: "Safety review", result: "Sample review", threshold: "No critical findings", score: "Illustrative only" },
-  ],
-  flags: [
-    { id: "tutor-assistant", label: "Tutor assistant demo" },
-    { id: "knowledge-search", label: "Knowledge search demo" },
-    { id: "new-evaluation", label: "Evaluation preview" },
-  ],
-};
-
 const DEFAULT_SETTINGS = {
   tutorReviews: {},
-  commissionRate: 15,
-  aiFlags: {},
-  aiIncidentStatuses: {},
 };
 
 function isRecord(value) {
@@ -117,10 +33,6 @@ export function readAdminOperationsSettings() {
       ...DEFAULT_SETTINGS,
       ...parsed,
       tutorReviews: isRecord(parsed.tutorReviews) ? parsed.tutorReviews : {},
-      aiFlags: isRecord(parsed.aiFlags) ? parsed.aiFlags : {},
-      aiIncidentStatuses: isRecord(parsed.aiIncidentStatuses)
-        ? parsed.aiIncidentStatuses
-        : {},
       error: null,
     };
   } catch {
@@ -156,57 +68,9 @@ export function updateTutorReviewStatus(settings, tutorId, status, actor) {
   });
 }
 
-export function updateCommissionRate(settings, commissionRate, actor) {
-  saveSettings(settings, { commissionRate });
-  appendAdminActivityRecord({
-    actor,
-    action: "Updated demo commission configuration",
-    category: "financial-management",
-    entityType: "Finance Configuration",
-    entityId: "commission-rate",
-    targetName: "Demo commission rate",
-    description: `Demo commission rate set to ${commissionRate}%.`,
-    result: "Success",
-  });
-}
-
-export function updateAiFeatureFlag(settings, flagId, enabled, actor) {
-  saveSettings(settings, {
-    aiFlags: { ...settings.aiFlags, [flagId]: enabled },
-  });
-  appendAdminActivityRecord({
-    actor,
-    action: "Updated AI demo feature flag",
-    category: "ai-operations",
-    entityType: "AI Feature Flag",
-    entityId: flagId,
-    targetName: flagId,
-    description: `AI demo feature flag ${enabled ? "enabled" : "disabled"}. This is local demo configuration only.`,
-    result: "Success",
-  });
-}
-
-export function updateAiIncidentStatus(settings, incidentId, status, actor) {
-  saveSettings(settings, {
-    aiIncidentStatuses: {
-      ...settings.aiIncidentStatuses,
-      [incidentId]: status,
-    },
-  });
-  appendAdminActivityRecord({
-    actor,
-    action: "Updated AI demo incident review",
-    category: "ai-operations",
-    entityType: "AI Safety Incident",
-    entityId: incidentId,
-    targetName: incidentId,
-    description: `AI demo incident review status changed to ${status}.`,
-    result: "Success",
-  });
-}
-
 export function getAdminTutorProfiles(settings, users = readAdminArray(ADMIN_USERS_KEY)) {
-  const registeredProfiles = users
+  const seenProfiles = new Set();
+  return users
     .filter((user) =>
       isRecord(user) &&
       (user.role === "Tutor" ||
@@ -217,31 +81,39 @@ export function getAdminTutorProfiles(settings, users = readAdminArray(ADMIN_USE
     .map((user) => {
       const profile = isRecord(user.tutorProfile) ? user.tutorProfile : {};
       const application = isRecord(user.tutorApplication) ? user.tutorApplication : {};
-      const id = String(user.email || user.id || user.userId);
+      const email = typeof user.email === "string" ? user.email.trim() : "";
+      const id = email || String(user.id || user.userId || "").trim();
+      if (!id || seenProfiles.has(id.toLowerCase())) return null;
+      seenProfiles.add(id.toLowerCase());
+      const subjects = profile.subjects || profile.expertise || profile.subject || application.subjects || application.subject || user.subjects || user.subject;
+      const subjectList = Array.isArray(subjects)
+        ? subjects.filter((item) => typeof item === "string" && item.trim())
+        : typeof subjects === "string"
+          ? subjects.split(",").map((item) => item.trim()).filter(Boolean)
+          : [];
+      const name = [user.name, profile.name].find((item) => typeof item === "string" && item.trim()) || "Name not provided";
+      const savedStatus = settings.tutorReviews[id];
       return {
         id,
-        name: user.name || profile.name || "Unnamed tutor",
-        email: user.email || "",
-        subject: profile.subject || application.subject || user.subject || "Not provided",
+        name,
+        email,
+        subject: subjectList.join(", ") || "Not provided",
+        subjects: subjectList,
         qualification: application.qualification || profile.qualification || user.qualification || "Not provided",
         experience: profile.experience || application.experience || user.experience || "Not provided",
         availability: profile.availability || user.availability || "Not provided",
+        avatar: [profile.avatar, profile.profilePicture, user.profilePicture, user.avatar].find((item) => typeof item === "string" && item.trim()) || "",
+        createdAt: application.createdAt || user.createdAt || user.registeredAt || "",
+        about: profile.about || application.about || user.about || "",
         type: "Registered profile",
-        status: settings.tutorReviews[id] || application.reviewStatus || "Pending Review",
+        status: settings.error
+          ? application.reviewStatus || "Review status unavailable"
+          : typeof savedStatus === "string" && savedStatus.trim()
+            ? savedStatus
+            : application.reviewStatus || "Pending Review",
       };
-    });
-
-  const registeredIds = new Set(registeredProfiles.map((profile) => profile.id));
-  const demoProfiles = DEMO_TUTORS
-    .filter((tutor) => !registeredIds.has(tutor.id))
-    .map((tutor) => ({
-      ...tutor,
-      qualification: "Not provided in fictional demo profile",
-      type: "Fictional demo profile",
-      status: settings.tutorReviews[tutor.id] || "Pending Review",
-    }));
-
-  return [...registeredProfiles, ...demoProfiles];
+    })
+    .filter(Boolean);
 }
 
 export function getAdminTutorBookings() {
@@ -264,12 +136,11 @@ export function getAdminTutorBookings() {
           continue;
         }
         saved.filter(isRecord).forEach((booking) => {
-          const tutor = DEMO_TUTORS.find((item) => item.id === booking.tutorId);
           records.push({
             ...booking,
             studentEmail,
-            tutorName: tutor?.name || "Demo Tutor",
-            tutorSubject: tutor?.subject || "Not provided",
+            tutorName: "Demo catalog tutor",
+            tutorSubject: "Not provided",
           });
         });
       } catch {
@@ -303,12 +174,12 @@ export function updateAdminTutorBookingStatus(booking, status, actor) {
     entityType: "Tutor Booking",
     entityId: String(booking.id),
     targetName: booking.tutorName,
-    description: `Demo booking status changed to ${status}.`,
+    description: `Saved Student demo booking status changed to ${status}. No appointment or notification was created.`,
     result: "Success",
   });
 }
 
-export function getAdminDemoTransactions() {
+export function getAdminSavedOrderItems() {
   const transactions = [];
   const errors = [];
   try {
@@ -328,13 +199,18 @@ export function getAdminDemoTransactions() {
           continue;
         }
         saved.filter(isRecord).forEach((order) => {
-          (Array.isArray(order.items) ? order.items : []).filter(isRecord).forEach((item) => {
+          (Array.isArray(order.items) ? order.items : []).filter(isRecord).forEach((item, itemIndex) => {
+            const orderId = String(order.id || order.purchasedAt || "");
+            const price = item.price === null || item.price === undefined || item.price === ""
+              ? Number.NaN
+              : Number(item.price);
             transactions.push({
-              id: `${order.id || order.purchasedAt}:${item.id}`,
+              id: `${orderId || studentEmail}:${item.id ?? itemIndex}`,
+              orderId,
               date: order.purchasedAt || "",
-              description: item.title || "Course purchase",
-              amount: Math.max(0, Number(item.price) || 0),
-              status: order.status || "Unknown",
+              description: typeof item.title === "string" && item.title.trim() ? item.title : "Title not provided",
+              amount: Number.isFinite(price) ? Math.max(0, price) : null,
+              status: typeof order.status === "string" && order.status.trim() ? order.status : "Status not recorded",
               studentEmail: order.studentEmail || studentEmail,
             });
           });
@@ -346,7 +222,7 @@ export function getAdminDemoTransactions() {
   } catch {
     errors.push("Browser storage could not be scanned for demo transactions.");
   }
-  return { transactions, errors };
+  return { records: transactions, errors };
 }
 
 export { ADMIN_DATA_CHANGED_EVENT };

@@ -1,17 +1,27 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  ArrowLeft,
+  ArrowRight,
   Ban,
   BookOpen,
+  CalendarDays,
   Check,
   CheckCircle2,
+  ChevronDown,
+  Clock3,
+  Download,
   Eye,
   ExternalLink,
+  FileUp,
   Info,
+  Layers,
   RotateCcw,
   Search,
+  UserRound,
   X,
   XCircle,
 } from "lucide-react";
+import { Link } from "react-router-dom";
 import {
   ADMIN_DATA_CHANGED_EVENT,
   ADMIN_USERS_KEY,
@@ -21,6 +31,7 @@ import {
   readAdminArray,
   updateAdminCourseStatus,
 } from "./adminData";
+import { createCsvContent, downloadCsv } from "./adminCsvUtils";
 
 const STATUS_ORDER = [
   "Draft",
@@ -75,6 +86,7 @@ function formatSubmissionDate(course) {
     course.submissionDate,
     course.submittedOn,
     course.submittedDate,
+    course.createdAt,
   ];
 
   for (const date of dates) {
@@ -83,6 +95,28 @@ function formatSubmissionDate(course) {
   }
 
   return "Not provided";
+}
+
+function getCourseTimestamp(course) {
+  const dates = [
+    course.submittedAt,
+    course.submissionDate,
+    course.submittedOn,
+    course.submittedDate,
+    course.createdAt,
+  ];
+
+  for (const value of dates) {
+    if (typeof value !== "string" && typeof value !== "number") continue;
+    const timestamp = new Date(value).getTime();
+    if (!Number.isNaN(timestamp)) return timestamp;
+  }
+
+  return null;
+}
+
+function isPendingReview(course) {
+  return course.status === "Pending Approval";
 }
 
 function courseStatusClass(status) {
@@ -108,17 +142,24 @@ function courseStatusClass(status) {
 }
 
 function getCourseFilters(courses) {
-  const statuses = new Set(
-    courses
-      .map((course) => course.status)
-      .filter((status) => typeof status === "string" && status.trim()),
+  const hasOtherStatuses = courses.some(
+    (course) =>
+      ![
+        "Pending Approval",
+        "Approved",
+        "Rejected",
+        "Draft",
+        "Published",
+      ].includes(course.status),
   );
-  const ordered = STATUS_ORDER.filter((status) => statuses.delete(status));
-
   return [
     { id: "all", label: "All Courses" },
-    ...ordered.map((status) => ({ id: status, label: status })),
-    ...[...statuses].sort().map((status) => ({ id: status, label: status })),
+    { id: "pending", label: "Pending" },
+    { id: "Approved", label: "Approved" },
+    { id: "Rejected", label: "Rejected" },
+    { id: "Published", label: "Published" },
+    { id: "Draft", label: "Drafts" },
+    ...(hasOtherStatuses ? [{ id: "other", label: "Other" }] : []),
   ];
 }
 
@@ -128,6 +169,10 @@ function firstCourseValue(course, keys) {
     if (value !== "Not provided") return value;
   }
   return "Not provided";
+}
+
+function courseCategory(course) {
+  return firstCourseValue(course, ["category", "subject"]);
 }
 
 function arrayField(course, keys) {
@@ -165,6 +210,23 @@ function getAiReport(course) {
     }
   }
   return [];
+}
+
+function getCourseReviewChecks(course) {
+  const media = firstCourseValue(course, [
+    "thumbnailUrl",
+    "thumbnail",
+    "imageUrl",
+    "image",
+    "videoUrl",
+  ]);
+  return [
+    { label: "Course description added", complete: displayValue(course.description) !== "Not provided" },
+    { label: "Syllabus available", complete: (Array.isArray(course.syllabus) && course.syllabus.length > 0) || (typeof course.syllabus === "string" && Boolean(course.syllabus.trim())) },
+    { label: "Lessons available", complete: Array.isArray(course.lessons) && course.lessons.length > 0 },
+    { label: "Rights declaration provided", complete: firstCourseValue(course, ["rightsDeclaration", "ownershipDeclaration", "contentOwnership"]) !== "Not provided" },
+    { label: "Course media provided", complete: Boolean(safeMediaUrl(media)) },
+  ];
 }
 
 function readCourseSnapshot() {
@@ -206,6 +268,12 @@ function readCourseSnapshot() {
         displayValue(teacher?.name) !== "Not provided"
           ? displayValue(teacher?.name)
           : displayValue(profile.name),
+      teacherAvatar:
+        teacher?.avatar ||
+        teacher?.profile?.avatar ||
+        teacher?.teacherProfile?.avatar ||
+        profile.avatar ||
+        "",
     };
   });
 }
@@ -231,6 +299,13 @@ function AdminCourseReview() {
   const [courses, setCourses] = useState(readCourseSnapshot);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [specificStatusFilter, setSpecificStatusFilter] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [instructorFilter, setInstructorFilter] = useState("all");
+  const [dateRange, setDateRange] = useState("all");
+  const [dateReferenceTime, setDateReferenceTime] = useState(0);
+  const [page, setPage] = useState(1);
+  const [selectedCourseKey, setSelectedCourseKey] = useState("");
   const [selectedCourse, setSelectedCourse] = useState(null);
   const [revisionNotes, setRevisionNotes] = useState("");
   const [revisionEditorOpen, setRevisionEditorOpen] = useState(false);
@@ -238,8 +313,65 @@ function AdminCourseReview() {
   const [error, setError] = useState("");
   const closeButtonRef = useRef(null);
   const returnFocusRef = useRef(null);
+  const pageSize = 8;
 
-  const filters = useMemo(() => getCourseFilters(courses), [courses]);
+  const filters = useMemo(() => {
+    const groups = getCourseFilters(courses);
+    return groups.map((filter) => ({
+      ...filter,
+      count: courses.filter((course) => {
+        if (filter.id === "all") return true;
+        if (filter.id === "pending") return isPendingReview(course);
+        if (filter.id === "other") {
+          return !["Pending Approval", "Approved", "Rejected", "Draft"].includes(course.status);
+        }
+        return course.status === filter.id;
+      }).length,
+    }));
+  }, [courses]);
+
+  const categories = useMemo(
+    () => [...new Set(courses
+      .map(courseCategory)
+      .filter((category) => category !== "Not provided"))].sort((a, b) => a.localeCompare(b)),
+    [courses],
+  );
+  const instructors = useMemo(() => {
+    const byEmail = new Map();
+    courses.forEach((course) => {
+      if (!course.teacherEmail) return;
+      const email = course.teacherEmail.trim().toLowerCase();
+      if (!byEmail.has(email)) {
+        byEmail.set(email, {
+          email: course.teacherEmail,
+          name: displayValue(course.teacherName),
+        });
+      }
+    });
+    return [...byEmail.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [courses]);
+  const availableStatuses = useMemo(
+    () => [...new Set(courses
+      .map((course) => course.status)
+      .filter((status) => typeof status === "string" && status.trim()))]
+      .sort((a, b) => {
+        const orderA = STATUS_ORDER.indexOf(a);
+        const orderB = STATUS_ORDER.indexOf(b);
+        if (orderA === -1 && orderB === -1) return a.localeCompare(b);
+        if (orderA === -1) return 1;
+        if (orderB === -1) return -1;
+        return orderA - orderB;
+      }),
+    [courses],
+  );
+  const courseCounts = useMemo(() => ({
+    all: courses.length,
+    pending: courses.filter(isPendingReview).length,
+    approved: courses.filter((course) => course.status === "Approved").length,
+    rejected: courses.filter((course) => course.status === "Rejected").length,
+    published: courses.filter((course) => course.status === "Published").length,
+    drafts: courses.filter((course) => course.status === "Draft").length,
+  }), [courses]);
 
   useEffect(() => {
     function refreshCourses() {
@@ -277,6 +409,7 @@ function AdminCourseReview() {
 
   function openDetails(course, event) {
     returnFocusRef.current = event.currentTarget;
+    setSelectedCourseKey(courseKey(course));
     setRevisionNotes(
       typeof course.revisionNotes === "string" ? course.revisionNotes : "",
     );
@@ -307,24 +440,99 @@ function AdminCourseReview() {
 
   const filteredCourses = useMemo(() => {
     const query = search.trim().toLowerCase();
+    const days = Number(dateRange);
+    const cutoff = dateRange === "all" || !dateReferenceTime
+      ? null
+      : dateReferenceTime - days * 24 * 60 * 60 * 1000;
 
     return courses.filter((course) => {
-      const matchesStatus =
-        statusFilter === "all" || course.status === statusFilter;
+      const status = course.status;
+      const matchesGroup = statusFilter === "all" ||
+        (statusFilter === "pending" && isPendingReview(course)) ||
+        (statusFilter === "other" &&
+          !["Pending Approval", "Approved", "Rejected", "Draft"].includes(status)) ||
+        status === statusFilter;
+      const matchesSpecificStatus = specificStatusFilter === "all" ||
+        status === specificStatusFilter;
+      const matchesCategory = categoryFilter === "all" ||
+        courseCategory(course) === categoryFilter;
+      const matchesInstructor = instructorFilter === "all" ||
+        course.teacherEmail.trim().toLowerCase() === instructorFilter;
+      const timestamp = getCourseTimestamp(course);
+      const matchesDate = cutoff === null ||
+        (timestamp !== null && timestamp >= cutoff && timestamp <= dateReferenceTime);
       const searchableText = [
         course.title,
         course.teacherName,
         course.teacherEmail,
         course.category,
         course.subject,
+        course.id,
       ]
-        .filter((value) => typeof value === "string")
+        .filter((value) => typeof value === "string" || typeof value === "number")
+        .map(String)
         .join(" ")
         .toLowerCase();
 
-      return matchesStatus && (!query || searchableText.includes(query));
+      return matchesGroup &&
+        matchesSpecificStatus &&
+        matchesCategory &&
+        matchesInstructor &&
+        matchesDate &&
+        (!query || searchableText.includes(query));
     });
-  }, [courses, search, statusFilter]);
+  }, [courses, search, statusFilter, specificStatusFilter, categoryFilter, instructorFilter, dateRange, dateReferenceTime]);
+
+  const sortedCourses = useMemo(
+    () => [...filteredCourses].sort((a, b) =>
+      (getCourseTimestamp(b) ?? -Infinity) - (getCourseTimestamp(a) ?? -Infinity),
+    ),
+    [filteredCourses],
+  );
+  const pageCount = Math.max(1, Math.ceil(sortedCourses.length / pageSize));
+  const currentPage = Math.min(page, pageCount);
+  const visibleCourses = sortedCourses.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const pageStart = sortedCourses.length ? (currentPage - 1) * pageSize + 1 : 0;
+  const pageEnd = Math.min(currentPage * pageSize, sortedCourses.length);
+  const startPage = Math.max(1, Math.min(currentPage - 2, pageCount - 4));
+  const endPage = Math.min(pageCount, startPage + 4);
+  const pageNumbers = Array.from({ length: endPage - startPage + 1 }, (_, index) => startPage + index);
+  const featuredCourse = sortedCourses.find(
+    (course) => courseKey(course) === selectedCourseKey,
+  ) || sortedCourses[0] || null;
+
+  function selectCourseFilter(filter) {
+    setStatusFilter(filter);
+    setSpecificStatusFilter("all");
+    setPage(1);
+  }
+
+  function handleExport() {
+    setMessage("");
+    setError("");
+    try {
+      const columns = [
+        { header: "Course ID", getValue: (course) => course.id ?? "" },
+        { header: "Course", getValue: (course) => course.title ?? "" },
+        { header: "Instructor", getValue: (course) => course.teacherName ?? "" },
+        { header: "Instructor Email", getValue: (course) => course.teacherEmail ?? "" },
+            { header: "Category", getValue: courseCategory },
+        { header: "Submitted On", getValue: formatSubmissionDate },
+        { header: "Status", getValue: (course) => course.status ?? "" },
+      ];
+      downloadCsv(
+        "educonnect-course-review-report.csv",
+        createCsvContent(sortedCourses, columns),
+      );
+      setMessage(`Exported ${sortedCourses.length} course${sortedCourses.length === 1 ? "" : "s"}.`);
+    } catch (exportError) {
+      setError(
+        exportError instanceof Error
+          ? exportError.message
+          : "The course report could not be exported.",
+      );
+    }
+  }
 
   function changeCourseStatus(course, nextStatus) {
     setMessage("");
@@ -460,7 +668,7 @@ function AdminCourseReview() {
       ["Subtitle", displayValue(course.subtitle)],
       ["Instructor", displayValue(course.teacherName)],
       ["Teacher email", displayValue(course.teacherEmail)],
-      ["Category or subject", displayValue(course.category ?? course.subject)],
+      ["Category or subject", courseCategory(course)],
       ["Pricing", price === "Not provided" ? price : `${price}${currency !== "Not provided" ? ` ${currency}` : ""}`],
       ["Submission date", formatSubmissionDate(course)],
       ["Current status", displayValue(course.status)],
@@ -476,39 +684,55 @@ function AdminCourseReview() {
 
   return (
     <section className="edc-admin-course-review">
-      <div className="edc-admin-applications-toolbar">
-        <label className="edc-admin-search">
-          <Search size={17} aria-hidden="true" />
-          <span className="edc-admin-visually-hidden">
-            Search courses
-          </span>
-          <input
-            type="search"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search by course, teacher or subject"
-          />
-        </label>
-
-        <div className="edc-admin-application-filters" aria-label="Filter courses">
-          {filters.map((filter) => (
-            <button
-              key={filter.id}
-              type="button"
-              className={
-                `edc-admin-filter-button${
-                  statusFilter === filter.id
-                    ? " edc-admin-filter-button-active"
-                    : ""
-                }`
-              }
-              aria-pressed={statusFilter === filter.id}
-              onClick={() => setStatusFilter(filter.id)}
-            >
-              {filter.label}
-            </button>
-          ))}
+      <header className="edc-admin-course-heading">
+        <div>
+          <span className="edc-admin-page-eyebrow">COURSE GOVERNANCE</span>
+          <h2><BookOpen aria-hidden="true" />Course Review &amp; Approval</h2>
+          <p>Review saved teacher courses before approving them for students.</p>
         </div>
+        <div className="edc-admin-course-heading-actions">
+          <Link to="/admin/data-import" className="edc-admin-action-button">
+            <FileUp size={16} aria-hidden="true" />Import Courses
+          </Link>
+          <button
+            type="button"
+            className="edc-admin-action-button"
+            onClick={handleExport}
+            disabled={!sortedCourses.length}
+          >
+            <Download size={16} aria-hidden="true" />Export Report
+          </button>
+          <button
+            type="button"
+            className="edc-admin-button-primary"
+            onClick={() => selectCourseFilter("pending")}
+            disabled={!courseCounts.pending}
+          >
+            <Clock3 size={16} aria-hidden="true" />Review Pending
+          </button>
+        </div>
+      </header>
+
+      <div className="edc-admin-course-stats" aria-label="Course summaries">
+        {[
+          { label: "Total Courses", count: courseCounts.all, filter: "all", color: "purple", icon: Layers },
+          { label: "Pending Review", count: courseCounts.pending, filter: "pending", color: "orange", icon: Clock3 },
+          { label: "Approved", count: courseCounts.approved, filter: "Approved", color: "green", icon: CheckCircle2 },
+          { label: "Rejected", count: courseCounts.rejected, filter: "Rejected", color: "red", icon: XCircle },
+          { label: "Published", count: courseCounts.published, filter: "Published", color: "violet", icon: BookOpen },
+          { label: "Drafts", count: courseCounts.drafts, filter: "Draft", color: "purple", icon: FileUp },
+        ].map(({ label, count, filter, color, icon: Icon }) => (
+          <button
+            className={`edc-admin-course-stat edc-admin-metric-card edc-admin-metric-${color}${statusFilter === filter ? " is-active" : ""}`}
+            key={label}
+            type="button"
+            aria-pressed={statusFilter === filter}
+            onClick={() => selectCourseFilter(filter)}
+          >
+            <span className="edc-admin-course-stat-icon"><Icon size={23} aria-hidden="true" /></span>
+            <span><small>{label}</small><strong>{count.toLocaleString()}</strong></span>
+          </button>
+        ))}
       </div>
 
       {message && (
@@ -524,83 +748,255 @@ function AdminCourseReview() {
         </p>
       )}
 
-      <p className="edc-admin-course-publishing-note">
-        Course publishing is not supported in this demo. Approval does not publish
-        a course or approve it for shared AI knowledge. AI governance remains a
-        separate decision.
-      </p>
+      <div className="edc-admin-course-workspace">
+        <section className="edc-admin-course-directory" aria-label="Course records">
+          <div className="edc-admin-course-tabs" aria-label="Filter courses by review status">
+          {filters.map((filter) => (
+            <button
+              key={filter.id}
+              type="button"
+              className={statusFilter === filter.id ? "is-active" : ""}
+              aria-pressed={statusFilter === filter.id}
+              onClick={() => selectCourseFilter(filter.id)}
+            >
+              {filter.label} <span>({filter.count.toLocaleString()})</span>
+            </button>
+          ))}
+          </div>
 
-      {courses.length === 0 ? (
-        <div className="edc-admin-applications-empty">
-          <span className="edc-admin-applications-empty-icon" aria-hidden="true">
-            <BookOpen size={23} />
-          </span>
-          <h3>No courses found</h3>
-          <p>Teacher courses stored in this browser will appear here.</p>
-        </div>
-      ) : filteredCourses.length === 0 ? (
-        <div className="edc-admin-applications-empty edc-admin-applications-empty-compact">
-          <Search size={21} aria-hidden="true" />
-          <h3>No matching courses</h3>
-          <p>Try a different search term or status filter.</p>
-        </div>
-      ) : (
-        <div className="edc-admin-table-wrap">
-          <table className="edc-admin-applications-table edc-admin-course-table">
-            <thead>
-              <tr>
-                <th scope="col">Course</th>
-                <th scope="col">Teacher</th>
-                <th scope="col">Category</th>
-                <th scope="col">Submitted</th>
-                <th scope="col">Status</th>
-                <th scope="col">Review actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredCourses.map((course) => {
-                return (
-                  <tr key={courseKey(course)}>
-                    <td>
-                      <strong>{displayValue(course.title)}</strong>
-                    </td>
-                    <td>
-                      <strong>{displayValue(course.teacherName)}</strong>
-                      <span>{displayValue(course.teacherEmail)}</span>
-                    </td>
-                    <td>{displayValue(course.category ?? course.subject)}</td>
-                    <td>{formatSubmissionDate(course)}</td>
-                    <td>
-                      <span
-                        className={`edc-admin-status-badge ${courseStatusClass(course.status)}`}
-                      >
-                        {displayValue(course.status)}
-                      </span>
-                    </td>
-                    <td>
-                      <div className="edc-admin-application-actions">
-                        <button
-                          className="edc-admin-action-button"
-                          type="button"
-                          onClick={(event) => openDetails(course, event)}
-                        >
-                          <Eye size={15} aria-hidden="true" />
-                          View Details
-                        </button>
-                      </div>
-                    </td>
+          <div className="edc-admin-course-filters">
+            <label className="edc-admin-search">
+              <Search size={17} aria-hidden="true" />
+              <span className="edc-admin-visually-hidden">Search courses</span>
+              <input
+                type="search"
+                value={search}
+                onChange={(event) => {
+                  setSearch(event.target.value);
+                  setPage(1);
+                }}
+                placeholder="Search by course title, instructor, or ID..."
+              />
+            </label>
+            <label className="edc-admin-course-select">
+              <span className="edc-admin-visually-hidden">Filter by category</span>
+              <select value={categoryFilter} onChange={(event) => { setCategoryFilter(event.target.value); setPage(1); }}>
+                <option value="all">All Categories</option>
+                {categories.map((category) => <option key={category} value={category}>{category}</option>)}
+              </select>
+              <ChevronDown size={14} aria-hidden="true" />
+            </label>
+            <label className="edc-admin-course-select">
+              <span className="edc-admin-visually-hidden">Filter by instructor</span>
+              <select value={instructorFilter} onChange={(event) => { setInstructorFilter(event.target.value); setPage(1); }}>
+                <option value="all">All Instructors</option>
+                {instructors.map((instructor) => (
+                  <option key={instructor.email} value={instructor.email.trim().toLowerCase()}>
+                    {instructor.name === "Not provided" ? instructor.email : instructor.name}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={14} aria-hidden="true" />
+            </label>
+            <label className="edc-admin-course-select">
+              <span className="edc-admin-visually-hidden">Filter by course status</span>
+              <select
+                value={specificStatusFilter}
+                onChange={(event) => {
+                  setSpecificStatusFilter(event.target.value);
+                  setStatusFilter("all");
+                  setPage(1);
+                }}
+              >
+                <option value="all">All Statuses</option>
+                {availableStatuses.map((status) => <option key={status} value={status}>{status}</option>)}
+              </select>
+              <ChevronDown size={14} aria-hidden="true" />
+            </label>
+            <label className="edc-admin-course-select">
+              <CalendarDays size={14} aria-hidden="true" />
+              <span className="edc-admin-visually-hidden">Filter by submission date</span>
+              <select value={dateRange} onChange={(event) => { setDateReferenceTime(Date.now()); setDateRange(event.target.value); setPage(1); }}>
+                <option value="all">All Time</option>
+                <option value="7">Last 7 Days</option>
+                <option value="30">Last 30 Days</option>
+                <option value="90">Last 90 Days</option>
+              </select>
+              <ChevronDown size={14} aria-hidden="true" />
+            </label>
+          </div>
+
+          {courses.length === 0 ? (
+            <div className="edc-admin-applications-empty">
+              <span className="edc-admin-applications-empty-icon" aria-hidden="true"><BookOpen size={23} /></span>
+              <h3>No courses found</h3>
+              <p>Teacher courses saved in this browser will appear here.</p>
+            </div>
+          ) : sortedCourses.length === 0 ? (
+            <div className="edc-admin-applications-empty edc-admin-applications-empty-compact">
+              <Search size={21} aria-hidden="true" />
+              <h3>No matching courses</h3>
+              <p>Try a different search term or filter.</p>
+            </div>
+          ) : (
+            <div className="edc-admin-table-wrap edc-admin-course-table-wrap">
+              <table className="edc-admin-applications-table edc-admin-course-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Course</th>
+                    <th scope="col">Instructor</th>
+                    <th scope="col">Category</th>
+                    <th scope="col">Submitted On</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Actions</th>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+                </thead>
+                <tbody>
+                  {visibleCourses.map((course) => {
+                    const media = safeMediaUrl(firstCourseValue(course, ["thumbnailUrl", "thumbnail", "imageUrl", "image"]));
+                    const pending = isPendingReview(course);
+                    return (
+                      <tr
+                        key={courseKey(course)}
+                        className={courseKey(course) === courseKey(featuredCourse || {}) ? "is-selected" : ""}
+                        onClick={() => setSelectedCourseKey(courseKey(course))}
+                      >
+                        <td>
+                          <div className="edc-admin-course-cell">
+                            <span className="edc-admin-course-thumbnail">
+                              {media ? <img src={media} alt="" loading="lazy" /> : <BookOpen size={18} aria-hidden="true" />}
+                            </span>
+                            <span>
+                              <strong>{displayValue(course.title)}</strong>
+                              {course.id !== undefined && course.id !== null && <small>ID: {displayValue(course.id)}</small>}
+                            </span>
+                          </div>
+                        </td>
+                        <td>
+                          <span className="edc-admin-course-instructor">
+                            <span className="edc-admin-course-instructor-avatar">
+                              {course.teacherAvatar ? <img src={course.teacherAvatar} alt="" loading="lazy" /> : <UserRound size={15} aria-hidden="true" />}
+                            </span>
+                            <span><strong>{displayValue(course.teacherName)}</strong><small>{displayValue(course.teacherEmail)}</small></span>
+                          </span>
+                        </td>
+                        <td><span className="edc-admin-course-category">{courseCategory(course)}</span></td>
+                        <td><span className="edc-admin-course-date"><CalendarDays size={13} aria-hidden="true" />{formatSubmissionDate(course)}</span></td>
+                        <td><span className={`edc-admin-status-badge ${courseStatusClass(course.status)}`}>{displayValue(course.status)}</span></td>
+                        <td>
+                          <div className="edc-admin-course-row-actions">
+                            <button
+                              className="edc-admin-course-icon-button"
+                              type="button"
+                              title="Review course details"
+                              aria-label={`Review ${displayValue(course.title)}`}
+                              onClick={(event) => openDetails(course, event)}
+                            ><Eye size={16} aria-hidden="true" /></button>
+                            {pending && (
+                              <>
+                                <button
+                                  className="edc-admin-course-icon-button is-approve"
+                                  type="button"
+                                  title="Approve course"
+                                  aria-label={`Approve ${displayValue(course.title)}`}
+                                  onClick={() => changeCourseStatus(course, "Approved")}
+                                ><Check size={16} aria-hidden="true" /></button>
+                                <button
+                                  className="edc-admin-course-icon-button is-reject"
+                                  type="button"
+                                  title="Reject course"
+                                  aria-label={`Reject ${displayValue(course.title)}`}
+                                  onClick={() => changeCourseStatus(course, "Rejected")}
+                                ><X size={16} aria-hidden="true" /></button>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
 
-      <p className="edc-admin-applications-count" aria-live="polite">
-        Showing {filteredCourses.length} of {courses.length} course
-        {courses.length === 1 ? "" : "s"}
-      </p>
+          <div className="edc-admin-course-pagination">
+            <p aria-live="polite">Showing {pageStart}–{pageEnd} of {sortedCourses.length.toLocaleString()} courses</p>
+            <div>
+              <button type="button" aria-label="Previous page" disabled={currentPage <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))}><ArrowLeft size={16} /></button>
+              {startPage > 1 && <><button type="button" onClick={() => setPage(1)}>1</button>{startPage > 2 && <span>…</span>}</>}
+              {pageNumbers.map((pageNumber) => <button key={pageNumber} type="button" aria-current={currentPage === pageNumber ? "page" : undefined} onClick={() => setPage(pageNumber)}>{pageNumber}</button>)}
+              {endPage < pageCount && <>{endPage < pageCount - 1 && <span>…</span>}<button type="button" onClick={() => setPage(pageCount)}>{pageCount}</button></>}
+              <button type="button" aria-label="Next page" disabled={currentPage >= pageCount} onClick={() => setPage((current) => Math.min(pageCount, current + 1))}><ArrowRight size={16} /></button>
+            </div>
+          </div>
+        </section>
+
+        <aside className="edc-admin-course-sidebar">
+          {featuredCourse ? (
+            <>
+              <section className="edc-admin-course-side-card">
+                <header className="edc-admin-course-side-heading"><h3><BookOpen size={18} />Course Review</h3></header>
+                {(() => {
+                  const image = safeMediaUrl(firstCourseValue(featuredCourse, ["thumbnailUrl", "thumbnail", "imageUrl", "image"]));
+                  return (
+                    <div className="edc-admin-course-feature">
+                      <div className="edc-admin-course-feature-image">
+                        {image ? <img src={image} alt="" /> : <BookOpen size={32} aria-hidden="true" />}
+                      </div>
+                      <span className={`edc-admin-status-badge ${courseStatusClass(featuredCourse.status)}`}>{displayValue(featuredCourse.status)}</span>
+                      <h4>{displayValue(featuredCourse.title)}</h4>
+                      <p>Instructor: {displayValue(featuredCourse.teacherName)}</p>
+                      <div className="edc-admin-course-feature-meta">
+                        <span><Layers size={13} aria-hidden="true" />{courseCategory(featuredCourse)}</span>
+                        <span><CalendarDays size={13} aria-hidden="true" />{formatSubmissionDate(featuredCourse)}</span>
+                      </div>
+                      <div className="edc-admin-course-side-actions">
+                        <button type="button" className="edc-admin-button-primary" onClick={(event) => openDetails(featuredCourse, event)}><Eye size={14} />Review Details</button>
+                        {isPendingReview(featuredCourse) && (
+                          <>
+                            <button type="button" className="edc-admin-course-side-approve" onClick={() => changeCourseStatus(featuredCourse, "Approved")}><Check size={14} />Approve</button>
+                            <button type="button" className="edc-admin-course-side-reject" onClick={() => changeCourseStatus(featuredCourse, "Rejected")}><X size={14} />Reject</button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </section>
+              <section className="edc-admin-course-side-card">
+                <header className="edc-admin-course-side-heading"><h3><CheckCircle2 size={18} />Review Checklist</h3></header>
+                <ul className="edc-admin-course-checklist">
+                  {getCourseReviewChecks(featuredCourse).map((check) => (
+                    <li key={check.label} className={check.complete ? "is-present" : ""}>
+                      {check.complete ? <CheckCircle2 size={15} /> : <span aria-hidden="true" />}
+                      {check.label}
+                    </li>
+                  ))}
+                </ul>
+                <p className="edc-admin-course-checklist-note">Shows whether saved materials are present; review their quality manually.</p>
+              </section>
+              <section className="edc-admin-course-side-card">
+                <header className="edc-admin-course-side-heading"><h3><Info size={18} />Reviewer Notes</h3></header>
+                <p className="edc-admin-course-reviewer-note">
+                  {typeof featuredCourse.revisionNotes === "string" && featuredCourse.revisionNotes.trim()
+                    ? featuredCourse.revisionNotes
+                    : "No saved reviewer notes."}
+                </p>
+                <p className="edc-admin-course-publishing-note">
+                  Approval does not publish the course or approve shared AI knowledge. Those actions are not supported here.
+                </p>
+              </section>
+            </>
+          ) : (
+            <section className="edc-admin-course-side-card edc-admin-course-side-empty">
+              <BookOpen size={26} aria-hidden="true" />
+              <h3>No course selected</h3>
+              <p>Saved course records will appear here when available.</p>
+            </section>
+          )}
+        </aside>
+      </div>
 
       {selectedCourse && (
         <div

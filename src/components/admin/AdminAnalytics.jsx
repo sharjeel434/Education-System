@@ -1,18 +1,19 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  ArrowRight,
   Activity,
   AlertTriangle,
   BarChart3,
   BookOpen,
-  BrainCircuit,
-  CalendarDays,
-  ClipboardCheck,
+  CheckCircle2,
+  Clock3,
   DollarSign,
-  Gauge,
+  Download,
+  FileText,
   GraduationCap,
-  LifeBuoy,
-  ShieldCheck,
+  RefreshCw,
+  Star,
   Store,
   UsersRound,
 } from "lucide-react";
@@ -27,13 +28,14 @@ import {
   readAdminUsersState,
 } from "./adminData";
 import {
-  AI_DEMO_RECORDS,
-  FINANCIAL_DEMO_RECORDS,
-  getAdminDemoTransactions,
+  getAdminSavedOrderItems,
   getAdminTutorBookings,
   getAdminTutorProfiles,
   readAdminOperationsSettings,
 } from "./adminOperationsData";
+import { collectInstructorCourseAnalytics } from "../../utils/instructorAnalytics";
+import { REVIEW_EVENT } from "../../utils/courseReviews";
+import { ORDERS_EVENT } from "../../utils/studentCart";
 
 function uniqueUsers(users) {
   const byEmail = new Map();
@@ -83,26 +85,82 @@ function formatPercent(value) {
   return `${Math.round(value)}%`;
 }
 
+function readCourseStorageError(teachers) {
+  for (const teacher of teachers) {
+    try {
+      const raw = window.localStorage.getItem(`educonnect.teacher.${teacher.email}.courses`);
+      if (raw === null) continue;
+      if (!Array.isArray(JSON.parse(raw))) {
+        return "Saved course records are not in a supported format.";
+      }
+    } catch {
+      return "Saved course records could not be read.";
+    }
+  }
+  return "";
+}
+
+function readEnrollmentStorageError() {
+  try {
+    for (let index = 0; index < window.localStorage.length; index += 1) {
+      const key = window.localStorage.key(index);
+      if (!key?.startsWith("educonnect.student.") || !key.endsWith(".enrollments")) continue;
+      const raw = window.localStorage.getItem(key);
+      if (raw === null) continue;
+      if (!Array.isArray(JSON.parse(raw))) {
+        return "Saved course enrollment records are not in a supported format.";
+      }
+    }
+  } catch {
+    return "Saved course enrollment records could not be read.";
+  }
+  return "";
+}
+
+function readReviewStorageError() {
+  try {
+    const raw = window.localStorage.getItem("educonnect.courseReviews.v1");
+    if (raw !== null && !Array.isArray(JSON.parse(raw))) {
+      return "Saved course reviews are not in a supported format.";
+    }
+  } catch {
+    return "Saved course reviews could not be read.";
+  }
+  return "";
+}
+
 function readReportsSnapshot() {
   const userState = readAdminUsersState();
   const users = uniqueUsers(userState.users);
   const teachers = getAdminTeachers(users);
-  const courses = getAdminCourses(users);
+  const courseError = userState.error || readCourseStorageError(teachers);
+  const courses = courseError ? [] : getAdminCourses(users);
+  const courseAnalytics = courseError ? [] : teachers.flatMap((teacher) => (
+    collectInstructorCourseAnalytics(
+      teacher.email,
+      courses.filter((course) => String(course.teacherEmail).trim().toLowerCase() === String(teacher.email).trim().toLowerCase()),
+    )
+  ));
+  const enrollmentError = readEnrollmentStorageError();
+  const reviewError = readReviewStorageError();
   const knowledgeState = getAdminKnowledgeStorageState();
   const activityState = getAdminActivityLog();
   const supportState = readAdminSupportRequestsState();
   const operationsSettings = readAdminOperationsSettings();
   const tutorProfiles = getAdminTutorProfiles(operationsSettings, userState.users);
   const tutorBookings = getAdminTutorBookings();
-  const transactionState = getAdminDemoTransactions();
-  const transactions = transactionState.transactions.length
-    ? transactionState.transactions
-    : FINANCIAL_DEMO_RECORDS.transactions;
+  const transactionState = getAdminSavedOrderItems();
+  const transactions = transactionState.records;
 
   return {
     users,
+    userError: userState.error || "",
     teachers,
     courses,
+    courseAnalytics,
+    courseError,
+    enrollmentError,
+    reviewError,
     knowledgeState,
     activityState,
     supportState,
@@ -111,11 +169,16 @@ function readReportsSnapshot() {
     tutorBookings,
     transactionState,
     transactions,
-    transactionSource: transactionState.transactions.length
-      ? "Browser-local demo orders"
-      : "Illustrative sample transactions",
+    transactionSource: transactionState.errors.length
+      ? "Order record scan incomplete"
+      : transactionState.records.length
+        ? "Saved browser-local demo orders"
+        : "No saved browser-local demo orders",
     errors: [
       userState.error,
+      courseError && courseError !== userState.error ? courseError : "",
+      enrollmentError,
+      reviewError,
       knowledgeState.error,
       activityState.error,
       supportState.error,
@@ -126,16 +189,18 @@ function readReportsSnapshot() {
   };
 }
 
-function DistributionPanel({ title, description, values, total, fillClass = "" }) {
+function DistributionPanel({ title, description, values, total, fillClass = "", unavailable = false }) {
   return (
-    <section className="edc-admin-panel">
+    <section className="edc-admin-panel edc-admin-report-card">
       <div className="edc-admin-panel-heading">
         <div>
           <h3>{title}</h3>
           <p>{description}</p>
         </div>
       </div>
-      {values.length === 0 ? (
+      {unavailable ? (
+        <p className="edc-admin-security-note">This data is unavailable because its saved source could not be read.</p>
+      ) : values.length === 0 ? (
         <p className="edc-admin-security-note">No records are available for this report in the current browser.</p>
       ) : (
         <div className="edc-admin-analytics-bars">
@@ -160,30 +225,145 @@ function DistributionPanel({ title, description, values, total, fillClass = "" }
   );
 }
 
+function DonutPanel({ title, description, values, total, colors, unavailable = false }) {
+  const stops = values.map(([, count], index) => {
+    const previousCount = values.slice(0, index).reduce((sum, [, value]) => sum + value, 0);
+    const start = (previousCount / Math.max(1, total)) * 100;
+    const end = start + (count / Math.max(1, total)) * 100;
+    return `${colors[index % colors.length]} ${start}% ${end}%`;
+  }).join(", ");
+
+  return (
+    <section className="edc-admin-report-card">
+      <header><h3>{title}</h3>{description && <p>{description}</p>}</header>
+      {unavailable ? <p className="edc-admin-report-empty">This data is unavailable because its saved source could not be read.</p>
+        : values.length ? (
+          <div className="edc-admin-report-donut-layout">
+            <div className="edc-admin-report-donut" style={{ background: `conic-gradient(${stops})` }} role="img" aria-label={`${total} saved records by category`}>
+              <span><strong>{total.toLocaleString()}</strong><small>Saved</small></span>
+            </div>
+            <div className="edc-admin-report-legend">{values.slice(0, 6).map(([label, count], index) => (
+              <div key={label}><i style={{ backgroundColor: colors[index % colors.length] }} /><span>{label}</span><strong>{count.toLocaleString()} ({formatPercent((count / Math.max(1, total)) * 100)})</strong></div>
+            ))}{values.length > 6 && <p>Showing 6 of {values.length} saved categories.</p>}</div>
+          </div>
+        ) : <p className="edc-admin-report-empty">No saved records are available for this report.</p>}
+    </section>
+  );
+}
+
+function EnrollmentTrendPanel({ records, unavailable = false }) {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+  const months = Array.from({ length: 12 }, (_, index) => {
+    const date = new Date(start.getFullYear(), start.getMonth() + index, 1);
+    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+    return { key, label: date.toLocaleDateString(undefined, { month: "short" }), count: 0 };
+  });
+  const monthCounts = new Map(months.map((month) => [month.key, month]));
+  let datedEnrollments = 0;
+  records.forEach((record) => {
+    const timestamp = Date.parse(record.enrolledAt || "");
+    if (!Number.isFinite(timestamp) || timestamp > now.getTime() || timestamp < start.getTime()) return;
+    const date = new Date(timestamp);
+    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+    const month = monthCounts.get(key);
+    if (!month) return;
+    month.count += 1;
+    datedEnrollments += 1;
+  });
+
+  const max = Math.max(1, ...months.map((month) => month.count));
+  const points = months.map((month, index) => ({
+    ...month,
+    x: 42 + (index * 548) / (months.length - 1),
+    y: 132 - (month.count / max) * 102,
+  }));
+  const path = points.map(({ x, y }, index) => `${index ? "L" : "M"}${x},${y}`).join(" ");
+
+  return (
+    <section className="edc-admin-report-card edc-admin-report-trend">
+      <header><div><h3>Recorded Enrollments (Last 12 Months)</h3><p>Counts use saved student enrollment dates; no user or revenue trend is inferred.</p></div><span><i /> Enrollments</span></header>
+      {unavailable ? <p className="edc-admin-report-empty">Enrollment history is unavailable because saved enrollment records could not be read.</p>
+        : datedEnrollments ? (
+          <div className="edc-admin-report-chart-wrap">
+            <svg viewBox="0 0 620 175" role="img" aria-label={`${datedEnrollments} saved enrollments with dates in the last 12 months`}>
+              {[30, 64, 98, 132].map((y) => <line key={y} x1="38" x2="596" y1={y} y2={y} className="edc-admin-report-gridline" />)}
+              <path d={path} className="edc-admin-report-line" />
+              {points.map((point) => <g key={point.key}>
+                <circle cx={point.x} cy={point.y} r="3.5" className="edc-admin-report-point"><title>{`${point.label}: ${point.count} enrollments`}</title></circle>
+                <text x={point.x} y="158" textAnchor="middle" className="edc-admin-report-axis-label">{point.label}</text>
+              </g>)}
+            </svg>
+          </div>
+        ) : <p className="edc-admin-report-empty">No saved enrollments with dates in the last 12 months.</p>}
+    </section>
+  );
+}
+
+function TopCoursesPanel({ courses, unavailable = false, reviewUnavailable = false }) {
+  const ranked = [...courses]
+    .filter((course) => course.students > 0)
+    .sort((left, right) => right.students - left.students || left.title.localeCompare(right.title))
+    .slice(0, 5);
+
+  return (
+    <section className="edc-admin-report-card">
+      <header><h3><BookOpen size={16} aria-hidden="true" />Top Courses by Saved Enrollments</h3></header>
+      {unavailable ? <p className="edc-admin-report-empty">Course enrollment data is unavailable because a saved data source could not be read.</p>
+        : ranked.length ? (
+          <div className="edc-admin-report-table-wrap">
+            <table className="edc-admin-report-table">
+              <thead><tr><th scope="col">#</th><th scope="col">Course Title</th><th scope="col">Instructor</th><th scope="col">Enrollments</th><th scope="col">Rating</th></tr></thead>
+              <tbody>{ranked.map((course, index) => (
+                <tr key={`${course.teacherEmail}-${course.id}`}>
+                  <td>{index + 1}</td><td><strong>{course.title || "Untitled course"}</strong></td>
+                  <td>{course.teacherEmail || "Instructor not recorded"}</td><td>{course.students.toLocaleString()}</td>
+                  <td>{reviewUnavailable ? "—" : course.reviews ? `${course.rating.toFixed(1)} / 5` : "Not collected"}</td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+        ) : <p className="edc-admin-report-empty">No saved course enrollments are available to rank.</p>}
+    </section>
+  );
+}
+
+const REPORT_TABS = [
+  ["overview", "Overview", BarChart3],
+  ["users", "User Reports", UsersRound],
+  ["courses", "Course Reports", BookOpen],
+  ["financial", "Financial Reports", DollarSign],
+  ["performance", "Performance", Activity],
+  ["custom", "Custom Reports", FileText],
+];
+
 function AdminAnalytics() {
   const [reports, setReports] = useState(readReportsSnapshot);
+  const [activeTab, setActiveTab] = useState("overview");
 
   useEffect(() => {
     function refresh() {
       setReports(readReportsSnapshot());
     }
 
-    window.addEventListener("storage", refresh);
-    window.addEventListener(ADMIN_DATA_CHANGED_EVENT, refresh);
-
-    return () => {
-      window.removeEventListener("storage", refresh);
-      window.removeEventListener(ADMIN_DATA_CHANGED_EVENT, refresh);
-    };
+    const events = ["storage", "focus", ADMIN_DATA_CHANGED_EVENT, "educonnect:student-data-changed", ORDERS_EVENT, REVIEW_EVENT];
+    events.forEach((event) => window.addEventListener(event, refresh));
+    return () => events.forEach((event) => window.removeEventListener(event, refresh));
   }, []);
 
   const {
     users,
+    userError,
     teachers,
     courses,
+    courseAnalytics,
+    courseError,
+    enrollmentError,
+    reviewError,
     knowledgeState,
     activityState,
     supportState,
+    operationsSettings,
     tutorProfiles,
     tutorBookings,
     transactionState,
@@ -191,274 +371,276 @@ function AdminAnalytics() {
     transactionSource,
     errors,
   } = reports;
-  const roleDistribution = useMemo(() => countMap(users.map((user) => user.role).filter((role) => typeof role === "string")), [users]);
-  const courseStatuses = useMemo(() => countMap(courses.map((course) => course.status).filter((status) => typeof status === "string")), [courses]);
-  const teacherStatuses = useMemo(() => countMap(teachers.map((teacher) => teacher.status).filter((status) => typeof status === "string")), [teachers]);
+  const roleDistribution = useMemo(
+    () => countMap(users.map((user) => typeof user.role === "string" && user.role.trim() ? user.role : "Role not recorded")),
+    [users],
+  );
+  const courseStatuses = useMemo(
+    () => countMap(courses.map((course) => typeof course.status === "string" && course.status.trim() ? course.status : "Status not recorded")),
+    [courses],
+  );
+  const teacherStatuses = useMemo(
+    () => countMap(teachers.map((teacher) => typeof teacher.status === "string" && teacher.status.trim() ? teacher.status : "Status not recorded")),
+    [teachers],
+  );
   const knowledgeProposals = knowledgeState.proposals;
-  const knowledgeStatuses = useMemo(() => countMap(knowledgeProposals.map((proposal) => proposal.status).filter((status) => typeof status === "string")), [knowledgeProposals]);
-  const supportStatuses = useMemo(() => countMap(supportState.records.map((record) => record.status).filter((status) => typeof status === "string")), [supportState.records]);
-  const moderationStatuses = useMemo(
-    () => countMap(supportState.records.filter((record) => record.category === "Moderation & Appeal").map((record) => record.status).filter((status) => typeof status === "string")),
+  const knowledgeStatuses = useMemo(
+    () => countMap(knowledgeProposals.map((proposal) => proposal.status || "Status not recorded")),
+    [knowledgeProposals],
+  );
+  const supportStatuses = useMemo(
+    () => countMap(supportState.records.map((record) => record.status || "Status not recorded")),
     [supportState.records],
   );
+  const moderationRecords = supportState.records.filter((record) => record.category === "Moderation & Appeal");
+  const moderationStatuses = useMemo(
+    () => countMap(moderationRecords.map((record) => record.status || "Status not recorded")),
+    [moderationRecords],
+  );
   const tutorBookingStatuses = useMemo(
-    () => countMap(tutorBookings.records.map((booking) => booking.status).filter((status) => typeof status === "string")),
+    () => countMap(tutorBookings.records.map((booking) => booking.status || "Status not recorded")),
     [tutorBookings.records],
   );
-  const activityRecords = activityState.records;
-  const activityByResult = useMemo(() => countMap(activityRecords.map((record) => record.result).filter((status) => typeof status === "string")), [activityRecords]);
-
+  const enrollmentRecords = courseAnalytics.flatMap((course) => course.enrollmentRecords);
+  const ratings = courseAnalytics.flatMap((course) => course.ratings);
+  const averageRating = ratings.length
+    ? ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length
+    : null;
+  const averageProgress = enrollmentRecords.length
+    ? Math.round(enrollmentRecords.reduce((sum, enrollment) => sum + enrollment.progress, 0) / enrollmentRecords.length)
+    : null;
+  const uniqueEnrolledStudents = new Set(enrollmentRecords.map((enrollment) => enrollment.email).filter(Boolean)).size;
   const totalUsers = users.length;
-  const studentCount = users.filter((user) => user.role === "Student").length;
-  const teacherCount = users.filter((user) => user.role === "Teacher").length;
-  const adminCount = users.filter((user) => user.role === "Admin").length;
-  const pendingTeacherCount = teachers.filter((teacher) => teacher.status === "pending").length;
-  const registeredTutorCount = tutorProfiles.filter((profile) => profile.type === "Registered profile").length;
-  const demoTutorCount = tutorProfiles.filter((profile) => profile.type === "Fictional demo profile").length;
-  const transactionTotal = transactions.reduce((sum, transaction) => sum + Number(transaction.amount || 0), 0);
-
   const totalCourses = courses.length;
-  const totalKnowledge = knowledgeProposals.length;
-  const totalActivity = activityRecords.length;
-
-  const analyticsCards = [
-    { label: "Registered users", value: totalUsers, icon: UsersRound, to: "/admin/users" },
-    { label: "Students", value: studentCount, icon: GraduationCap, to: "/admin/users" },
-    { label: "Teachers", value: teacherCount, icon: ClipboardCheck, to: "/admin/teachers" },
-    { label: "Pending teacher applications", value: pendingTeacherCount, icon: ClipboardCheck, to: "/admin/teachers" },
-    { label: "Admins", value: adminCount, icon: ShieldCheck, to: "/admin/users" },
-    { label: "Course records", value: totalCourses, icon: BookOpen, to: "/admin/courses" },
-    { label: "Knowledge proposals", value: totalKnowledge, icon: BrainCircuit, to: "/admin/knowledge" },
-    { label: "Support requests", value: supportState.records.length, icon: LifeBuoy, to: "/admin/support" },
-    { label: "Moderation & appeal requests", value: supportState.records.filter((record) => record.category === "Moderation & Appeal").length, icon: ShieldCheck, to: "/admin/moderation" },
-    { label: "Tutor profiles (incl. demo)", value: tutorProfiles.length, icon: Store, to: "/admin/tutors" },
-    { label: "Existing demo bookings", value: tutorBookings.records.length, icon: CalendarDays, to: "/admin/tutors" },
-    { label: "Transactions (demo)", value: transactions.length, icon: DollarSign, to: "/admin/finance" },
-    { label: "Demo transaction volume", value: `PKR ${transactionTotal.toLocaleString()}`, icon: DollarSign, to: "/admin/finance" },
-    { label: "AI sample incidents", value: AI_DEMO_RECORDS.incidents.length, icon: AlertTriangle, to: "/admin/ai-operations" },
-    { label: "AI illustrative metrics", value: AI_DEMO_RECORDS.metrics.length, icon: Gauge, to: "/admin/ai-operations" },
-    { label: "Recorded admin actions", value: totalActivity, icon: Activity, to: "/admin/audit-logs" },
+  const totalEnrollments = enrollmentRecords.length;
+  const activityCount = activityState.records.length;
+  const transactionsTotal = transactions.reduce(
+    (sum, transaction) => sum + (Number.isFinite(transaction.amount) ? transaction.amount : 0),
+    0,
+  );
+  const savedOrderValue = transactions.length && !transactionState.errors.length &&
+    transactions.every((transaction) => Number.isFinite(transaction.amount))
+    ? `PKR ${transactionsTotal.toLocaleString()}`
+    : transactionState.errors.length ? "—" : transactions.length ? "Amount unavailable" : "No saved orders";
+  const enrollmentByCategory = [...courseAnalytics.reduce((map, course) => {
+    const count = Number(course.students) || 0;
+    if (!count) return map;
+    const category = typeof course.category === "string" && course.category.trim()
+      ? course.category.trim()
+      : "Category not recorded";
+    map.set(category, (map.get(category) || 0) + count);
+    return map;
+  }, new Map())]
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]));
+  const ratingDistribution = [5, 4, 3, 2, 1]
+    .map((rating) => [`${rating} stars`, ratings.filter((value) => value === rating).length])
+    .filter(([, count]) => count > 0);
+  const progressDistribution = [
+    ["Completed", enrollmentRecords.filter((record) => record.progress >= 100).length],
+    ["In Progress", enrollmentRecords.filter((record) => record.progress > 0 && record.progress < 100).length],
+    ["Not Started", enrollmentRecords.filter((record) => record.progress <= 0).length],
+  ].filter(([, count]) => count > 0);
+  const hasEnrollmentError = Boolean(courseError || enrollmentError);
+  const hasRatingError = Boolean(courseError || reviewError);
+  const platformColors = ["#7412bf", "#ffba08", "#ee3e5a", "#3589ef", "#17a84b", "#8d7ba0"];
+  const stats = [
+    { label: "Total Users", value: userError ? "—" : totalUsers.toLocaleString(), icon: UsersRound, color: "purple", tab: "users" },
+    { label: "Total Courses", value: courseError ? "—" : totalCourses.toLocaleString(), icon: BookOpen, color: "orange", tab: "courses" },
+    { label: "Enrollments", value: hasEnrollmentError ? "—" : totalEnrollments.toLocaleString(), icon: GraduationCap, color: "green", tab: "performance" },
+    { label: "Revenue", value: "Not tracked", icon: DollarSign, color: "red", tab: "financial" },
+    { label: "Registered Tutors", value: userError || operationsSettings.error ? "—" : tutorProfiles.length.toLocaleString(), icon: Store, color: "violet", tab: "users" },
+    { label: "Average Rating", value: hasRatingError ? "—" : averageRating === null ? "Not collected" : `${averageRating.toFixed(1)} / 5`, icon: Star, color: "purple", tab: "courses" },
   ];
 
-  const hasAnyData = totalUsers > 0 || totalCourses > 0 || totalKnowledge > 0 ||
-    totalActivity > 0 || supportState.records.length > 0 ||
-    tutorBookings.records.length > 0 || transactionState.transactions.length > 0;
+  function refreshReports() {
+    setReports(readReportsSnapshot());
+  }
+
+  function quickAction(tab) {
+    setActiveTab(tab);
+  }
+
+  function renderOverview() {
+    return (
+      <div className="edc-admin-report-overview">
+        <main className="edc-admin-report-main">
+          <EnrollmentTrendPanel records={enrollmentRecords} unavailable={hasEnrollmentError} />
+          <TopCoursesPanel courses={courseAnalytics} unavailable={hasEnrollmentError} reviewUnavailable={hasRatingError} />
+          <section className="edc-admin-report-card edc-admin-report-recent">
+            <header><h3><FileText size={16} aria-hidden="true" />Recent Reports</h3><span>Not stored</span></header>
+            <div className="edc-admin-report-empty"><Clock3 size={21} aria-hidden="true" /><strong>Report generation history is not available.</strong><p>This app does not save generated or scheduled report records.</p></div>
+          </section>
+        </main>
+        <aside className="edc-admin-report-sidebar">
+          <DonutPanel
+            title="User Distribution"
+            description="Unique registered accounts by saved role."
+            values={roleDistribution}
+            total={totalUsers}
+            colors={platformColors}
+            unavailable={Boolean(userError)}
+          />
+          <section className="edc-admin-report-card">
+            <header><h3><DollarSign size={16} aria-hidden="true" />Revenue Overview</h3></header>
+            <div className="edc-admin-report-revenue"><strong>Not tracked</strong><span>Settled revenue is not available in this app.</span></div>
+            <dl className="edc-admin-report-facts">
+              <div><dt>Saved demo order items</dt><dd>{transactionState.errors.length ? "—" : transactions.length.toLocaleString()}</dd></div>
+              <div><dt>Saved order value (demo)</dt><dd>{savedOrderValue}</dd></div>
+              <div><dt>Payouts / refunds</dt><dd>Not tracked</dd></div>
+            </dl>
+            <p className="edc-admin-report-caption">{transactionSource}; checkout values are not confirmed payments.</p>
+          </section>
+          <DistributionPanel
+            title="Enrollments by Category"
+            description="Saved student enrollments grouped by each course category."
+            values={enrollmentByCategory}
+            total={totalEnrollments}
+            unavailable={hasEnrollmentError}
+          />
+          <section className="edc-admin-report-card">
+            <header><h3><Activity size={16} aria-hidden="true" />Key Insights</h3></header>
+            <ul className="edc-admin-report-insights">
+              <li><span><UsersRound size={14} /></span>{userError ? "Registered user totals are unavailable." : `${totalUsers.toLocaleString()} unique accounts are saved in this browser.`}</li>
+              <li><span><BookOpen size={14} /></span>{hasEnrollmentError ? "Enrollment totals are unavailable." : `${totalEnrollments.toLocaleString()} course enrollments across ${uniqueEnrolledStudents.toLocaleString()} unique students.`}</li>
+              <li><span><Star size={14} /></span>{hasRatingError ? "Course ratings are unavailable." : averageRating === null ? "No course ratings have been collected." : `${ratings.length.toLocaleString()} saved reviews; average ${averageRating.toFixed(1)} / 5.`}</li>
+              <li><span><Activity size={14} /></span>{activityState.error ? "Admin activity totals are unavailable." : `${activityCount.toLocaleString()} Admin activity records are saved in this browser.`}</li>
+              <li><span><DollarSign size={14} /></span>Revenue, payouts, refunds, and settled payments are not tracked.</li>
+            </ul>
+          </section>
+          <section className="edc-admin-report-card">
+            <header><h3><Activity size={16} aria-hidden="true" />Quick Actions</h3></header>
+            <div className="edc-admin-report-quick-actions">
+              <Link to="/admin/data-export"><Download size={14} />Export Available Data</Link>
+              <button type="button" onClick={() => quickAction("users")}><UsersRound size={14} />User Reports</button>
+              <button type="button" onClick={() => quickAction("courses")}><BookOpen size={14} />Course Reports</button>
+              <button type="button" onClick={() => quickAction("financial")}><DollarSign size={14} />Financial Reports</button>
+            </div>
+          </section>
+        </aside>
+      </div>
+    );
+  }
+
+  function renderUserReports() {
+    return (
+      <div className="edc-admin-report-panels">
+        <DonutPanel title="User Distribution" description="Counts use unique registered account emails." values={roleDistribution} total={totalUsers} colors={platformColors} unavailable={Boolean(userError)} />
+        <DistributionPanel title="Teacher Application Status" description="Current saved teacher account statuses." values={teacherStatuses} total={teachers.length} unavailable={Boolean(userError)} />
+        <DistributionPanel title="Support Request Status" description="Statuses from saved browser-local support requests." values={supportStatuses} total={supportState.records.length} unavailable={Boolean(supportState.error)} />
+        <DistributionPanel title="Moderation & Appeal Status" description="A category-filtered subset of the same saved support requests." values={moderationStatuses} total={moderationRecords.length} fillClass="course-fill" unavailable={Boolean(supportState.error)} />
+        <DistributionPanel title="Tutor Booking Requests" description="Saved student booking requests; this is not payment data." values={tutorBookingStatuses} total={tutorBookings.records.length} unavailable={tutorBookings.errors.length > 0} />
+        <DistributionPanel title="AI Knowledge Proposal Status" description="Current saved governance proposals, not AI runtime metrics." values={knowledgeStatuses} total={knowledgeProposals.length} fillClass="knowledge-fill" unavailable={Boolean(knowledgeState.error)} />
+      </div>
+    );
+  }
+
+  function renderCourseReports() {
+    return (
+      <div className="edc-admin-report-panels">
+        <DistributionPanel title="Course Status Distribution" description="Approval and publication states on saved teacher course records." values={courseStatuses} total={totalCourses} fillClass="course-fill" unavailable={Boolean(courseError)} />
+        <DistributionPanel title="Enrollments by Category" description="Actual saved student enrollments grouped by course category." values={enrollmentByCategory} total={totalEnrollments} unavailable={hasEnrollmentError} />
+        <TopCoursesPanel courses={courseAnalytics} unavailable={hasEnrollmentError} reviewUnavailable={hasRatingError} />
+      </div>
+    );
+  }
+
+  function renderFinancialReports() {
+    return (
+      <div className="edc-admin-report-panels">
+        <section className="edc-admin-report-card edc-admin-report-financial">
+          <header><h3><DollarSign size={17} aria-hidden="true" />Financial Data Availability</h3></header>
+          <p className="edc-admin-report-untracked">Revenue and payment settlement are not tracked.</p>
+          <p>This browser has saved checkout order items, but their values are demo checkout data and do not confirm completed or settled payments.</p>
+          <dl className="edc-admin-report-facts">
+            <div><dt>Saved demo order items</dt><dd>{transactionState.errors.length ? "—" : transactions.length.toLocaleString()}</dd></div>
+            <div><dt>Saved order value (demo)</dt><dd>{savedOrderValue}</dd></div>
+            <div><dt>Settled revenue</dt><dd>Not tracked</dd></div>
+            <div><dt>Payout / refund / invoice records</dt><dd>Not tracked</dd></div>
+            <div><dt>Subscriptions / licenses</dt><dd>Not tracked</dd></div>
+          </dl>
+          <p className="edc-admin-report-caption">{transactionSource}. No revenue total is inferred from these order items.</p>
+          <Link className="edc-admin-report-link" to="/admin/finance">Open Financial Management <ArrowRight size={14} /></Link>
+        </section>
+        <DistributionPanel title="Saved Tutor Booking Status" description="Booking requests are shown separately from financial transactions." values={tutorBookingStatuses} total={tutorBookings.records.length} />
+      </div>
+    );
+  }
+
+  function renderPerformance() {
+    return (
+      <div className="edc-admin-report-panels">
+        <EnrollmentTrendPanel records={enrollmentRecords} unavailable={hasEnrollmentError} />
+        <section className="edc-admin-report-card">
+          <header><h3><CheckCircle2 size={16} aria-hidden="true" />Saved Learning Progress</h3></header>
+          <div className="edc-admin-report-performance-number">
+            <strong>{hasEnrollmentError ? "—" : averageProgress === null ? "Not available" : `${averageProgress}%`}</strong>
+            <span>Average recorded progress across saved enrollment records.</span>
+          </div>
+          <DistributionPanel title="Enrollment Progress Status" description="Based on the saved progress field for each enrollment." values={progressDistribution} total={totalEnrollments} unavailable={hasEnrollmentError} />
+        </section>
+        <DonutPanel title="Saved Course Ratings" description="Recorded learner ratings only; moderated reviews are excluded by the source." values={ratingDistribution} total={ratings.length} colors={platformColors} unavailable={hasRatingError} />
+        <TopCoursesPanel courses={courseAnalytics} unavailable={hasEnrollmentError} reviewUnavailable={hasRatingError} />
+      </div>
+    );
+  }
+
+  function renderCustomReports() {
+    return (
+      <section className="edc-admin-report-card edc-admin-report-custom">
+        <span><FileText size={24} aria-hidden="true" /></span>
+        <h3>Custom report builder is not configured.</h3>
+        <p>This app does not save report definitions or generated report history. You can export the existing browser-local datasets without adding or simulating records.</p>
+        <Link to="/admin/data-export"><Download size={15} />Export Available Data</Link>
+      </section>
+    );
+  }
 
   return (
-    <section className="edc-admin-analytics">
-      <div className="edc-admin-analytics-header">
+    <section className="edc-admin-analytics edc-admin-reports-reference">
+      <header className="edc-admin-reports-heading">
         <div>
-          <span className="edc-admin-page-eyebrow">PLATFORM ANALYTICS</span>
-          <h3>Current platform overview</h3>
+          <span className="edc-admin-page-eyebrow">PLATFORM INSIGHTS</span>
+          <h2><BarChart3 aria-hidden="true" />Reports &amp; Analytics</h2>
+          <p>Explore saved user, course, enrollment, and activity data from this browser.</p>
         </div>
-        <Link className="edc-admin-export-link" to="/admin/data-export">
-          Export available data
-        </Link>
-      </div>
-
-      <p className="edc-admin-security-note">
-        Reports use records available in this browser only, not platform-wide or backend data. Tutor sample profiles, financial sample records, and AI metrics/incidents are illustrative and are labeled as demo information.
-      </p>
-      {errors.length > 0 && (
-        <p className="edc-admin-feedback edc-admin-feedback-error" role="alert">
-          <AlertTriangle size={16} aria-hidden="true" />
-          {errors.join(" ")}
-        </p>
-      )}
-
-      {!hasAnyData && (
-        <div className="edc-admin-applications-empty edc-admin-analytics-empty">
-          <span className="edc-admin-applications-empty-icon" aria-hidden="true">
-            <BarChart3 size={23} />
-          </span>
-          <h3>No analytics data available</h3>
-          <p>No registered users, courses, proposals, support requests, tutor bookings, demo orders, or activity records are available in this browser yet. Illustrative financial and AI sample data is not a platform statistic.</p>
+        <div className="edc-admin-reports-heading-actions">
+          <Link to="/admin/data-export"><Download size={15} />Export Available Data</Link>
+          <button type="button" onClick={refreshReports}><RefreshCw size={15} />Refresh</button>
         </div>
-      )}
+      </header>
+      <p className="edc-admin-reports-note">These are browser-local records, not platform-wide metrics. No sample data, growth percentages, or settled revenue figures are added.</p>
 
-      <div className="edc-admin-stat-grid edc-admin-analytics-grid">
-        {analyticsCards.map(({ label, value, icon: Icon, to }) => (
-          <Link className="edc-admin-stat-card edc-admin-ops-card edc-admin-ops-card-link" key={label} to={to}>
-                <span className="edc-admin-stat-icon" aria-hidden="true">
-                  <Icon size={19} />
-                </span>
-                <p>{label}</p>
-                <strong>{value}</strong>
-          </Link>
+      <div className="edc-admin-reports-stats" aria-label="Platform summary from saved data">
+        {stats.map(({ label, value, icon: Icon, color, tab }) => (
+          <button
+            className={`edc-admin-reports-stat ${color} edc-admin-metric-card edc-admin-metric-${color}${activeTab === tab ? " is-active" : ""}`}
+            key={label}
+            type="button"
+            aria-pressed={activeTab === tab}
+            onClick={() => quickAction(tab)}
+          >
+            <span><Icon size={21} aria-hidden="true" /></span>
+            <div><p>{label}</p><strong>{value}</strong></div>
+          </button>
         ))}
       </div>
 
-      {hasAnyData && (
-        <div className="edc-admin-analytics-panels">
-          <DistributionPanel
-            title="Teacher application status"
-            description="Current registered teacher account statuses in this browser."
-            values={teacherStatuses}
-            total={teacherCount}
-          />
-          <DistributionPanel
-            title="Support request status"
-            description="Statuses are counted from existing browser-local support records."
-            values={supportStatuses}
-            total={supportState.records.length}
-          />
-          <DistributionPanel
-            title="Moderation & appeal request status"
-            description="A subset of the same Support & Appeals records, selected by their existing category. No second dataset is created."
-            values={moderationStatuses}
-            total={supportState.records.filter((record) => record.category === "Moderation & Appeal").length}
-            fillClass="course-fill"
-          />
-          <DistributionPanel
-            title="Demo booking status"
-            description="Statuses are summarized from existing Student browser-local tutor booking records."
-            values={tutorBookingStatuses}
-            total={tutorBookings.records.length}
-          />
-          <section className="edc-admin-panel">
-            <div className="edc-admin-panel-heading">
-              <div>
-                <h3>Tutor marketplace summary</h3>
-                <p>Existing registered tutor profiles are separated from fictional catalog examples.</p>
-              </div>
-            </div>
-            <dl className="edc-admin-breakdown-list">
-              <div><dt>Registered tutor profiles</dt><dd><strong>{registeredTutorCount}</strong></dd></div>
-              <div><dt>Fictional demo profiles</dt><dd><strong>{demoTutorCount}</strong></dd></div>
-              <div><dt>Browser-local demo bookings</dt><dd><strong>{tutorBookings.records.length}</strong></dd></div>
-            </dl>
-          </section>
-          <section className="edc-admin-panel">
-            <div className="edc-admin-panel-heading">
-              <div>
-                <h3>Financial demo summary</h3>
-                <p>{transactionSource}; sample payout, license, adjustment, and invoice records are illustrative only.</p>
-              </div>
-            </div>
-            <dl className="edc-admin-breakdown-list">
-              <div><dt>Transaction records</dt><dd><strong>{transactions.length}</strong></dd></div>
-              <div><dt>Transaction value (demo)</dt><dd><strong>PKR {transactionTotal.toLocaleString()}</strong></dd></div>
-              <div><dt>Sample payouts</dt><dd><strong>{FINANCIAL_DEMO_RECORDS.payouts.length}</strong></dd></div>
-              <div><dt>Sample subscriptions / licenses</dt><dd><strong>{FINANCIAL_DEMO_RECORDS.licenses.length}</strong></dd></div>
-              <div><dt>Sample refunds / chargebacks</dt><dd><strong>{FINANCIAL_DEMO_RECORDS.adjustments.length}</strong></dd></div>
-              <div><dt>Sample invoices</dt><dd><strong>{FINANCIAL_DEMO_RECORDS.invoices.length}</strong></dd></div>
-            </dl>
-          </section>
-          <section className="edc-admin-panel">
-            <div className="edc-admin-panel-heading">
-              <div>
-                <h3>AI Operations demo summary</h3>
-                <p>Illustrative records only; no live provider usage, cost, latency, or safety monitoring is connected.</p>
-              </div>
-            </div>
-            <dl className="edc-admin-breakdown-list">
-              {AI_DEMO_RECORDS.metrics.map((metric) => (
-                <div key={metric.id}><dt>{metric.label} (sample)</dt><dd><strong>{metric.value}</strong></dd></div>
-              ))}
-              <div><dt>Sample safety incidents</dt><dd><strong>{AI_DEMO_RECORDS.incidents.length}</strong></dd></div>
-              <div><dt>Sample evaluations</dt><dd><strong>{AI_DEMO_RECORDS.evaluations.length}</strong></dd></div>
-              <div><dt>Example model configurations</dt><dd><strong>{AI_DEMO_RECORDS.models.length}</strong></dd></div>
-              <div><dt>Local demo feature flags</dt><dd><strong>{AI_DEMO_RECORDS.flags.length}</strong></dd></div>
-            </dl>
-          </section>
+      <nav className="edc-admin-reports-tabs" aria-label="Report categories">
+        {REPORT_TABS.map(([id, label, Icon]) => (
+          <button type="button" key={id} className={activeTab === id ? "active" : ""} onClick={() => setActiveTab(id)} aria-current={activeTab === id ? "page" : undefined}>
+            <Icon size={15} aria-hidden="true" />{label}
+          </button>
+        ))}
+      </nav>
 
-          <div className="edc-admin-analytics-panels">
-            {roleDistribution.length > 0 && (
-              <section className="edc-admin-panel">
-                <div className="edc-admin-panel-heading">
-                  <div>
-                    <h3>User role distribution</h3>
-                    <p>Counts are based on unique registered account emails in this browser.</p>
-                  </div>
-                </div>
-                <div className="edc-admin-analytics-bars">
-                  {roleDistribution.map(([role, count]) => (
-                    <div key={role} className="edc-admin-analytics-bar-row">
-                      <div className="edc-admin-analytics-bar-labels">
-                        <span>{role}</span>
-                        <strong>{count}</strong>
-                      </div>
-                      <div className="edc-admin-analytics-bar-track">
-                        <div
-                          className="edc-admin-analytics-bar-fill"
-                          style={{ width: `${(count / totalUsers) * 100}%` }}
-                        />
-                      </div>
-                      <small>{formatPercent((count / (totalUsers || 1)) * 100)}</small>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            )}
+      {errors.length > 0 && <p className="edc-admin-feedback edc-admin-feedback-error" role="alert"><AlertTriangle size={16} aria-hidden="true" />{errors.join(" ")}</p>}
 
-            {courseStatuses.length > 0 && (
-              <section className="edc-admin-panel">
-                <div className="edc-admin-panel-heading">
-                  <div>
-                    <h3>Course status distribution</h3>
-                    <p>Approval and publication states are tracked from existing teacher course records.</p>
-                  </div>
-                </div>
-                <div className="edc-admin-analytics-bars">
-                  {courseStatuses.map(([status, count]) => (
-                    <div key={status} className="edc-admin-analytics-bar-row">
-                      <div className="edc-admin-analytics-bar-labels">
-                        <span>{status}</span>
-                        <strong>{count}</strong>
-                      </div>
-                      <div className="edc-admin-analytics-bar-track">
-                        <div
-                          className="edc-admin-analytics-bar-fill course-fill"
-                          style={{ width: `${(count / totalCourses) * 100}%` }}
-                        />
-                      </div>
-                      <small>{formatPercent((count / (totalCourses || 1)) * 100)}</small>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {knowledgeStatuses.length > 0 && (
-              <section className="edc-admin-panel">
-                <div className="edc-admin-panel-heading">
-                  <div>
-                    <h3>Knowledge proposal status distribution</h3>
-                    <p>Counts reflect the current AI Knowledge Governance proposal records only.</p>
-                  </div>
-                </div>
-                <div className="edc-admin-analytics-bars">
-                  {knowledgeStatuses.map(([status, count]) => (
-                    <div key={status} className="edc-admin-analytics-bar-row">
-                      <div className="edc-admin-analytics-bar-labels">
-                        <span>{status}</span>
-                        <strong>{count}</strong>
-                      </div>
-                      <div className="edc-admin-analytics-bar-track">
-                        <div
-                          className="edc-admin-analytics-bar-fill knowledge-fill"
-                          style={{ width: `${(count / totalKnowledge) * 100}%` }}
-                        />
-                      </div>
-                      <small>{formatPercent((count / (totalKnowledge || 1)) * 100)}</small>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {activityByResult.length > 0 && (
-              <DistributionPanel
-                title="Activity result distribution"
-                description="Results are counted only from records in the browser-local Admin activity log."
-                values={activityByResult}
-                total={totalActivity}
-                fillClass="activity-fill"
-              />
-            )}
-          </div>
-        </div>
-      )}
+      {activeTab === "overview" && renderOverview()}
+      {activeTab === "users" && renderUserReports()}
+      {activeTab === "courses" && renderCourseReports()}
+      {activeTab === "financial" && renderFinancialReports()}
+      {activeTab === "performance" && renderPerformance()}
+      {activeTab === "custom" && renderCustomReports()}
     </section>
   );
 }

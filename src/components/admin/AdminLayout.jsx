@@ -37,6 +37,9 @@ import {
   getAdminPlatformSettings,
 } from "./adminPlatformSettings";
 import "./Admin.css";
+import "./AdminColorTheme.css";
+import "../SectionTypography.css";
+import "../DashboardCardClarity.css";
 
 function AdminLayout({ email, onLogout }) {
   const location = useLocation();
@@ -150,7 +153,7 @@ function AdminLayout({ email, onLogout }) {
     }
 
     if (section.id === "users") {
-      return <AdminUserManagement />;
+      return <AdminUserManagement key={location.search} />;
     }
 
     if (section.id === "tutors") {
@@ -269,6 +272,7 @@ function AdminLayout({ email, onLogout }) {
       <div className="edc-admin-main">
         <AdminTopbar
           sectionTitle={section.pageTitle ?? section.title}
+          email={email}
           isMenuOpen={mobileSidebarOpen}
           onMenuClick={() => setMobileSidebarOpen(true)}
           onLogout={handleAdminLogout}
@@ -276,11 +280,9 @@ function AdminLayout({ email, onLogout }) {
           notificationErrors={notificationData.errors}
         />
         <main className="edc-admin-content">
-          <section className="edc-admin-page-heading">
-            <div>
-              <p>{section.description}</p>
-            </div>
-          </section>
+          {!["dashboard", "users", "courses", "knowledge", "moderation", "finance", "ai-operations", "security", "support", "activity-log", "reports", "settings"].includes(section.id) && <section className="edc-admin-page-heading">
+            <div><p>{section.description}</p></div>
+          </section>}
           {renderContent()}
         </main>
       </div>

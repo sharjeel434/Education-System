@@ -94,6 +94,8 @@ import ReportAction from "../../components/moderation/ReportAction";
 import UserModerationAppeals, { UserSupportCenter } from "../../components/moderation/UserModerationAppeals";
 import { isModerationVisible } from "../../utils/moderationVisibility";
 import "../../components/books/books.css";
+import "../../components/SectionTypography.css";
+import "../../components/DashboardCardClarity.css";
 
 const COURSES = [
   {
@@ -337,6 +339,12 @@ export default function StudentDashboard({ email = "student" }) {
       fullName: "", phone: "", city: "", about: "", avatar: "", educationLevel: "", classNumber: "", intermediateYear: "", stream: "PreEngineering", degreeLevel: "", programChoice: "", program: "",
     })
   );
+  const registeredAccount = useMemo(() => {
+    const accountEmail = String(email || "").trim().toLowerCase();
+    const users = readStorage("educonnect.registeredUsers", []);
+    if (!accountEmail || !Array.isArray(users)) return null;
+    return users.find((user) => String(user?.email || "").trim().toLowerCase() === accountEmail) || null;
+  }, [email]);
   const [profileDraft, setProfileDraft] = useState(() =>
     readStorage(`${baseKey}.profile`, {
       fullName: "", phone: "", city: "", about: "", avatar: "", educationLevel: "", classNumber: "", intermediateYear: "", stream: "PreEngineering", degreeLevel: "", programChoice: "", program: "",
@@ -345,7 +353,8 @@ export default function StudentDashboard({ email = "student" }) {
   const [editingProfile, setEditingProfile] = useState(false);
   const [profileNotice, setProfileNotice] = useState("");
   const [resourceNotice, setResourceNotice] = useState("");
-  const profileDisplayName = studentProfile.fullName?.trim() || "Student";
+  const profileDisplayName = studentProfile.fullName?.trim() || registeredAccount?.name?.trim() || "Student";
+  const profileAvatar = studentProfile.avatar || registeredAccount?.avatar || registeredAccount?.profile?.avatar || "";
 
   useEffect(() => {
     try {
@@ -2821,10 +2830,10 @@ export default function StudentDashboard({ email = "student" }) {
         </div>
 
         <div className="edc-sidebar-profile">
-          <ProfileAvatar image={studentProfile.avatar} size="small" />
+          <ProfileAvatar image={profileAvatar} size="small" />
           <div>
             <strong>{profileDisplayName}</strong>
-            <span>Student Account</span>
+            <span>Student</span>
           </div>
         </div>
 

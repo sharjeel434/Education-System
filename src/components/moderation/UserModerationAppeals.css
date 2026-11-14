@@ -89,3 +89,45 @@
 @media (max-width: 540px) { .edc-user-support-center { padding: 14px; } .edc-user-support-card { padding: 14px; } .edc-user-support-reply { grid-template-columns: 1fr; } }
 @media (max-width: 850px) { .edc-user-appeals-grid { grid-template-columns: 1fr; } }
 @media (max-width: 540px) { .edc-user-appeals-page { padding: 14px; } .edc-user-appeals-card { padding: 15px; } }
+
+.edc-user-appeals-dashboard .edc-user-page-hero{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:12px;min-height:84px;padding:13px 16px;border:0;background:linear-gradient(105deg,#30005f,#650bb0 58%,#3b006d);color:#fff}
+.edc-user-appeals-dashboard .edc-user-page-hero::after{background:#c9a9ff1c}
+.edc-user-appeals-dashboard .edc-user-page-hero>span{width:44px;height:44px;color:#fff;background:#ffffff20}
+.edc-user-appeals-dashboard .edc-user-page-hero h1{color:#fff;font-size:21px}
+.edc-user-appeals-dashboard .edc-user-page-hero p{color:#f0e5ff}
+.edc-user-appeals-dashboard .edc-user-appeal-nav{display:flex;gap:6px;overflow-x:auto;padding:2px 0;scrollbar-width:thin}
+.edc-user-appeals-dashboard .edc-user-appeal-nav button{display:inline-flex;min-height:32px;flex:none;align-items:center;justify-content:center;gap:6px;padding:6px 11px;border:1px solid #e6dcf6;border-radius:999px;color:#43265d;background:#fff;font:inherit;font-size:9px;font-weight:750;cursor:pointer}
+.edc-user-appeals-dashboard .edc-user-appeal-nav button[aria-current=location]{border-color:#7715c6;color:#fff;background:#7411c2}
+.edc-user-appeals-dashboard .edc-user-appeals-heading-actions{position:relative;z-index:2;display:flex;align-items:center;gap:7px}
+.edc-user-appeals-dashboard .edc-user-appeals-heading-actions button{display:inline-flex;min-height:31px;align-items:center;justify-content:center;gap:5px;padding:6px 9px;border:1px solid #ffffff3d;border-radius:9px;color:#fff;background:#ffffff16;font:inherit;font-size:8px;font-weight:750;white-space:nowrap;cursor:pointer}
+.edc-user-appeals-dashboard .edc-user-appeals-heading-actions .edc-user-submit-appeal-link{border-color:#f0ce10;color:#2f1844;background:#ffd91b}
+.edc-user-appeals-dashboard .edc-user-case-stats{gap:8px}
+.edc-user-appeals-dashboard .edc-user-case-stat{min-height:64px;border-radius:11px}
+.edc-user-appeals-dashboard .edc-user-case-stat.purple{border-color:#4e1182;color:#fff;background:linear-gradient(115deg,#370066,#6e16b2)}
+.edc-user-appeals-dashboard .edc-user-case-stat.purple>span{color:#fff;background:#ffffff26}
+.edc-user-appeals-dashboard .edc-user-case-stat.purple small,.edc-user-appeals-dashboard .edc-user-case-stat.purple strong{color:#fff}
+.edc-user-appeals-dashboard .edc-user-case-stat.amber{border-color:#f0dfb8}
+.edc-user-appeals-dashboard .edc-user-case-stat.green{border-color:#d7eedc}
+.edc-user-appeals-dashboard .edc-user-governance-grid{grid-template-columns:minmax(0,1.1fr) minmax(250px,.9fr)}
+.edc-user-appeals-dashboard .edc-user-governance-grid .edc-user-case-results{grid-column:1;scroll-margin-top:14px}
+.edc-user-appeals-dashboard .edc-user-governance-grid .edc-user-case-details{grid-column:2;align-content:start;scroll-margin-top:14px}
+.edc-user-appeals-dashboard .edc-user-appeal-form,.edc-user-appeals-dashboard .edc-user-appeal-guidelines{scroll-margin-top:14px}
+.edc-user-appeals-dashboard .edc-user-case-list .edc-user-appeal-item[data-selected=true]{border-color:#a77fe6;background:#f4edff;box-shadow:0 0 0 2px #9868d726}
+.edc-user-appeals-dashboard .edc-user-case-select{display:grid;width:100%;gap:5px;padding:0;border:0;color:inherit;background:transparent;font:inherit;text-align:left;cursor:pointer}
+.edc-user-appeals-dashboard .edc-user-case-select .edc-user-appeal-item-heading{width:100%}
+.edc-user-appeals-dashboard .edc-user-case-select>small{color:#89829d;font-size:8px}
+.edc-user-appeals-dashboard .edc-user-case-select:focus-visible{outline:2px solid #b89add;outline-offset:3px}
+.edc-user-appeals-dashboard .edc-user-appeal-link{padding:3px 0}
+.edc-user-appeals-dashboard .edc-user-case-details-title{display:grid;gap:3px;padding:9px;border:1px solid #e8def8;border-radius:9px;background:#fcfaff}
+.edc-user-appeals-dashboard .edc-user-case-details-title strong{color:#34234f;font-size:11px}
+.edc-user-appeals-dashboard .edc-user-case-details-title small{color:#89829d;font-size:8px}
+.edc-user-appeals-dashboard .edc-user-case-details dl{display:grid;gap:0;margin:0}
+.edc-user-appeals-dashboard .edc-user-case-details dl>div{display:grid;grid-template-columns:minmax(78px,.45fr) minmax(0,1fr);gap:8px;padding:7px 2px;border-bottom:1px solid #eee9f7;font-size:9px}
+.edc-user-appeals-dashboard .edc-user-case-details dt{color:#70658a;font-weight:700}
+.edc-user-appeals-dashboard .edc-user-case-details dd{margin:0;color:#34234f;font-weight:650;overflow-wrap:anywhere}
+.edc-user-appeals-dashboard .edc-user-case-details dd span{display:inline-block;padding:3px 7px;border-radius:999px;background:#f0e9ff;color:#5c26bd;font-size:8px;font-weight:800}
+.edc-user-appeals-dashboard .edc-user-case-details-message,.edc-user-appeals-dashboard .edc-user-case-details-action{margin:0;padding:9px;border-radius:8px;background:#f7f3ff;color:#55466b;font-size:9px;line-height:1.5;overflow-wrap:anywhere}
+.edc-user-appeals-dashboard .edc-user-case-appeal-action{display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:7px 9px;border:1px solid #d7c6f5;border-radius:8px;color:#6b2bbd;background:#f5efff;font:inherit;font-size:9px;font-weight:750;cursor:pointer}
+.edc-user-appeals-dashboard .edc-user-appeal-nav button:focus-visible,.edc-user-appeals-dashboard .edc-user-appeals-heading-actions button:focus-visible,.edc-user-appeals-dashboard .edc-user-case-appeal-action:focus-visible{outline:2px solid #b89add;outline-offset:2px}
+@media(max-width:850px){.edc-user-appeals-dashboard .edc-user-governance-grid{grid-template-columns:1fr}.edc-user-appeals-dashboard .edc-user-governance-grid .edc-user-case-results,.edc-user-appeals-dashboard .edc-user-governance-grid .edc-user-case-details{grid-column:1}}
+@media(max-width:700px){.edc-user-appeals-dashboard .edc-user-page-hero{grid-template-columns:auto minmax(0,1fr)}.edc-user-appeals-dashboard .edc-user-appeals-heading-actions{grid-column:1/-1;flex-wrap:wrap}.edc-user-appeals-dashboard .edc-user-case-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}

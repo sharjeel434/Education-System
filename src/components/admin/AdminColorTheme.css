@@ -1,0 +1,304 @@
+.edc-admin-layout {
+  --edc-admin-ink: #2b1048;
+  --edc-admin-muted: #8b789d;
+  --edc-admin-line: #e5d8f9;
+  --edc-admin-primary: #8822ec;
+  --edc-admin-primary-light: #f0e5ff;
+  --edc-admin-background: #f7f3ff;
+  --student-button-yellow: #e3b32b;
+  --student-button-light: #ffe38b;
+  --student-button-ink: #211638;
+  --student-button-gradient: linear-gradient(180deg, #ffe38b, #e3b32b);
+}
+
+.edc-admin-layout.edc-admin-theme-dark {
+  --edc-admin-ink: #f1ebfa;
+  --edc-admin-muted: #c4b8d2;
+  --edc-admin-line: #443950;
+  --edc-admin-primary: #bf91ff;
+  --edc-admin-primary-light: #38284f;
+  --edc-admin-background: #17141f;
+  --edc-admin-surface: #211c2b;
+}
+
+.edc-admin-layout .edc-admin-sidebar {
+  border-right-color: #5f2499;
+  background: linear-gradient(180deg, #3c087e, #49108e 50%, #50168f);
+}
+
+.edc-admin-layout .edc-admin-topbar {
+  border-bottom-color: #ffffff26;
+  background: #2b1d42;
+}
+
+.edc-admin-layout .edc-admin-nav-item:hover,
+.edc-admin-layout .edc-admin-nav-item-active,
+.edc-admin-layout .edc-admin-nav-item-active:hover {
+  border-color: #e3b32b;
+  background: var(--student-button-gradient);
+  color: #211638;
+}
+
+.edc-admin-layout .edc-admin-nav-item:hover svg,
+.edc-admin-layout .edc-admin-nav-item-active svg {
+  color: #211638;
+}
+
+.edc-admin-layout .edc-admin-content {
+  background: #f7f3ff;
+  color: #2b1048;
+}
+
+.edc-admin-layout:not(.edc-admin-theme-dark) .edc-admin-content :is(
+  .edc-admin-panel,
+  .edc-admin-notification-card,
+  .edc-admin-settings-card,
+  .edc-admin-knowledge-stat,
+  .edc-admin-export-card,
+  .edc-admin-security-role-card,
+  .edc-admin-user-card-grid article
+) {
+  border-color: #e5d8f9;
+  background-color: #fff;
+}
+
+.edc-admin-layout:not(.edc-admin-theme-dark) .edc-admin-content :is(
+  [class*="-panel"],
+  [class*="-card"]:not([class*="stat"]):not([class*="status"]):not([class*="notice"]),
+  [class*="table-wrap"],
+  [class*="-dropdown"]
+) {
+  border-color: #e5d8f9;
+  background-color: #fff;
+}
+
+.edc-admin-layout:not(.edc-admin-theme-dark) .edc-admin-content .edc-admin-stat-card {
+  border-color: #e5d8f9;
+  background: linear-gradient(145deg, #fff, #fcfaff);
+}
+
+.edc-admin-layout:not(.edc-admin-theme-dark) .edc-admin-details-modal {
+  border-color: #e5d8f9;
+  background: #fff;
+}
+
+.edc-admin-layout .edc-admin-content :is(
+  .edc-admin-page-heading h2,
+  .edc-admin-panel-heading h3,
+  .edc-admin-dashboard-heading h2,
+  .edc-admin-user-heading-actions h2,
+  .edc-admin-tools-header h3
+) {
+  color: #2b1048;
+}
+
+.edc-admin-layout .edc-admin-content :is(
+  .edc-admin-page-heading p,
+  .edc-admin-panel-heading p,
+  .edc-admin-dashboard-heading p,
+  .edc-admin-stat-card p
+) {
+  color: #5b3d75;
+}
+
+.edc-admin-layout :is(input, select, textarea) {
+  border-color: #e5d8f9;
+  background-color: #fff;
+  color: #2b1048;
+}
+
+.edc-admin-layout :is(input, select, textarea)::placeholder {
+  color: #8b789d;
+}
+
+.edc-admin-layout .edc-admin-global-search {
+  border-color: #e5d8f9;
+  background: #fff;
+  box-shadow: none;
+  color: #2b1048;
+}
+
+.edc-admin-layout .edc-admin-global-search input {
+  color: #2b1048;
+}
+
+.edc-admin-layout .edc-admin-global-search input::placeholder {
+  color: #8b789d;
+}
+
+.edc-admin-layout .edc-admin-global-search > svg {
+  color: #6d0bc9;
+}
+
+.edc-admin-layout .edc-admin-global-search > button {
+  border-color: #e5d8f9;
+  background: #f0e5ff;
+  color: #6d0bc9;
+}
+
+.edc-admin-layout :is(button, input, select, textarea, a):focus-visible {
+  outline: 3px solid #6d42d8;
+  outline-offset: 3px;
+}
+
+.edc-admin-layout :is(
+  .edc-admin-button-primary,
+  .edc-admin-quick-actions > summary,
+  button[class*="primary"],
+  a[class*="primary"],
+  button[class*="-create"],
+  button[class*="-add"],
+  button[class*="-export"],
+  button[class*="-submit"],
+  button[class*="-save"]
+) {
+  border-color: #e3b32b;
+  background: var(--student-button-gradient);
+  color: #211638;
+}
+
+.edc-admin-layout :is(
+  .edc-admin-button-primary,
+  .edc-admin-quick-actions > summary,
+  button[class*="primary"],
+  a[class*="primary"],
+  button[class*="-create"],
+  button[class*="-add"],
+  button[class*="-export"],
+  button[class*="-submit"],
+  button[class*="-save"]
+):hover:not(:disabled):not([aria-disabled="true"]) {
+  background: linear-gradient(180deg, #ffe38b, #e3b32b 65%);
+}
+
+.edc-admin-layout :is(
+  .edc-admin-button-primary,
+  button[class*="primary"],
+  a[class*="primary"],
+  button[class*="-create"],
+  button[class*="-add"],
+  button[class*="-export"],
+  button[class*="-submit"],
+  button[class*="-save"]
+):disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+.edc-admin-layout :is([class*="-tabs"], [role="tablist"])
+  :is(button.active, button.is-active, [aria-selected="true"], [aria-current="page"]) {
+  border-color: #e3b32b;
+  background: var(--student-button-gradient);
+  color: #211638;
+  box-shadow: 0 2px 6px #b77f171a;
+}
+
+.edc-admin-layout :is(.edc-admin-table, [class*="-table"]) th {
+  border-color: #e5d8f9;
+  background: #f7f3ff;
+  color: #5b3d75;
+}
+
+.edc-admin-layout :is(.edc-admin-table, [class*="-table"]) td {
+  border-color: #e5d8f9;
+}
+
+.edc-admin-layout :is(.edc-admin-table, [class*="-table"]) tbody tr:hover {
+  background: #faf7ff;
+}
+
+.edc-admin-layout .edc-admin-analytics-bar-fill {
+  background: linear-gradient(90deg, #8822ec, #6d0bc9);
+}
+
+.edc-admin-layout .course-fill {
+  background: linear-gradient(90deg, #27f573, #27f573);
+}
+
+.edc-admin-layout .knowledge-fill {
+  background: linear-gradient(90deg, #ffe38b, #e3b32b);
+}
+
+.edc-admin-layout .activity-fill {
+  background: linear-gradient(90deg, #2791f5, #91c8fc);
+}
+
+.edc-admin-layout .edc-admin-growth-chart :is(.edc-admin-chart-gridline) {
+  stroke: #e5d8f9;
+}
+
+.edc-admin-layout .edc-admin-growth-chart .edc-admin-chart-students {
+  stroke: #8822ec;
+}
+
+.edc-admin-layout .edc-admin-growth-chart .edc-admin-chart-teachers {
+  stroke: #e3b32b;
+}
+
+.edc-admin-layout .edc-admin-growth-chart .edc-admin-chart-courses {
+  stroke: #b383f8;
+}
+
+.edc-admin-layout :is(.edc-admin-finance-chart-area) {
+  fill: #e3b32b1c;
+}
+
+.edc-admin-layout .edc-admin-finance-chart-line {
+  stroke: #e3b32b;
+}
+
+.edc-admin-theme-dark .edc-admin-sidebar {
+  background: linear-gradient(180deg, #3c087e, #49108e 50%, #50168f);
+}
+
+.edc-admin-theme-dark .edc-admin-topbar {
+  background: #2b1d42;
+}
+
+.edc-admin-theme-dark .edc-admin-content {
+  background: #17141f;
+}
+
+.edc-admin-theme-dark .edc-admin-content .edc-admin-stat-card {
+  border-color: #443950;
+  background: linear-gradient(145deg, #211c2b, #261f30);
+}
+
+.edc-admin-theme-dark .edc-admin-global-search {
+  border-color: #54416d;
+  background: #211c2b;
+  color: #f1ebfa;
+}
+
+.edc-admin-theme-dark .edc-admin-global-search input {
+  color: #f1ebfa;
+}
+
+.edc-admin-theme-dark .edc-admin-global-search input::placeholder {
+  color: #c4b8d2;
+}
+
+.edc-admin-theme-dark .edc-admin-content :is(
+  .edc-admin-page-heading h2,
+  .edc-admin-panel-heading h3,
+  .edc-admin-dashboard-heading h2,
+  .edc-admin-user-heading-actions h2,
+  .edc-admin-tools-header h3,
+  .edc-admin-stat-card p
+) {
+  color: #f1ebfa;
+}
+
+.edc-admin-theme-dark .edc-admin-content :is(.edc-admin-table, [class*="-table"]) th {
+  border-color: #443950;
+  background: #30243c;
+  color: #e1d4ed;
+}
+
+.edc-admin-theme-dark .edc-admin-content :is(.edc-admin-table, [class*="-table"]) td {
+  border-color: #443950;
+}
+
+.edc-admin-theme-dark .edc-admin-content :is(.edc-admin-table, [class*="-table"]) tbody tr:hover {
+  background: #30243c;
+}

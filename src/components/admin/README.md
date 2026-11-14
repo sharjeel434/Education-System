@@ -4,14 +4,13 @@ This folder contains the Admin dashboard screens and the browser-local demo data
 
 ## Main dashboard pages
 
-The sidebar currently has 15 pages grouped under seven headings. These are the files used for each page:
+The sidebar currently has 14 pages grouped under seven headings. These are the files used for each page:
 
 | Admin page | File |
 | --- | --- |
 | Overview Dashboard | `AdminOverview.jsx` |
 | User Management | `AdminUserManagement.jsx` |
 | Teacher Applications | `AdminTeacherApplications.jsx` |
-| Institution Management | `AdminModulePlaceholder.jsx` (placeholder screen) |
 | Course Review | `AdminCourseReview.jsx` |
 | Knowledge Proposals | `AdminKnowledgeGovernance.jsx` |
 | Moderation & Governance | `AdminModerationGovernance.jsx` |
@@ -38,5 +37,7 @@ Some additional routes are intentionally hidden from the sidebar: `AdminBookAppr
 - `Admin.css` contains the Admin workspace styles.
 
 Most Admin records are stored in this browser for the frontend demo. They are not shared across browsers or devices.
+
+Admin Settings organizes existing browser-local controls into categories. Its JSON import/export includes platform settings and Admin display preferences only; it is not a backup of user, course, enrollment, or payment records. Database health, production storage metrics, payment integrations, and email delivery are not available in this frontend.
 
 Moderation UI and shared Student/Teacher moderation helpers remain in `src/components/moderation` and `src/utils` because both dashboards use them.

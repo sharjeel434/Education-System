@@ -1,40 +1,92 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  Activity,
   AlertTriangle,
+  ArrowRight,
   BrainCircuit,
   CheckCircle2,
+  CircleHelp,
+  Cpu,
+  Database,
+  FileText,
   Gauge,
-  ShieldCheck,
+  Layers,
+  RefreshCw,
+  ShieldAlert,
+  Workflow,
 } from "lucide-react";
+import { Link } from "react-router-dom";
 import {
   ADMIN_DATA_CHANGED_EVENT,
   getAdminKnowledgeStorageState,
 } from "./adminData";
-import {
-  AI_DEMO_RECORDS,
-  readAdminOperationsSettings,
-  updateAiFeatureFlag,
-  updateAiIncidentStatus,
-} from "./adminOperationsData";
 
 const SECTIONS = [
-  ["models", "Models & prompts"],
-  ["usage", "Usage & cost"],
-  ["incidents", "Safety incidents"],
-  ["evaluations", "Evaluations"],
-  ["flags", "Feature flags"],
-  ["knowledge", "Knowledge status"],
+  ["overview", "Overview", Activity],
+  ["models", "AI Models", BrainCircuit],
+  ["jobs", "Processing Jobs", Layers],
+  ["usage", "Usage & Costs", Gauge],
+  ["prompts", "Prompts & Workflows", Workflow],
+  ["logs", "Logs & Monitoring", FileText],
 ];
 
-function AdminAIOperations({ email }) {
-  const [settings, setSettings] = useState(readAdminOperationsSettings);
+const UNAVAILABLE_SECTIONS = {
+  models: {
+    title: "AI model configuration is not available",
+    description: "This app has no saved model provider, deployment, or model connection settings to display.",
+    icon: BrainCircuit,
+  },
+  jobs: {
+    title: "No AI processing job source is connected",
+    description: "The app does not save an AI job queue or job history. There are no live or sample jobs to show.",
+    icon: Layers,
+  },
+  usage: {
+    title: "AI usage and cost are not tracked",
+    description: "No provider telemetry is connected, so request totals, token usage, latency, and cost are unavailable.",
+    icon: Gauge,
+  },
+  prompts: {
+    title: "No saved prompt or workflow records",
+    description: "This app has no persisted AI prompt library or workflow execution records.",
+    icon: Workflow,
+  },
+  logs: {
+    title: "AI runtime logs are not available",
+    description: "The app does not collect AI provider, deployment, or runtime monitoring logs.",
+    icon: FileText,
+  },
+};
+
+function proposalDate(value) {
+  if (typeof value !== "string" && typeof value !== "number") return null;
+  const timestamp = new Date(value).getTime();
+  return Number.isNaN(timestamp) ? null : timestamp;
+}
+
+function formatDate(value) {
+  const timestamp = proposalDate(value);
+  return timestamp === null ? "Not provided" : new Date(timestamp).toLocaleDateString();
+}
+
+function StatusBadge({ status }) {
+  const normalized = String(status || "").toLowerCase();
+  const statusClass = normalized.includes("approved")
+    ? "approved"
+    : normalized.includes("pending")
+      ? "pending"
+      : normalized.includes("reject")
+        ? "rejected"
+        : "unknown";
+  return <span className={`edc-admin-ai-status edc-admin-ai-status-${statusClass}`}>{status || "Status not recorded"}</span>;
+}
+
+function AdminAIOperations() {
   const [knowledgeState, setKnowledgeState] = useState(getAdminKnowledgeStorageState);
-  const [section, setSection] = useState("models");
-  const [selectedModel, setSelectedModel] = useState(null);
-  const [feedback, setFeedback] = useState(null);
+  const [section, setSection] = useState("overview");
+  const [search, setSearch] = useState("");
 
   function refresh() {
-    setSettings(readAdminOperationsSettings());
     setKnowledgeState(getAdminKnowledgeStorageState());
   }
 
@@ -47,178 +99,202 @@ function AdminAIOperations({ email }) {
     };
   }, []);
 
-  const knowledgeCounts = useMemo(() => {
-    const proposals = knowledgeState.proposals;
-    return {
-      total: proposals.length,
-      pending: proposals.filter((proposal) => proposal.status === "Pending Review").length,
-      approved: proposals.filter((proposal) => proposal.status === "Approved for Processing").length,
-    };
-  }, [knowledgeState.proposals]);
+  const proposals = knowledgeState.proposals;
+  const knowledgeCounts = useMemo(() => ({
+    total: proposals.length,
+    pending: proposals.filter((proposal) => proposal.status === "Pending Review").length,
+    approved: proposals.filter((proposal) => proposal.status === "Approved for Processing").length,
+  }), [proposals]);
+  const visibleProposals = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return proposals
+      .map((proposal, index) => ({ proposal, index }))
+      .filter(({ proposal }) => {
+        const searchable = [
+          proposal.proposedTopic,
+          proposal.courseSnapshot?.title,
+          proposal.teacherName,
+          proposal.teacherEmail,
+          proposal.status,
+        ].filter((value) => typeof value === "string").join(" ").toLowerCase();
+        return !query || searchable.includes(query);
+      })
+      .sort((left, right) => {
+        const leftDate = proposalDate(left.proposal.submittedAt);
+        const rightDate = proposalDate(right.proposal.submittedAt);
+        if (leftDate === null && rightDate === null) return left.index - right.index;
+        if (leftDate === null) return 1;
+        if (rightDate === null) return -1;
+        return rightDate - leftDate;
+      })
+      .slice(0, 8);
+  }, [proposals, search]);
 
-  function toggleFlag(flag) {
-    const enabled = !settings.aiFlags[flag.id];
-    try {
-      updateAiFeatureFlag(
-        settings,
-        flag.id,
-        enabled,
-        email || window.sessionStorage.getItem("educonnect.demoEmail") || "Admin",
-      );
-      refresh();
-      setFeedback({ type: "success", text: `${flag.label} demo flag ${enabled ? "enabled" : "disabled"} locally.` });
-    } catch (error) {
-      setFeedback({ type: "error", text: error instanceof Error ? error.message : "Demo flag could not be updated." });
-    }
-  }
-
-  function updateIncident(incident, status) {
-    try {
-      updateAiIncidentStatus(
-        settings,
-        incident.id,
-        status,
-        email || window.sessionStorage.getItem("educonnect.demoEmail") || "Admin",
-      );
-      refresh();
-      setFeedback({ type: "success", text: `Demo incident review marked ${status}.` });
-    } catch (error) {
-      setFeedback({ type: "error", text: error instanceof Error ? error.message : "Demo incident status could not be saved." });
-    }
-  }
-
-  const cards = [
-    { id: "models", label: "Model configurations", value: AI_DEMO_RECORDS.models.length, icon: BrainCircuit },
-    { id: "usage", label: "Sample usage metrics", value: AI_DEMO_RECORDS.metrics.length, icon: Gauge },
-    { id: "incidents", label: "Sample safety incidents", value: AI_DEMO_RECORDS.incidents.length, icon: AlertTriangle },
-    { id: "knowledge", label: "Existing knowledge proposals", value: knowledgeCounts.total, icon: CheckCircle2 },
+  const metrics = [
+    { label: "Total AI Requests", value: "Not tracked", icon: Activity, color: "purple", section: "logs" },
+    { label: "Active Models", value: "Not configured", icon: BrainCircuit, color: "orange", section: "models" },
+    { label: "Processing Jobs", value: "Not tracked", icon: Cpu, color: "green", section: "jobs" },
+    { label: "Failed Jobs", value: "Not tracked", icon: AlertTriangle, color: "red", section: "jobs" },
+    { label: "AI Usage (Tokens)", value: "Not tracked", icon: Database, color: "violet", section: "usage" },
+    { label: "Total AI Cost", value: "Not tracked", icon: Gauge, color: "purple", section: "usage" },
   ];
 
   return (
-    <section className="edc-admin-operations">
-      <p className="edc-admin-security-note">
-        AI Operations is a frontend demo console. Configuration examples, metrics, safety incidents and evaluation data below are illustrative and are not connected to an AI provider, model deployment or live monitoring. Knowledge proposals are existing local governance records and are not approved or published here.
-      </p>
-      {feedback && <p className={`edc-admin-feedback edc-admin-feedback-${feedback.type}`} role={feedback.type === "error" ? "alert" : "status"}>{feedback.text}</p>}
-      {settings.error && <p className="edc-admin-feedback edc-admin-feedback-error" role="alert">{settings.error}</p>}
-      {knowledgeState.error && <p className="edc-admin-feedback edc-admin-feedback-error" role="alert">{knowledgeState.error}</p>}
+    <section className="edc-admin-ai-reference">
+      <header className="edc-admin-ai-heading">
+        <div>
+          <span className="edc-admin-page-eyebrow">AI &amp; PLATFORM OPERATIONS</span>
+          <h2><BrainCircuit aria-hidden="true" />AI Operations</h2>
+          <p>Review saved AI knowledge proposals and the model operations this app currently tracks.</p>
+        </div>
+        <div className="edc-admin-ai-heading-actions">
+          <button type="button" className="edc-admin-action-button" onClick={refresh}>
+            <RefreshCw size={15} aria-hidden="true" />Refresh Data
+          </button>
+          <Link className="edc-admin-button-primary" to="/admin/knowledge">
+            <FileText size={15} aria-hidden="true" />Knowledge Governance
+          </Link>
+        </div>
+      </header>
 
-      <div className="edc-admin-stat-grid">
-        {cards.map(({ id, label, value, icon: Icon }) => (
-          <button type="button" className={`edc-admin-stat-card edc-admin-ops-card${section === id ? " edc-admin-ops-card-active" : ""}`} key={id} onClick={() => setSection(id)} aria-pressed={section === id}>
-            <span className="edc-admin-stat-icon" aria-hidden="true"><Icon size={19} /></span><p>{label}</p><strong>{value}</strong>
+      <p className="edc-admin-ai-note">
+        No AI model provider or runtime telemetry is connected in this app. Operational metrics are marked unavailable; the proposal list below uses saved Knowledge Governance records only.
+      </p>
+      {knowledgeState.error && (
+        <p className="edc-admin-feedback edc-admin-feedback-error" role="alert">{knowledgeState.error}</p>
+      )}
+
+      <div className="edc-admin-ai-stats" aria-label="AI operations availability">
+        {metrics.map(({ label, value, icon: Icon, color, section: targetSection }) => (
+          <button
+            className={`edc-admin-ai-stat edc-admin-ai-stat-${color} edc-admin-metric-card edc-admin-metric-${color}${section === targetSection ? " is-active" : ""}`}
+            key={label}
+            type="button"
+            aria-pressed={section === targetSection}
+            onClick={() => setSection(targetSection)}
+          >
+            <span><Icon size={20} aria-hidden="true" /></span>
+            <div><p>{label}</p><strong>{value}</strong></div>
           </button>
         ))}
-        <button type="button" className="edc-admin-stat-card edc-admin-ops-card" onClick={() => setSection("knowledge")}>
-          <span className="edc-admin-stat-icon" aria-hidden="true"><ShieldCheck size={19} /></span><p>Pending knowledge review</p><strong>{knowledgeCounts.pending}</strong>
-        </button>
       </div>
 
-      <div className="edc-admin-application-filters edc-admin-ops-tabs" aria-label="AI operations sections">
-        {SECTIONS.map(([id, label]) => (
-          <button type="button" className={`edc-admin-filter-button${section === id ? " edc-admin-filter-button-active" : ""}`} key={id} onClick={() => setSection(id)} aria-pressed={section === id}>{label}</button>
+      <nav className="edc-admin-ai-tabs" aria-label="AI operations sections">
+        {SECTIONS.map(([id, label, Icon]) => (
+          <button
+            type="button"
+            className={section === id ? "active" : ""}
+            aria-current={section === id ? "page" : undefined}
+            key={id}
+            onClick={() => setSection(id)}
+          >
+            <Icon size={14} aria-hidden="true" />{label}
+          </button>
         ))}
-      </div>
+      </nav>
 
-      {section === "models" && (
-        <div className="edc-admin-ops-grid">
-          {AI_DEMO_RECORDS.models.map((model) => (
-            <button type="button" className="edc-admin-panel edc-admin-ops-card edc-admin-ops-model" key={model.id} onClick={() => setSelectedModel(model)}>
-              <span className="edc-admin-page-eyebrow">DEMO CONFIGURATION</span><h3>{model.model}</h3>
-              <p>{model.provider} · {model.version}</p><span>{model.status}</span><small>View configuration details</small>
-            </button>
-          ))}
-          <article className="edc-admin-panel">
-            <div className="edc-admin-panel-heading"><div><h3>Deployment boundary</h3><p>Configuration examples are separate from deployment approval and do not call a provider.</p></div></div>
-            <p className="edc-admin-settings-note">No deployment controls or provider credentials are configured in this frontend demo.</p>
-          </article>
+      {section === "overview" ? (
+        <div className="edc-admin-ai-workspace">
+          <main className="edc-admin-ai-main">
+            <section className="edc-admin-ai-card edc-admin-ai-trends">
+              <header><h3><Activity size={17} aria-hidden="true" />AI Request Trends</h3><span>Not available</span></header>
+              <div className="edc-admin-ai-empty-inline">
+                <Gauge size={22} aria-hidden="true" />
+                <p>No saved AI request history or provider telemetry is available to chart.</p>
+              </div>
+            </section>
+
+            <section className="edc-admin-ai-card edc-admin-ai-proposals">
+              <header>
+                <h3><BrainCircuit size={17} aria-hidden="true" />Saved AI Knowledge Proposals</h3>
+                <Link to="/admin/knowledge">View All Proposals <ArrowRight size={14} aria-hidden="true" /></Link>
+              </header>
+              {proposals.length > 0 && (
+                <label className="edc-admin-ai-search">
+                  <span className="edc-admin-visually-hidden">Search saved knowledge proposals</span>
+                  <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search proposal, course, teacher, or status..." />
+                </label>
+              )}
+              {knowledgeState.error ? (
+                <div className="edc-admin-ai-empty-inline" role="status"><ShieldAlert size={20} aria-hidden="true" /><p>Saved proposal records could not be read.</p></div>
+              ) : visibleProposals.length ? (
+                <div className="edc-admin-ai-table-wrap">
+                  <table className="edc-admin-ai-table">
+                    <thead><tr><th scope="col">Proposal</th><th scope="col">Course</th><th scope="col">Teacher</th><th scope="col">Status</th><th scope="col">Submitted</th></tr></thead>
+                    <tbody>{visibleProposals.map(({ proposal, index }) => (
+                      <tr key={proposal.proposalId || `${proposal.teacherEmail || "proposal"}-${index}`}>
+                        <td><strong>{proposal.proposedTopic || "Topic not provided"}</strong></td>
+                        <td>{proposal.courseSnapshot?.title || "Not linked"}</td>
+                        <td>{proposal.teacherName || proposal.teacherEmail || "Not provided"}</td>
+                        <td><StatusBadge status={proposal.status} /></td>
+                        <td>{formatDate(proposal.submittedAt)}</td>
+                      </tr>
+                    ))}</tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="edc-admin-ai-empty-inline">
+                  <FileText size={20} aria-hidden="true" />
+                  <p>{search ? "No saved proposals match this search." : "No saved AI knowledge proposals were found."}</p>
+                </div>
+              )}
+              {!knowledgeState.error && proposals.length > 0 && (
+                <p className="edc-admin-ai-table-note">
+                  Showing {visibleProposals.length} of {proposals.length.toLocaleString()} saved proposals. Proposal decisions are managed in Knowledge Governance.
+                </p>
+              )}
+            </section>
+          </main>
+
+          <aside className="edc-admin-ai-sidebar">
+            <section className="edc-admin-ai-card">
+              <header><h3><BrainCircuit size={17} aria-hidden="true" />Model Status</h3></header>
+              <div className="edc-admin-ai-model-empty">
+                <CircleHelp size={20} aria-hidden="true" />
+                <div><strong>No model connections configured</strong><p>No provider or deployed model is recorded by this app.</p></div>
+              </div>
+              <p className="edc-admin-ai-side-note">No sample model names or provider statuses are displayed.</p>
+            </section>
+
+            <section className="edc-admin-ai-card">
+              <header><h3><Gauge size={17} aria-hidden="true" />Resource Usage</h3></header>
+              <dl className="edc-admin-ai-resource-list">
+                <div><dt>CPU</dt><dd>Not monitored</dd></div>
+                <div><dt>Memory</dt><dd>Not monitored</dd></div>
+                <div><dt>GPU</dt><dd>Not monitored</dd></div>
+              </dl>
+              <p className="edc-admin-ai-side-note">This frontend does not collect server resource metrics.</p>
+            </section>
+
+            <section className="edc-admin-ai-card">
+              <header><h3><CheckCircle2 size={17} aria-hidden="true" />Knowledge Proposals</h3></header>
+              <dl className="edc-admin-ai-resource-list">
+                <div><dt>Total saved</dt><dd>{knowledgeState.error ? "—" : knowledgeCounts.total.toLocaleString()}</dd></div>
+                <div><dt>Pending review</dt><dd>{knowledgeState.error ? "—" : knowledgeCounts.pending.toLocaleString()}</dd></div>
+                <div><dt>Approved for processing</dt><dd>{knowledgeState.error ? "—" : knowledgeCounts.approved.toLocaleString()}</dd></div>
+              </dl>
+              <Link className="edc-admin-ai-quick-link" to="/admin/knowledge"><FileText size={14} aria-hidden="true" />Open Knowledge Governance</Link>
+            </section>
+          </aside>
         </div>
-      )}
-
-      {section === "usage" && (
-        <div className="edc-admin-stat-grid">
-          {AI_DEMO_RECORDS.metrics.map((metric) => (
-            <article className="edc-admin-stat-card" key={metric.id}>
-              <span className="edc-admin-stat-icon" aria-hidden="true"><Gauge size={19} /></span><p>{metric.label}</p><strong>{metric.value}</strong><small>{metric.note}</small>
-            </article>
-          ))}
-        </div>
-      )}
-
-      {section === "incidents" && (
-        <div className="edc-admin-table-wrap">
-          <table className="edc-admin-applications-table">
-            <thead><tr><th>Incident</th><th>Severity</th><th>Review status</th><th>Details</th></tr></thead>
-            <tbody>{AI_DEMO_RECORDS.incidents.map((incident) => (
-              <tr key={incident.id}>
-                <td><strong>{incident.title}</strong><span>{incident.id}</span></td><td>{incident.severity}</td>
-                <td>
-                  <select
-                    className="edc-admin-select"
-                    aria-label={`Review status for ${incident.title}`}
-                    value={settings.aiIncidentStatuses[incident.id] || incident.status}
-                    onChange={(event) => updateIncident(incident, event.target.value)}
-                  >
-                    {["Open", "Under Review", "Reviewed"].map((status) => <option key={status}>{status}</option>)}
-                  </select>
-                </td>
-                <td>{incident.detail}</td>
-              </tr>
-            ))}</tbody>
-          </table>
-        </div>
-      )}
-
-      {section === "evaluations" && (
-        <div className="edc-admin-table-wrap">
-          <table className="edc-admin-applications-table">
-            <thead><tr><th>Evaluation suite</th><th>Result</th><th>Threshold</th><th>Score</th></tr></thead>
-            <tbody>{AI_DEMO_RECORDS.evaluations.map((evaluation) => (
-              <tr key={evaluation.id}><td>{evaluation.suite}</td><td>{evaluation.result}</td><td>{evaluation.threshold}</td><td>{evaluation.score}</td></tr>
-            ))}</tbody>
-          </table>
-          <p className="edc-admin-settings-note">Illustrative evaluation records only; no evaluation jobs are run.</p>
-        </div>
-      )}
-
-      {section === "flags" && (
-        <div className="edc-admin-ops-grid">
-          {AI_DEMO_RECORDS.flags.map((flag) => (
-            <article className="edc-admin-panel" key={flag.id}>
-              <div className="edc-admin-panel-heading"><div><h3>{flag.label}</h3><p>Browser-local demo flag; does not enable a live AI feature.</p></div></div>
-              <label className="edc-admin-ops-toggle">
-                <input type="checkbox" checked={Boolean(settings.aiFlags[flag.id])} onChange={() => toggleFlag(flag)} />
-                <span>{settings.aiFlags[flag.id] ? "Enabled for demo UI" : "Disabled for demo UI"}</span>
-              </label>
-            </article>
-          ))}
-        </div>
-      )}
-
-      {section === "knowledge" && (
-        <>
-          <p className="edc-admin-settings-note">Knowledge Governance remains the source of proposal decisions. This view is read-only and does not approve, process or publish proposals.</p>
-          {knowledgeState.proposals.length ? (
-            <div className="edc-admin-table-wrap">
-              <table className="edc-admin-applications-table">
-                <thead><tr><th>Proposal</th><th>Course</th><th>Teacher</th><th>Status</th></tr></thead>
-                <tbody>{knowledgeState.proposals.map((proposal, index) => (
-                  <tr key={proposal.proposalId || `proposal-${index}`}><td>{proposal.proposedTopic || "Untitled proposal"}</td><td>{proposal.courseSnapshot?.title || "Not linked"}</td><td>{proposal.teacherName || proposal.teacherEmail || "Not provided"}</td><td>{proposal.status || "Unknown"}</td></tr>
-                ))}</tbody>
-              </table>
-            </div>
-          ) : <div className="edc-admin-applications-empty"><h3>No knowledge proposals available</h3><p>Proposal records are managed in Knowledge Governance.</p></div>}
-        </>
-      )}
-
-      {selectedModel && (
-        <div className="edc-admin-modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setSelectedModel(null)}>
-          <section className="edc-admin-details-modal" role="dialog" aria-modal="true" aria-labelledby="admin-ai-model-detail">
-            <header className="edc-admin-details-header"><div><span className="edc-admin-page-eyebrow">DEMO MODEL CONFIGURATION</span><h3 id="admin-ai-model-detail">{selectedModel.model}</h3></div><button type="button" className="edc-admin-modal-close" onClick={() => setSelectedModel(null)} aria-label="Close details">×</button></header>
-            <dl className="edc-admin-details-list">{Object.entries(selectedModel).map(([key, value]) => <div className="edc-admin-detail-field" key={key}><dt>{key}</dt><dd>{value}</dd></div>)}</dl>
-            <p className="edc-admin-settings-note">Prompt/model details are examples only. No provider credentials or deployment changes are supported.</p>
-          </section>
-        </div>
+      ) : (
+        <section className="edc-admin-ai-unavailable">
+          {(() => {
+            const unavailable = UNAVAILABLE_SECTIONS[section];
+            const Icon = unavailable.icon;
+            return (
+              <>
+                <span><Icon size={24} aria-hidden="true" /></span>
+                <p className="edc-admin-page-eyebrow">NOT CONNECTED</p>
+                <h3>{unavailable.title}</h3>
+                <p>{unavailable.description}</p>
+                <Link className="edc-admin-button-primary" to="/admin/knowledge">
+                  View Saved Knowledge Proposals <ArrowRight size={14} aria-hidden="true" />
+                </Link>
+              </>
+            );
+          })()}
+        </section>
       )}
     </section>
   );

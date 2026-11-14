@@ -1,0 +1,380 @@
+.teacher-fullscreen-page .edc-teacher-shell {
+  --teacher-purple: #8822ec;
+  --teacher-deep: #6d0bc9;
+  --teacher-gold: #e3b32b;
+  --teacher-ink: #2b1048;
+  --teacher-muted: #8b789d;
+  --teacher-line: #e5d8f9;
+  --student-button-light: #ffe38b;
+  --student-button-ink: #211638;
+  --student-button-gradient: linear-gradient(180deg, #ffe38b, #e3b32b);
+  --student-progress-color: #27f573;
+  --student-progress-track: #e2fbea;
+  --student-circle-color: #2791f5;
+  --student-circle-light: #91c8fc;
+  --student-circle-track: #dfefff;
+  background: #f7f3ff;
+  color: #2b1048;
+}
+
+.teacher-fullscreen-page .edc-teacher-shell > .edc-teacher-sidebar {
+  border-right-color: #5f2499;
+  background: linear-gradient(180deg, #3c087e, #49108e 50%, #50168f);
+}
+
+.teacher-fullscreen-page .edc-teacher-brand {
+  border-bottom-color: #d7b9ed33;
+}
+
+.teacher-fullscreen-page .edc-teacher-brand-icon {
+  color: #e3b32b;
+}
+
+.teacher-fullscreen-page .edc-teacher-brand strong b,
+.teacher-fullscreen-page .edc-teacher-sidebar-tip > svg {
+  color: #e3b32b;
+}
+
+.teacher-fullscreen-page .edc-teacher-nav-item.active {
+  background: var(--student-button-gradient);
+  color: var(--student-button-ink);
+}
+
+.teacher-fullscreen-page .edc-teacher-sidebar-tip {
+  border-color: #a360d54a;
+  background: linear-gradient(145deg, #7730c5, #6322a9);
+}
+
+.teacher-fullscreen-page .edc-to-workspace-header {
+  border-bottom: 1px solid #ffffff26;
+  background: #2b1d42;
+}
+
+.teacher-fullscreen-page .edc-to-search {
+  border-color: #e5d8f9;
+  background: #fff;
+  box-shadow: none;
+  color: #2b1048;
+}
+
+.teacher-fullscreen-page .edc-to-search input {
+  color: #2b1048;
+}
+
+.teacher-fullscreen-page .edc-to-search input::placeholder {
+  color: #8b789d;
+}
+
+.teacher-fullscreen-page .edc-teacher-shell :is(
+  .edc-to-panel,
+  .edc-tc-table-panel,
+  .edc-tl-panel,
+  .edc-ms-panel,
+  .edc-teacher-earnings-panel
+) {
+  border-color: #e5d8f9;
+  background: #fff;
+  box-shadow: 0 3px 9px #44217409;
+}
+
+.teacher-fullscreen-page .edc-teacher-shell :is(
+  [class*="-panel"],
+  [class*="-card"]:not([class*="stat"]):not([class*="status"]):not([class*="notice"]),
+  [class*="table-wrap"],
+  [class*="-dropdown"]
+) {
+  border-color: #e5d8f9;
+  background-color: #fff;
+}
+
+.teacher-fullscreen-page .edc-teacher-shell :is(
+  .edc-tl-header h1,
+  .edc-ms-header h1,
+  .edc-teacher-earnings-header h1,
+  .edc-teacher-earnings-panel-heading h2,
+  .edc-to-panel-heading h2,
+  .edc-tc-heading h1
+) {
+  color: #2b1048;
+}
+
+.teacher-fullscreen-page .edc-teacher-shell :is(
+  .edc-tl-header p,
+  .edc-ms-header p,
+  .edc-teacher-earnings-header p,
+  .edc-teacher-earnings-panel-heading p
+) {
+  color: #5b3d75;
+}
+
+.teacher-fullscreen-page .edc-teacher-shell :is(
+  .edc-to-panel,
+  .edc-tc-table-panel,
+  .edc-tl-panel,
+  .edc-ms-panel,
+  .edc-teacher-earnings-panel
+) :is(table th, table td) {
+  border-color: #e5d8f9;
+}
+
+.teacher-fullscreen-page .edc-teacher-shell :is(
+  .edc-to-panel,
+  .edc-tc-table-panel,
+  .edc-tl-panel,
+  .edc-ms-panel,
+  .edc-teacher-earnings-panel
+) table th {
+  background: #f7f3ff;
+  color: #5b3d75;
+}
+
+.teacher-fullscreen-page .edc-teacher-shell :is(
+  .edc-to-course-table,
+  .edc-tc-table,
+  .edc-tl-table,
+  .edc-ms-table,
+  .edc-teacher-earnings-table
+) tbody tr:hover {
+  background: #faf7ff;
+}
+
+.teacher-fullscreen-page .edc-teacher-shell :is(
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea
+) {
+  border-color: #e5d8f9;
+  background-color: #fff;
+  color: #2b1048;
+}
+
+.teacher-fullscreen-page .edc-teacher-shell :is(
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea
+)::placeholder {
+  color: #8b789d;
+}
+
+.teacher-fullscreen-page .edc-teacher-shell :is(
+  [class*="search"],
+  [class*="filter"],
+  [class*="toolbar"]
+) {
+  border-color: #e5d8f9;
+}
+
+.teacher-fullscreen-page .edc-teacher-shell :is(
+  .edc-tc-search,
+  .edc-tl-search,
+  .edc-ms-search,
+  [class*="search-results"],
+  [class*="dropdown"],
+  [class*="-menu"]:not(.edc-to-notification-menu)
+) {
+  background-color: #fff;
+  color: #2b1048;
+}
+
+.teacher-fullscreen-page .edc-teacher-shell :is(
+  input,
+  select,
+  textarea,
+  button,
+  a
+):focus-visible {
+  outline: 3px solid #6d42d8;
+  outline-offset: 3px;
+}
+
+.teacher-fullscreen-page .edc-teacher-shell :is(
+  button[class*="primary"],
+  a[class*="primary"],
+  button[class*="-add"],
+  button[class*="-create"],
+  button[class*="-export"],
+  button[class*="-submit"],
+  button[class*="-save"],
+  .edc-tl-add,
+  .edc-ms-export,
+  .edc-teacher-earnings-download,
+  .edc-to-gold-button,
+  .edc-tl-empty button,
+  .edc-teacher-payout-panel > button
+) {
+  border-color: #e3b32b;
+  background: var(--student-button-gradient);
+  color: #211638;
+}
+
+.teacher-fullscreen-page .edc-teacher-shell :is(
+  button[class*="primary"],
+  a[class*="primary"],
+  button[class*="-add"],
+  button[class*="-create"],
+  button[class*="-export"],
+  button[class*="-submit"],
+  button[class*="-save"],
+  .edc-tl-add,
+  .edc-ms-export,
+  .edc-teacher-earnings-download,
+  .edc-to-gold-button,
+  .edc-tl-empty button,
+  .edc-teacher-payout-panel > button
+):hover:not(:disabled):not([aria-disabled="true"]) {
+  background: linear-gradient(180deg, #ffe38b, #e3b32b 65%);
+}
+
+.teacher-fullscreen-page .edc-teacher-shell :is(
+  button[class*="primary"],
+  a[class*="primary"],
+  button[class*="-add"],
+  button[class*="-create"],
+  button[class*="-export"],
+  button[class*="-submit"],
+  button[class*="-save"]
+):disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+.teacher-fullscreen-page .edc-teacher-shell :is([class*="-tabs"], [role="tablist"])
+  :is(button.active, button.is-active, [aria-selected="true"], [aria-current="page"]) {
+  border-color: #e3b32b;
+  background: var(--student-button-gradient);
+  color: #211638;
+  box-shadow: 0 2px 6px #b77f171a;
+}
+
+.teacher-fullscreen-page .edc-teacher-shell :is(
+  .edc-tl-stat.purple,
+  .edc-ms-stat.purple,
+  .edc-teacher-earnings-stat.purple,
+  .edc-to-stat.violet,
+  .edc-to-stat:not(.gold)
+) {
+  border-color: #e9ddff;
+  background: #ede5ff;
+  color: #7e19e5;
+}
+
+.teacher-fullscreen-page .edc-teacher-shell :is(
+  .edc-tl-stat.gold,
+  .edc-ms-stat.gold,
+  .edc-teacher-earnings-stat.gold,
+  .edc-to-stat.amber,
+  .edc-to-stat.gold
+) {
+  border-color: #faeecd;
+  background: #fff7e7;
+  color: #de7c00;
+}
+
+.teacher-fullscreen-page .edc-teacher-shell :is(
+  .edc-tl-stat.green,
+  .edc-ms-stat.green,
+  .edc-teacher-earnings-stat.green,
+  .edc-to-stat.green
+) {
+  border-color: #def2e5;
+  background: #e8f8ec;
+  color: #37a20c;
+}
+
+.teacher-fullscreen-page .edc-teacher-shell :is(
+  .edc-tl-stat.purple,
+  .edc-ms-stat.purple,
+  .edc-teacher-earnings-stat.purple,
+  .edc-to-stat.violet,
+  .edc-to-stat:not(.gold),
+  .edc-tl-stat.gold,
+  .edc-ms-stat.gold,
+  .edc-teacher-earnings-stat.gold,
+  .edc-to-stat.amber,
+  .edc-to-stat.gold,
+  .edc-tl-stat.green,
+  .edc-ms-stat.green,
+  .edc-teacher-earnings-stat.green,
+  .edc-to-stat.green
+) :is(small, strong) {
+  color: #2b1048;
+}
+
+.teacher-fullscreen-page .edc-teacher-shell :is(
+  .edc-tl-stat-icon,
+  .edc-ms-stat > span:first-child,
+  .edc-teacher-earnings-stat > span,
+  .edc-to-stat-icon
+) {
+  background: #dcccff;
+  color: #6d0bc9;
+}
+
+.teacher-fullscreen-page .edc-teacher-shell :is(
+  .edc-tl-stat.gold .edc-tl-stat-icon,
+  .edc-ms-stat.gold > span:first-child,
+  .edc-teacher-earnings-stat.gold > span,
+  .edc-to-stat.amber .edc-to-stat-icon,
+  .edc-to-stat.gold .edc-to-stat-icon
+) {
+  background: #ffedc8;
+}
+
+.teacher-fullscreen-page .edc-teacher-shell :is(
+  .edc-tl-stat.green .edc-tl-stat-icon,
+  .edc-ms-stat.green > span:first-child,
+  .edc-teacher-earnings-stat.green > span,
+  .edc-to-stat.green .edc-to-stat-icon
+) {
+  background: #d2f0d8;
+}
+
+.teacher-fullscreen-page .edc-teacher-shell :is(
+  .edc-tl-progress-line > span,
+  .edc-ms-progress > span
+) {
+  background: var(--student-progress-track);
+}
+
+.teacher-fullscreen-page .edc-teacher-shell :is(
+  .edc-tl-progress-line > span > span,
+  .edc-ms-progress > span > span
+) {
+  background: var(--student-progress-color);
+}
+
+.teacher-fullscreen-page .edc-teacher-shell .edc-to-donut {
+  background: conic-gradient(
+    var(--student-circle-color) 0 var(--completed-stop),
+    var(--student-circle-light) var(--completed-stop) var(--active-stop),
+    var(--student-circle-track) var(--active-stop) 100%
+  );
+}
+
+.teacher-fullscreen-page .edc-teacher-shell .edc-to-progress-key i {
+  background: var(--student-circle-color);
+}
+
+.teacher-fullscreen-page .edc-teacher-shell .edc-to-progress-key i.progress {
+  background: var(--student-circle-light);
+}
+
+.teacher-fullscreen-page .edc-teacher-shell .edc-to-progress-key i.remaining {
+  background: var(--student-circle-track);
+}
+
+.teacher-fullscreen-page .edc-teacher-shell :is(
+  .edc-teacher-earnings-line,
+  .edc-teacher-earnings-dot
+) {
+  stroke: #e3b32b;
+}
+
+.teacher-fullscreen-page .edc-teacher-shell .edc-teacher-earnings-dot {
+  fill: #e3b32b;
+}
+
+.teacher-fullscreen-page .edc-teacher-shell .edc-teacher-earnings-modal {
+  border: 1px solid #e5d8f9;
+  background: #fff;
+}

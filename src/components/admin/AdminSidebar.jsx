@@ -13,6 +13,7 @@ function AdminSidebar({ email, isOpen, onClose, platformSettings }) {
   const account = readAdminArray(ADMIN_USERS_KEY).find((user) => user.role === "Admin" && String(user.email).toLowerCase() === String(email || "").toLowerCase());
   const displayName = account?.name?.trim() || "Admin";
   const websiteName = platformSettings?.general?.websiteName || "EduConnect AI";
+  const isDefaultWebsiteName = websiteName.trim().toLowerCase() === "educonnect ai";
   const logoUrl = platformSettings?.general?.logoUrl;
   const tagline = platformSettings?.general?.tagline || "Admin Panel";
 
@@ -36,7 +37,7 @@ function AdminSidebar({ email, isOpen, onClose, platformSettings }) {
             {logoUrl ? <img src={logoUrl} alt="" /> : <GraduationCap size={22} />}
           </span>
           <span className="edc-admin-brand-copy">
-            <strong>{websiteName}</strong>
+            <strong>{isDefaultWebsiteName ? <>EduConnect <b>AI</b></> : websiteName}</strong>
             <small>{tagline}</small>
           </span>
           <button

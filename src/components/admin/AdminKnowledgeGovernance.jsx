@@ -1,14 +1,27 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ArrowLeft,
+  ArrowRight,
+  BrainCircuit,
   BookOpenCheck,
+  CalendarDays,
   Check,
   CheckCircle2,
+  ChevronDown,
+  Clock3,
+  Download,
   Eye,
   FilePlus2,
+  FileText,
   Info,
+  Layers,
   Search,
+  ShieldCheck,
+  Upload,
   X,
+  XCircle,
 } from "lucide-react";
+import { Link } from "react-router-dom";
 import {
   ADMIN_DATA_CHANGED_EVENT,
   ADMIN_USERS_KEY,
@@ -20,6 +33,12 @@ import {
   readAdminArray,
   updateAdminKnowledgeProposal,
 } from "./adminData";
+import {
+  ADMIN_PLATFORM_SETTINGS_CHANGED_EVENT,
+  getAdminPlatformSettings,
+  saveAdminPlatformSettings,
+} from "./adminPlatformSettings";
+import { createCsvContent, downloadCsv } from "./adminCsvUtils";
 
 const KNOWLEDGE_FILTERS = [
   ["all", "All Proposals"],
@@ -68,6 +87,25 @@ function statusClass(status) {
 
 function proposalKey(proposal) {
   return String(proposal.proposalId ?? "");
+}
+
+function proposalSourceKey(proposal) {
+  return `${String(proposal.teacherEmail || "").trim().toLowerCase()}:${String(proposal.courseId ?? "")}`;
+}
+
+function proposalTimestamp(proposal) {
+  if (typeof proposal.submittedAt !== "string" && typeof proposal.submittedAt !== "number") {
+    return null;
+  }
+  const timestamp = new Date(proposal.submittedAt).getTime();
+  return Number.isNaN(timestamp) ? null : timestamp;
+}
+
+function proposalSourceLabel(proposal) {
+  const references = displayValue(proposal.sourceReferences);
+  return references !== "Not provided"
+    ? references
+    : displayValue(proposal.courseSnapshot?.title);
 }
 
 function courseKey(course) {
@@ -185,14 +223,24 @@ function AdminKnowledgeGovernance() {
   const [courseChoices, setCourseChoices] = useState(readCourseChoices);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [specificStatusFilter, setSpecificStatusFilter] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [sourceFilter, setSourceFilter] = useState("all");
+  const [dateRange, setDateRange] = useState("all");
+  const [dateReferenceTime, setDateReferenceTime] = useState(0);
+  const [page, setPage] = useState(1);
+  const [featuredProposalKey, setFeaturedProposalKey] = useState("");
   const [selectedProposal, setSelectedProposal] = useState(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [selectedCourseKey, setSelectedCourseKey] = useState("");
   const [reviewNote, setReviewNote] = useState("");
   const [feedback, setFeedback] = useState("");
   const [error, setError] = useState("");
+  const [platformSettings, setPlatformSettings] = useState(getAdminPlatformSettings);
+  const [settingsError, setSettingsError] = useState("");
   const closeButtonRef = useRef(null);
   const returnFocusRef = useRef(null);
+  const pageSize = 8;
 
   const refreshData = useCallback(() => {
     const state = getAdminKnowledgeStorageState();
@@ -210,7 +258,14 @@ function AdminKnowledgeGovernance() {
 
   useEffect(() => {
     window.addEventListener("storage", refreshData);
+    window.addEventListener("storage", refreshPlatformSettings);
     window.addEventListener(ADMIN_DATA_CHANGED_EVENT, refreshData);
+
+    function refreshPlatformSettings() {
+      setPlatformSettings(getAdminPlatformSettings());
+    }
+
+    window.addEventListener(ADMIN_PLATFORM_SETTINGS_CHANGED_EVENT, refreshPlatformSettings);
 
     function closeOnEscape(event) {
       if (event.key === "Escape") {
@@ -222,7 +277,9 @@ function AdminKnowledgeGovernance() {
 
     return () => {
       window.removeEventListener("storage", refreshData);
+      window.removeEventListener("storage", refreshPlatformSettings);
       window.removeEventListener(ADMIN_DATA_CHANGED_EVENT, refreshData);
+      window.removeEventListener(ADMIN_PLATFORM_SETTINGS_CHANGED_EVENT, refreshPlatformSettings);
       window.removeEventListener("keydown", closeOnEscape);
     };
   }, [refreshData]);
@@ -253,31 +310,174 @@ function AdminKnowledgeGovernance() {
     [courseChoices, existingCourseKeys],
   );
 
+  const categories = useMemo(
+    () => [...new Set(proposals.map((proposal) => displayValue(proposal.subject)))].sort(
+      (a, b) => a.localeCompare(b),
+    ),
+    [proposals],
+  );
+  const sourceOptions = useMemo(() => {
+    const records = new Map();
+    proposals.forEach((proposal) => {
+      const source = proposalSourceLabel(proposal);
+      if (source !== "Not provided" && !records.has(source)) {
+        records.set(source, source);
+      }
+    });
+    return [...records.values()].sort((a, b) => a.localeCompare(b));
+  }, [proposals]);
+  const availableStatuses = useMemo(
+    () => [...new Set(proposals
+      .map((proposal) => proposal.status)
+      .filter((status) => typeof status === "string" && status.trim()))]
+      .sort((a, b) => {
+        const orderA = KNOWLEDGE_FILTERS.findIndex(([id]) => id === a);
+        const orderB = KNOWLEDGE_FILTERS.findIndex(([id]) => id === b);
+        if (orderA === -1 && orderB === -1) return a.localeCompare(b);
+        if (orderA === -1) return 1;
+        if (orderB === -1) return -1;
+        return orderA - orderB;
+      }),
+    [proposals],
+  );
+  const proposalStats = useMemo(() => ({
+    total: proposals.length,
+    pending: proposals.filter((proposal) => proposal.status === "Pending Review").length,
+    approved: proposals.filter((proposal) => proposal.status === "Approved for Processing").length,
+    rejected: proposals.filter((proposal) => proposal.status === "Rejected").length,
+    changesRequested: proposals.filter((proposal) => proposal.status === "Changes Requested").length,
+    rightsEvidenceRequested: proposals.filter((proposal) => proposal.status === "Rights Evidence Requested").length,
+  }), [proposals]);
+  const statusTabs = useMemo(
+    () => KNOWLEDGE_FILTERS.map(([id, label]) => ({
+      id,
+      label,
+      count: id === "all" ? proposals.length : proposals.filter((proposal) => proposal.status === id).length,
+    })),
+    [proposals],
+  );
+
   const filteredProposals = useMemo(() => {
     const query = search.trim().toLowerCase();
+    const days = Number(dateRange);
+    const cutoff = dateRange === "all" || !dateReferenceTime
+      ? null
+      : dateReferenceTime - days * 24 * 60 * 60 * 1000;
     return proposals.filter((proposal) => {
       const matchesStatus =
         statusFilter === "all" || proposal.status === statusFilter;
+      const matchesSpecificStatus = specificStatusFilter === "all" ||
+        proposal.status === specificStatusFilter;
+      const matchesCategory = categoryFilter === "all" ||
+        displayValue(proposal.subject) === categoryFilter;
+      const matchesSource = sourceFilter === "all" ||
+        proposalSourceLabel(proposal) === sourceFilter;
+      const timestamp = proposalTimestamp(proposal);
+      const matchesDate = cutoff === null ||
+        (timestamp !== null && timestamp >= cutoff && timestamp <= dateReferenceTime);
       const searchableText = [
         proposal.proposedTopic,
         proposal.teacherName,
         proposal.subject,
         proposal.courseSnapshot?.title,
+        proposal.sourceReferences,
+        proposal.existingCoverage,
+        proposal.proposalId,
       ]
-        .filter((value) => typeof value === "string")
+        .filter((value) => typeof value === "string" || typeof value === "number")
+        .map(String)
         .join(" ")
         .toLowerCase();
-      return matchesStatus && (!query || searchableText.includes(query));
+      return matchesStatus &&
+        matchesSpecificStatus &&
+        matchesCategory &&
+        matchesSource &&
+        matchesDate &&
+        (!query || searchableText.includes(query));
     });
-  }, [proposals, search, statusFilter]);
+  }, [proposals, search, statusFilter, specificStatusFilter, categoryFilter, sourceFilter, dateRange, dateReferenceTime]);
+  const sortedProposals = useMemo(
+    () => [...filteredProposals].sort(
+      (a, b) => (proposalTimestamp(b) ?? -Infinity) - (proposalTimestamp(a) ?? -Infinity),
+    ),
+    [filteredProposals],
+  );
+  const pageCount = Math.max(1, Math.ceil(sortedProposals.length / pageSize));
+  const currentPage = Math.min(page, pageCount);
+  const visibleProposals = sortedProposals.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const pageStart = sortedProposals.length ? (currentPage - 1) * pageSize + 1 : 0;
+  const pageEnd = Math.min(currentPage * pageSize, sortedProposals.length);
+  const startPage = Math.max(1, Math.min(currentPage - 2, pageCount - 4));
+  const endPage = Math.min(pageCount, startPage + 4);
+  const pageNumbers = Array.from({ length: endPage - startPage + 1 }, (_, index) => startPage + index);
+  const featuredProposal = sortedProposals.find(
+    (proposal) => proposalKey(proposal) === featuredProposalKey,
+  ) || sortedProposals[0] || null;
 
   function openProposal(proposal, event) {
     returnFocusRef.current = event.currentTarget;
+    setFeaturedProposalKey(proposalKey(proposal));
     setReviewNote(
       typeof proposal.reviewNotes === "string" ? proposal.reviewNotes : "",
     );
     setError("");
     setSelectedProposal(proposal);
+  }
+
+  function selectProposalFilter(filter) {
+    setStatusFilter(filter);
+    setSpecificStatusFilter("all");
+    setPage(1);
+  }
+
+  function handleExport() {
+    setFeedback("");
+    setError("");
+    try {
+      const columns = [
+        { header: "Proposal ID", getValue: (proposal) => proposal.proposalId ?? "" },
+        { header: "Proposed Topic", getValue: (proposal) => proposal.proposedTopic ?? "" },
+        { header: "Related Course", getValue: (proposal) => proposal.courseSnapshot?.title ?? "" },
+        { header: "Teacher", getValue: (proposal) => proposal.teacherName ?? "" },
+        { header: "Teacher Email", getValue: (proposal) => proposal.teacherEmail ?? "" },
+        { header: "Subject", getValue: (proposal) => proposal.subject ?? "" },
+        { header: "Source References", getValue: (proposal) => proposal.sourceReferences ?? "" },
+        { header: "Submitted On", getValue: (proposal) => proposal.submittedAt ?? "" },
+        { header: "Status", getValue: (proposal) => proposal.status ?? "" },
+      ];
+      downloadCsv(
+        "educonnect-knowledge-proposals.csv",
+        createCsvContent(sortedProposals, columns),
+      );
+      setFeedback(`Exported ${sortedProposals.length} knowledge proposal${sortedProposals.length === 1 ? "" : "s"}.`);
+    } catch (exportError) {
+      setError(
+        exportError instanceof Error
+          ? exportError.message
+          : "The knowledge proposal report could not be exported.",
+      );
+    }
+  }
+
+  function updatePlatformRule(key, value) {
+    setFeedback("");
+    setError("");
+    setSettingsError("");
+    try {
+      const nextSettings = {
+        ...platformSettings,
+        rules: { ...platformSettings.rules, [key]: value },
+      };
+      saveAdminPlatformSettings(nextSettings);
+      setPlatformSettings(getAdminPlatformSettings());
+      setFeedback("Platform rule saved.");
+    } catch (settingsErrorValue) {
+      setSettingsError(
+        settingsErrorValue instanceof Error
+          ? settingsErrorValue.message
+          : "The platform rule could not be saved.",
+      );
+    }
   }
 
   function handleDialogKeyDown(event) {
@@ -399,44 +599,41 @@ function AdminKnowledgeGovernance() {
   }
 
   const selectedCourse = selectedProposal?.courseSnapshot;
-  const proposalStats = {
-    total: proposals.length,
-    pending: proposals.filter((proposal) => proposal.status === "Pending Review").length,
-    approved: proposals.filter(
-      (proposal) => proposal.status === "Approved for Processing",
-    ).length,
-    rejected: proposals.filter((proposal) => proposal.status === "Rejected").length,
-  };
+  const sourceCourseCount = new Set(
+    proposals.map(proposalSourceKey).filter((key) => key !== ":"),
+  ).size;
 
   return (
     <section className="edc-admin-knowledge">
-      <div className="edc-admin-knowledge-heading">
-        <p>
-          This demo stores separate knowledge-review proposals. Course approval
-          does not create or approve a proposal.
-        </p>
-        <button
-          className="edc-admin-knowledge-create"
-          type="button"
-          disabled={Boolean(storeError) || availableCourses.length === 0}
-          title={
-            storeError
-              ? "Proposal storage is unavailable."
-              : availableCourses.length === 0
-                ? "There are no unsubmitted courses available."
-                : undefined
-          }
-          onClick={() => {
-            returnFocusRef.current = document.activeElement;
-            setError("");
-            setFeedback("");
-            setCreateDialogOpen(true);
-          }}
-        >
-          <FilePlus2 size={16} aria-hidden="true" />
-          Submit a course for knowledge review
-        </button>
-      </div>
+      <header className="edc-admin-knowledge-page-heading">
+        <div>
+          <span className="edc-admin-page-eyebrow">KNOWLEDGE GOVERNANCE</span>
+          <h2><BrainCircuit aria-hidden="true" />AI Knowledge Governance</h2>
+          <p>Review saved knowledge proposals and their linked course content.</p>
+        </div>
+        <div className="edc-admin-knowledge-page-actions">
+          <Link to="/admin/data-import" className="edc-admin-action-button">
+            <Upload size={15} aria-hidden="true" />Import Knowledge
+          </Link>
+          <button type="button" className="edc-admin-action-button" onClick={handleExport} disabled={Boolean(storeError) || !sortedProposals.length}>
+            <Download size={15} aria-hidden="true" />Export Report
+          </button>
+          <button
+            type="button"
+            className="edc-admin-knowledge-create"
+            disabled={Boolean(storeError) || availableCourses.length === 0}
+            title={storeError ? "Proposal storage is unavailable." : availableCourses.length === 0 ? "There are no unsubmitted courses available." : undefined}
+            onClick={() => {
+              returnFocusRef.current = document.activeElement;
+              setError("");
+              setFeedback("");
+              setCreateDialogOpen(true);
+            }}
+          >
+            <FilePlus2 size={16} aria-hidden="true" />Add Knowledge
+          </button>
+        </div>
+      </header>
 
       {storeError && (
         <p className="edc-admin-feedback edc-admin-feedback-error" role="alert">
@@ -446,128 +643,251 @@ function AdminKnowledgeGovernance() {
       )}
       {feedback && (
         <p className="edc-admin-feedback edc-admin-feedback-success" role="status">
-          <Check size={16} aria-hidden="true" />
-          {feedback}
+          <Check size={16} aria-hidden="true" />{feedback}
         </p>
       )}
       {error && !selectedProposal && (
         <p className="edc-admin-feedback edc-admin-feedback-error" role="alert">
-          <Info size={16} aria-hidden="true" />
-          {error}
+          <Info size={16} aria-hidden="true" />{error}
         </p>
       )}
 
-      <div className="edc-admin-knowledge-stats" aria-label="Proposal summary">
+      <div className="edc-admin-knowledge-reference-stats" aria-label="Knowledge proposal summaries">
         {[
-          ["Total Proposals", proposalStats.total],
-          ["Pending Review", proposalStats.pending],
-          ["Approved for Processing", proposalStats.approved],
-          ["Rejected", proposalStats.rejected],
-        ].map(([label, value]) => (
-          <article className="edc-admin-stat-card" key={label}>
-            <span className="edc-admin-stat-icon" aria-hidden="true">
-              <BookOpenCheck size={19} />
-            </span>
-            <p>{label}</p>
-            <strong>{value}</strong>
-          </article>
+          { label: "Total Proposals", value: proposalStats.total, filter: "all", color: "purple", icon: BookOpenCheck },
+          { label: "Pending Review", value: proposalStats.pending, filter: "Pending Review", color: "orange", icon: Clock3 },
+          { label: "Approved for Processing", value: proposalStats.approved, filter: "Approved for Processing", color: "green", icon: CheckCircle2 },
+          { label: "Rejected", value: proposalStats.rejected, filter: "Rejected", color: "red", icon: XCircle },
+          { label: "Changes Requested", value: proposalStats.changesRequested, filter: "Changes Requested", color: "violet", icon: FileText },
+          { label: "Rights Evidence Requested", value: proposalStats.rightsEvidenceRequested, filter: "Rights Evidence Requested", color: "purple", icon: ShieldCheck },
+        ].map(({ label, value, filter, color, icon: Icon }) => (
+          <button
+            className={`edc-admin-knowledge-reference-stat edc-admin-metric-card edc-admin-metric-${color}${statusFilter === filter ? " is-active" : ""}`}
+            key={label}
+            type="button"
+            aria-pressed={statusFilter === filter}
+            onClick={() => selectProposalFilter(filter)}
+          >
+            <span className="edc-admin-knowledge-reference-stat-icon"><Icon size={22} aria-hidden="true" /></span>
+            <span><small>{label}</small><strong>{storeError ? "—" : value.toLocaleString()}</strong></span>
+          </button>
         ))}
       </div>
 
-      <div className="edc-admin-applications-toolbar edc-admin-knowledge-toolbar">
-        <label className="edc-admin-search">
-          <Search size={17} aria-hidden="true" />
-          <span className="edc-admin-visually-hidden">Search proposals</span>
-          <input
-            type="search"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search by topic, course or teacher"
-          />
-        </label>
-        <div
-          className="edc-admin-application-filters"
-          aria-label="Filter knowledge proposals"
-        >
-          {KNOWLEDGE_FILTERS.map(([id, label]) => (
-            <button
-              className={`edc-admin-filter-button${statusFilter === id ? " edc-admin-filter-button-active" : ""}`}
-              type="button"
-              key={id}
-              aria-pressed={statusFilter === id}
-              onClick={() => setStatusFilter(id)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
+      <div className="edc-admin-knowledge-workspace">
+        <section className="edc-admin-knowledge-directory" aria-label="Knowledge proposals">
+          <div className="edc-admin-knowledge-tabs" aria-label="Filter proposals by status">
+            {statusTabs.map(({ id, label, count }) => (
+              <button
+                key={id}
+                type="button"
+                aria-pressed={statusFilter === id}
+                className={statusFilter === id ? "is-active" : ""}
+                onClick={() => selectProposalFilter(id)}
+              >
+                {label} <span>({storeError ? "—" : count.toLocaleString()})</span>
+              </button>
+            ))}
+          </div>
 
-      <p className="edc-admin-knowledge-demo-note">
-        “Approved for Processing” records an Admin decision only. This frontend
-        demo does not perform document extraction, AI review, embeddings,
-        ingestion, or shared-knowledge publication.
-      </p>
+          <div className="edc-admin-knowledge-filters">
+            <label className="edc-admin-search">
+              <Search size={16} aria-hidden="true" />
+              <span className="edc-admin-visually-hidden">Search proposals</span>
+              <input
+                type="search"
+                value={search}
+                onChange={(event) => { setSearch(event.target.value); setPage(1); }}
+                placeholder="Search by title, tag, or source..."
+              />
+            </label>
+            <label className="edc-admin-knowledge-select">
+              <span className="edc-admin-visually-hidden">Filter by category</span>
+              <select value={categoryFilter} onChange={(event) => { setCategoryFilter(event.target.value); setPage(1); }}>
+                <option value="all">All Categories</option>
+                {categories.map((category) => <option key={category} value={category}>{category}</option>)}
+              </select>
+              <ChevronDown size={14} aria-hidden="true" />
+            </label>
+            <label className="edc-admin-knowledge-select">
+              <span className="edc-admin-visually-hidden">Filter by saved proposal source</span>
+              <select value={sourceFilter} onChange={(event) => { setSourceFilter(event.target.value); setPage(1); }}>
+                <option value="all">All Sources</option>
+                {sourceOptions.map((source) => <option key={source} value={source}>{source}</option>)}
+              </select>
+              <ChevronDown size={14} aria-hidden="true" />
+            </label>
+            <label className="edc-admin-knowledge-select">
+              <span className="edc-admin-visually-hidden">Filter by exact status</span>
+              <select
+                value={specificStatusFilter}
+                onChange={(event) => { setSpecificStatusFilter(event.target.value); setStatusFilter("all"); setPage(1); }}
+              >
+                <option value="all">All Statuses</option>
+                {availableStatuses.map((status) => <option key={status} value={status}>{status}</option>)}
+              </select>
+              <ChevronDown size={14} aria-hidden="true" />
+            </label>
+            <label className="edc-admin-knowledge-select">
+              <CalendarDays size={14} aria-hidden="true" />
+              <span className="edc-admin-visually-hidden">Filter by submission date</span>
+              <select value={dateRange} onChange={(event) => { setDateReferenceTime(Date.now()); setDateRange(event.target.value); setPage(1); }}>
+                <option value="all">All Time</option>
+                <option value="7">Last 7 Days</option>
+                <option value="30">Last 30 Days</option>
+                <option value="90">Last 90 Days</option>
+              </select>
+              <ChevronDown size={14} aria-hidden="true" />
+            </label>
+          </div>
 
-      {filteredProposals.length ? (
-        <div className="edc-admin-table-wrap">
-          <table className="edc-admin-applications-table edc-admin-knowledge-table">
-            <thead>
-              <tr>
-                <th scope="col">Proposed topic</th>
-                <th scope="col">Related course</th>
-                <th scope="col">Teacher</th>
-                <th scope="col">Subject</th>
-                <th scope="col">Submitted</th>
-                <th scope="col">Knowledge status</th>
-                <th scope="col">Review</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredProposals.map((proposal) => (
-                <tr key={proposalKey(proposal)}>
-                  <td><strong>{displayValue(proposal.proposedTopic)}</strong></td>
-                  <td>{displayValue(proposal.courseSnapshot?.title)}</td>
-                  <td>{displayValue(proposal.teacherName)}</td>
-                  <td>{displayValue(proposal.subject)}</td>
-                  <td>{formatDate(proposal.submittedAt)}</td>
-                  <td>
-                    <span className={`edc-admin-status-badge ${statusClass(proposal.status)}`}>
-                      {displayValue(proposal.status)}
-                    </span>
-                  </td>
-                  <td>
-                    <button
-                      className="edc-admin-action-button"
-                      type="button"
-                      onClick={(event) => openProposal(proposal, event)}
-                    >
-                      <Eye size={14} aria-hidden="true" />
-                      View details
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <div className="edc-admin-applications-empty">
-          <span className="edc-admin-applications-empty-icon" aria-hidden="true">
-            <BookOpenCheck size={22} />
-          </span>
-          <h3>{proposals.length ? "No proposals match this view" : "No knowledge proposals yet"}</h3>
-          <p>
-            {proposals.length
-              ? "Try another search or status filter."
-              : "An Admin can explicitly submit an existing course for separate knowledge review."}
+          <p className="edc-admin-knowledge-demo-note">
+            Approval records an Admin decision only. This frontend does not process, ingest, or publish shared AI knowledge.
           </p>
-        </div>
-      )}
-      <p className="edc-admin-applications-count">
-        Showing {filteredProposals.length} of {proposals.length} proposal
-        {proposals.length === 1 ? "" : "s"}
-      </p>
+
+          {storeError ? (
+            <div className="edc-admin-applications-empty">
+              <span className="edc-admin-applications-empty-icon" aria-hidden="true"><Info size={22} /></span>
+              <h3>Proposal records unavailable</h3>
+              <p>Saved data could not be read, so proposal totals and records are not shown.</p>
+            </div>
+          ) : sortedProposals.length ? (
+            <div className="edc-admin-table-wrap edc-admin-knowledge-table-wrap">
+              <table className="edc-admin-applications-table edc-admin-knowledge-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Knowledge Item</th>
+                    <th scope="col">Category</th>
+                    <th scope="col">Source</th>
+                    <th scope="col">Added On</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleProposals.map((proposal) => (
+                    <tr
+                      key={proposalKey(proposal)}
+                      className={proposalKey(proposal) === proposalKey(featuredProposal || {}) ? "is-selected" : ""}
+                      onClick={() => setFeaturedProposalKey(proposalKey(proposal))}
+                    >
+                      <td>
+                        <span className="edc-admin-knowledge-proposal-cell">
+                          <span className="edc-admin-knowledge-proposal-icon"><BookOpenCheck size={17} aria-hidden="true" /></span>
+                          <span><strong>{displayValue(proposal.proposedTopic)}</strong><small>ID: {displayValue(proposal.proposalId)}</small></span>
+                        </span>
+                      </td>
+                      <td><span className="edc-admin-knowledge-category">{displayValue(proposal.subject)}</span></td>
+                      <td>{proposalSourceLabel(proposal)}</td>
+                      <td><span className="edc-admin-knowledge-date"><CalendarDays size={13} aria-hidden="true" />{formatDate(proposal.submittedAt)}</span></td>
+                      <td><span className={`edc-admin-status-badge ${statusClass(proposal.status)}`}>{displayValue(proposal.status)}</span></td>
+                      <td>
+                        <button
+                          className="edc-admin-knowledge-row-action"
+                          type="button"
+                          title="Review proposal"
+                          aria-label={`Review ${displayValue(proposal.proposedTopic)}`}
+                          onClick={(event) => openProposal(proposal, event)}
+                        ><Eye size={16} aria-hidden="true" /></button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="edc-admin-applications-empty">
+              <span className="edc-admin-applications-empty-icon" aria-hidden="true"><BookOpenCheck size={22} /></span>
+              <h3>{proposals.length ? "No proposals match these filters" : "No knowledge proposals yet"}</h3>
+              <p>{proposals.length ? "Try another search or filter." : "Create a proposal from an existing teacher course to begin review."}</p>
+            </div>
+          )}
+
+          <div className="edc-admin-knowledge-pagination">
+            <p aria-live="polite">
+              {storeError ? "Proposal count unavailable." : `Showing ${pageStart}–${pageEnd} of ${sortedProposals.length.toLocaleString()} proposals`}
+            </p>
+            <div>
+              <button type="button" aria-label="Previous page" disabled={currentPage <= 1 || Boolean(storeError)} onClick={() => setPage((current) => Math.max(1, current - 1))}><ArrowLeft size={16} /></button>
+              {startPage > 1 && <><button type="button" onClick={() => setPage(1)}>1</button>{startPage > 2 && <span>…</span>}</>}
+              {pageNumbers.map((pageNumber) => <button key={pageNumber} type="button" aria-current={currentPage === pageNumber ? "page" : undefined} onClick={() => setPage(pageNumber)}>{pageNumber}</button>)}
+              {endPage < pageCount && <>{endPage < pageCount - 1 && <span>…</span>}<button type="button" onClick={() => setPage(pageCount)}>{pageCount}</button></>}
+              <button type="button" aria-label="Next page" disabled={currentPage >= pageCount || Boolean(storeError)} onClick={() => setPage((current) => Math.min(pageCount, current + 1))}><ArrowRight size={16} /></button>
+            </div>
+          </div>
+        </section>
+
+        <aside className="edc-admin-knowledge-sidebar">
+          <section className="edc-admin-knowledge-side-card">
+            <header><h3><ShieldCheck size={18} aria-hidden="true" />Platform Governance</h3></header>
+            <p className="edc-admin-knowledge-side-note">Current saved platform rules; these are not AI processing controls.</p>
+            {platformSettings.error && <p className="edc-admin-knowledge-settings-error" role="alert">{platformSettings.error}</p>}
+            {settingsError && <p className="edc-admin-knowledge-settings-error" role="alert">{settingsError}</p>}
+            <label className="edc-admin-knowledge-setting">
+              <span><strong>Course approval required</strong><small>Saved course publishing rule</small></span>
+              <input
+                type="checkbox"
+                checked={Boolean(platformSettings.rules.courseApprovalRequired)}
+                disabled={Boolean(platformSettings.error)}
+                onChange={(event) => updatePlatformRule("courseApprovalRequired", event.target.checked)}
+              />
+            </label>
+            <label className="edc-admin-knowledge-publishing-setting">
+              <span>Content publishing rule</span>
+              <select
+                value={platformSettings.rules.contentPublishingRules}
+                disabled={Boolean(platformSettings.error)}
+                onChange={(event) => updatePlatformRule("contentPublishingRules", event.target.value)}
+              >
+                <option>Approved content only</option>
+                <option>Admin review required</option>
+                <option>Allow teacher publishing</option>
+              </select>
+            </label>
+            <Link to="/admin/settings" className="edc-admin-knowledge-settings-link">Manage platform settings</Link>
+          </section>
+
+          <section className="edc-admin-knowledge-side-card">
+            <header><h3><Layers size={18} aria-hidden="true" />Proposal Sources</h3></header>
+            <div className="edc-admin-knowledge-source-counts">
+              <div><span>Linked course records</span><strong>{storeError ? "—" : sourceCourseCount.toLocaleString()}</strong></div>
+              <div><span>Courses available to propose</span><strong>{storeError ? "—" : availableCourses.length.toLocaleString()}</strong></div>
+            </div>
+            {sourceOptions.length ? (
+              <ul className="edc-admin-knowledge-source-list">
+                {sourceOptions.slice(0, 5).map((source) => (
+                  <li key={source}><FileText size={15} aria-hidden="true" /><span title={source}>{source}</span></li>
+                ))}
+              </ul>
+            ) : (
+              <p className="edc-admin-knowledge-side-note">No source references are saved with the current proposals.</p>
+            )}
+            <p className="edc-admin-knowledge-source-disclaimer">No external AI provider connection is configured in this frontend.</p>
+          </section>
+
+          <section className="edc-admin-knowledge-side-card">
+            <header><h3><FilePlus2 size={18} aria-hidden="true" />Quick Actions</h3></header>
+            <div className="edc-admin-knowledge-quick-actions">
+              <button type="button" onClick={() => { returnFocusRef.current = document.activeElement; setError(""); setFeedback(""); setCreateDialogOpen(true); }} disabled={Boolean(storeError) || availableCourses.length === 0}><FilePlus2 size={15} />Add proposal</button>
+              <Link to="/admin/settings"><ShieldCheck size={15} />Configure rules</Link>
+              <Link to="/admin/audit-logs"><FileText size={15} />View audit log</Link>
+            </div>
+          </section>
+
+          {featuredProposal && (
+            <section className="edc-admin-knowledge-side-card edc-admin-knowledge-recent-card">
+              <header><h3><Clock3 size={18} aria-hidden="true" />Selected Proposal</h3></header>
+              <strong>{displayValue(featuredProposal.proposedTopic)}</strong>
+              <span>{displayValue(featuredProposal.teacherName)}</span>
+              <span className={`edc-admin-status-badge ${statusClass(featuredProposal.status)}`}>{displayValue(featuredProposal.status)}</span>
+              <button type="button" className="edc-admin-action-button" onClick={(event) => openProposal(featuredProposal, event)}><Eye size={14} />Review details</button>
+              {typeof featuredProposal.reviewNotes === "string" && featuredProposal.reviewNotes.trim()
+                ? <p>{featuredProposal.reviewNotes}</p>
+                : <p>No review notes are saved for this proposal.</p>}
+            </section>
+          )}
+        </aside>
+      </div>
 
       {createDialogOpen && (
         <div

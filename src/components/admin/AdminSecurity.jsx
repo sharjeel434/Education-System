@@ -1,12 +1,18 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  ArrowLeft,
+  ArrowRight,
   AlertTriangle,
+  CheckCircle2,
   Clock3,
   Database,
+  Eye,
+  FileText,
   Globe,
   KeyRound,
   Layers,
   LogOut,
+  Search,
   RotateCcw,
   Server,
   ShieldAlert,
@@ -22,8 +28,20 @@ import {
   getAdminActivityLog,
   notifyAdminDataChanged,
   readAdminArray,
+  readAdminUsersState,
 } from "./adminData";
 import { ADMIN_SECTIONS } from "./adminNavigation";
+import { createCsvContent, downloadCsv } from "./adminCsvUtils";
+
+const SECURITY_TABS = [
+  ["access", "Access Control"],
+  ["roles", "Roles & Permissions"],
+  ["login", "Login Activity"],
+  ["policies", "Security Policies"],
+  ["mfa", "2FA"],
+  ["sessions", "Sessions"],
+  ["audit", "Audit Logs"],
+];
 
 function maskEmail(email) {
   if (typeof email !== "string" || !email.includes("@")) {
@@ -57,16 +75,10 @@ function getAdminDisplayName(email) {
 
   return typeof match?.name === "string" && match.name.trim()
     ? match.name.trim()
-    : "Administrator";
+    : "Name not provided";
 }
 
-function getRouteStatus(id) {
-  if (id === "institutions") {
-    return {
-      label: "Placeholder",
-      badgeClass: "edc-admin-status-unknown",
-    };
-  }
+function getRouteStatus() {
   return {
     label: "Client Demo",
     badgeClass: "edc-admin-status-approved",
@@ -95,6 +107,27 @@ function formatActivityTimestamp(value) {
   return Number.isNaN(date.getTime()) ? "Not provided" : date.toLocaleString();
 }
 
+function uniqueAccounts(users) {
+  const seen = new Set();
+  return users.filter((user) => {
+    const email = typeof user?.email === "string" ? user.email.trim().toLowerCase() : "";
+    if (!email || seen.has(email)) return false;
+    seen.add(email);
+    return true;
+  });
+}
+
+function displayAccountStatus(status) {
+  return typeof status === "string" && status.trim() ? status.trim() : "Not recorded";
+}
+
+function statusTone(status) {
+  const normalized = String(status || "").toLowerCase();
+  if (normalized === "active" || normalized === "success") return "active";
+  if (normalized === "inactive" || normalized === "disabled" || normalized === "suspended" || normalized === "failed") return "inactive";
+  return "unknown";
+}
+
 const SECURITY_DETAIL_PAGES = {
   session: {
     description: "Current login identity, role, and browser session details.",
@@ -120,6 +153,7 @@ function AdminSecurity({ email, onLogout, view = "overview" }) {
   const [rememberedEmail, setRememberedEmail] = useState(() =>
     window.localStorage.getItem("educonnect.rememberedEmail") || "",
   );
+  const [usersState, setUsersState] = useState(readAdminUsersState);
   const [storageDiagnostics, setStorageDiagnostics] = useState(getStorageDiagnostics);
   const [securityActivityState, setSecurityActivityState] = useState(getAdminActivityLog);
   const [feedback, setFeedback] = useState(null);
@@ -134,6 +168,7 @@ function AdminSecurity({ email, onLogout, view = "overview" }) {
     setRememberedEmail(
       window.localStorage.getItem("educonnect.rememberedEmail") || "",
     );
+    setUsersState(readAdminUsersState());
     setStorageDiagnostics(getStorageDiagnostics());
     setSecurityActivityState(getAdminActivityLog());
   }, [email]);
@@ -157,17 +192,17 @@ function AdminSecurity({ email, onLogout, view = "overview" }) {
     .sort((first, second) =>
       new Date(second.timestamp || 0).getTime() -
       new Date(first.timestamp || 0).getTime(),
+    );
+  const loginActivity = securityActivityState.records
+    .filter((record) =>
+      record.category === "security" &&
+      record.entityType === "Admin Session" &&
+      ["Admin Login", "Admin Login Failed"].includes(record.action),
     )
-    .slice(0, 8);
-  const routeCounts = ADMIN_SECTIONS.reduce(
-    (counts, item) => {
-      if (getRouteStatus(item.id).label === "Placeholder") counts.placeholders += 1;
-      else counts.clientDemo += 1;
-      return counts;
-    },
-    { clientDemo: 0, placeholders: 0 },
-  );
-
+    .sort((first, second) =>
+      new Date(second.timestamp || 0).getTime() -
+      new Date(first.timestamp || 0).getTime(),
+    );
   function handleClearRememberedEmail() {
     setFeedback(null);
     if (!window.localStorage.getItem("educonnect.rememberedEmail")) {
@@ -233,6 +268,33 @@ function AdminSecurity({ email, onLogout, view = "overview" }) {
     }
   }
 
+  function handleExportSecurityLogs() {
+    setFeedback(null);
+    if (securityActivityState.error) {
+      setFeedback({ type: "error", message: securityActivityState.error });
+      return;
+    }
+    if (!securityActivity.length) {
+      setFeedback({ type: "info", message: "No saved security activity records are available to export." });
+      return;
+    }
+
+    try {
+      const columns = [
+        { header: "Timestamp", getValue: (record) => record.timestamp },
+        { header: "Action", getValue: (record) => record.action },
+        { header: "Actor (Masked)", getValue: (record) => maskEmail(record.actor) },
+        { header: "Result", getValue: (record) => record.result },
+      ];
+      downloadCsv("educonnect-security-activity.csv", createCsvContent(securityActivity, columns));
+    } catch (error) {
+      setFeedback({
+        type: "error",
+        message: error instanceof Error ? error.message : "Security logs could not be exported.",
+      });
+    }
+  }
+
   function handleTerminateSession() {
     if (!window.confirm("End your current Admin session and return to the login screen?")) {
       return;
@@ -263,6 +325,29 @@ function AdminSecurity({ email, onLogout, view = "overview" }) {
   }
 
   const detailPage = SECURITY_DETAIL_PAGES[view];
+
+  if (view === "overview") {
+    return (
+      <SecurityOverview
+        displayName={displayName}
+        sessionRole={sessionRole}
+        hasActiveSession={hasActiveSession}
+        rememberedEmail={rememberedEmail}
+        maskedSessionEmail={maskedSessionEmail}
+        maskedRememberedEmail={maskedRememberedEmail}
+        storageDiagnostics={storageDiagnostics}
+        usersState={usersState}
+        securityActivityState={securityActivityState}
+        securityActivity={securityActivity}
+        loginActivity={loginActivity}
+        feedback={feedback}
+        onExportLogs={handleExportSecurityLogs}
+        onRecordReview={handleRecordSecurityReview}
+        onClearRememberedEmail={handleClearRememberedEmail}
+        onTerminateSession={handleTerminateSession}
+      />
+    );
+  }
 
   return (
     <div className={`edc-admin-security${detailPage ? ` edc-admin-security-detail edc-admin-security-page-${view}` : ""}`}>
@@ -341,7 +426,7 @@ function AdminSecurity({ email, onLogout, view = "overview" }) {
               <dt>Assigned Role</dt>
               <dd>
                 <span className="edc-admin-status-badge edc-admin-status-approved">
-                  {sessionRole || "Admin"}
+                  {sessionRole || "Not recorded"}
                 </span>
               </dd>
             </div>
@@ -473,7 +558,7 @@ function AdminSecurity({ email, onLogout, view = "overview" }) {
             <article className="edc-admin-security-role-card edc-admin-security-role-card-highlight">
               <div className="edc-admin-security-role-title">
                 <ShieldCheck size={16} aria-hidden="true" />
-                <strong>Admin Role (Active)</strong>
+                <strong>Admin Role</strong>
               </div>
               <p>
                 Granted access to all <code>/admin/*</code> routes. Governs teacher applications, courses, knowledge proposals, and platform data.
@@ -483,11 +568,11 @@ function AdminSecurity({ email, onLogout, view = "overview" }) {
           </div>
 
           <h4 className="edc-admin-security-subtitle">
-            Admin Route Allowlist ({ADMIN_SECTIONS.length} routes: {routeCounts.clientDemo} Client Demo, {routeCounts.placeholders} Placeholder)
+            Admin Route Allowlist ({ADMIN_SECTIONS.length} routes)
           </h4>
           <div className="edc-admin-security-route-grid">
             {ADMIN_SECTIONS.map((item) => {
-              const status = getRouteStatus(item.id);
+              const status = getRouteStatus();
               const Icon = item.icon;
 
               return (
@@ -724,6 +809,400 @@ function AdminSecurity({ email, onLogout, view = "overview" }) {
         </section>
       </div>
     </div>
+  );
+}
+
+function SecurityOverview({
+  displayName,
+  sessionRole,
+  hasActiveSession,
+  rememberedEmail,
+  maskedSessionEmail,
+  maskedRememberedEmail,
+  storageDiagnostics,
+  usersState,
+  securityActivityState,
+  securityActivity,
+  loginActivity,
+  feedback,
+  onExportLogs,
+  onRecordReview,
+  onClearRememberedEmail,
+  onTerminateSession,
+}) {
+  const [tab, setTab] = useState("access");
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [page, setPage] = useState(1);
+  const pageSize = 8;
+
+  const allUsers = useMemo(() => uniqueAccounts(usersState.users), [usersState.users]);
+  const adminAccounts = useMemo(() => allUsers
+    .filter((user) => user.role === "Admin")
+    .sort((left, right) => String(left.name || left.email).localeCompare(String(right.name || right.email))), [allUsers]);
+  const roleCounts = useMemo(() => {
+    const counts = new Map();
+    allUsers.forEach((user) => {
+      if (typeof user.role !== "string" || !user.role.trim()) return;
+      const role = user.role.trim();
+      counts.set(role, (counts.get(role) || 0) + 1);
+    });
+    return [...counts.entries()].sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]));
+  }, [allUsers]);
+  const lastLoginByEmail = useMemo(() => {
+    const latest = new Map();
+    loginActivity.forEach((record) => {
+      if (record.action !== "Admin Login" || record.result !== "Success") return;
+      const key = String(record.actor || "").trim().toLowerCase();
+      const timestamp = new Date(record.timestamp || 0).getTime();
+      if (!key || Number.isNaN(timestamp)) return;
+      if (!latest.has(key) || timestamp > latest.get(key)) latest.set(key, timestamp);
+    });
+    return latest;
+  }, [loginActivity]);
+  const statusOptions = useMemo(() => [...new Set(adminAccounts.map((user) => displayAccountStatus(user.status)))].sort(), [adminAccounts]);
+  const filteredAccounts = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return adminAccounts.filter((user) => {
+      const status = displayAccountStatus(user.status);
+      if (statusFilter !== "all" && status !== statusFilter) return false;
+      const searchable = [user.name, user.email, user.id, user.role, status]
+        .filter((value) => value !== null && value !== undefined)
+        .map(String)
+        .join(" ")
+        .toLowerCase();
+      return !query || searchable.includes(query);
+    });
+  }, [adminAccounts, search, statusFilter]);
+  const pageCount = Math.max(1, Math.ceil(filteredAccounts.length / pageSize));
+  const currentPage = Math.min(page, pageCount);
+  const pageAccounts = filteredAccounts.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const totalRoleAccounts = roleCounts.reduce((sum, [, count]) => sum + count, 0);
+  const roleColors = ["#7412bf", "#ffba08", "#17a84b", "#ee3e5a", "#3589ef", "#8d7ba0"];
+  let segmentProgress = 0;
+  const roleStops = roleCounts.map(([, count], index) => {
+    const end = segmentProgress + (count / Math.max(1, totalRoleAccounts)) * 100;
+    const stop = `${roleColors[index % roleColors.length]} ${segmentProgress}% ${end}%`;
+    segmentProgress = end;
+    return stop;
+  }).join(", ");
+  const roleBackground = roleCounts.length
+    ? `conic-gradient(${roleStops})`
+    : "conic-gradient(#e9def4 0 100%)";
+  const loginAttempts = loginActivity.length;
+  const failedAttempts = loginActivity.filter((record) =>
+    record.action === "Admin Login Failed" || record.result === "Failed",
+  ).length;
+  const recentLoginActivity = loginActivity.slice(0, 8);
+  const recentSecurityActivity = securityActivity.slice(0, 8);
+  const actorLabel = (record) => maskEmail(record.actor);
+
+  function initials(user) {
+    const name = typeof user.name === "string" ? user.name.trim() : "";
+    if (name) return name.split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
+    return String(user.email || "?").trim().slice(0, 1).toUpperCase() || "?";
+  }
+
+  function renderAccountTable() {
+    return (
+      <>
+        <div className="edc-admin-security-account-filters">
+          <label className="edc-admin-security-search">
+            <Search size={16} aria-hidden="true" />
+            <span className="edc-admin-visually-hidden">Search saved admin accounts</span>
+            <input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Search by name or email..." />
+          </label>
+          <select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setPage(1); }} aria-label="Filter admin accounts by saved status">
+            <option value="all">All statuses</option>
+            {statusOptions.map((status) => <option value={status} key={status}>{status}</option>)}
+          </select>
+        </div>
+        {usersState.error ? (
+          <div className="edc-admin-security-empty" role="alert"><ShieldAlert size={20} /><p>{usersState.error}</p></div>
+        ) : pageAccounts.length ? (
+          <div className="edc-admin-security-table-wrap">
+            <table className="edc-admin-security-table">
+              <thead><tr><th scope="col">Admin Account</th><th scope="col">Role</th><th scope="col">Email</th><th scope="col">Last Login</th><th scope="col">2FA</th><th scope="col">Status</th><th scope="col">Actions</th></tr></thead>
+              <tbody>{pageAccounts.map((user) => {
+                const normalizedEmail = user.email.trim().toLowerCase();
+                const lastLogin = lastLoginByEmail.get(normalizedEmail);
+                const name = typeof user.name === "string" && user.name.trim() ? user.name.trim() : "Name not provided";
+                const status = displayAccountStatus(user.status);
+                return (
+                  <tr key={normalizedEmail}>
+                    <td><span className="edc-admin-security-account-name"><i aria-hidden="true">{initials(user)}</i><span><strong>{name}</strong>{user.id !== undefined && user.id !== null && user.id !== "" && <small>ID: {String(user.id)}</small>}</span></span></td>
+                    <td><span className="edc-admin-security-role-pill">{user.role}</span></td>
+                    <td>{user.email}</td>
+                    <td>{lastLogin ? new Date(lastLogin).toLocaleString() : "Not recorded"}</td>
+                    <td><span className="edc-admin-security-unavailable-pill">Not configured</span></td>
+                    <td><span className={`edc-admin-security-account-status ${statusTone(status)}`}>{status}</span></td>
+                    <td><Link className="edc-admin-security-view" to={`/admin/users?q=${encodeURIComponent(user.email)}`} aria-label={`View ${name} in User Management`} title="View account"><Eye size={15} aria-hidden="true" /></Link></td>
+                  </tr>
+                );
+              })}</tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="edc-admin-security-empty">
+            <Users size={20} aria-hidden="true" />
+            <p>{adminAccounts.length ? "No saved Admin accounts match these filters." : "No Admin accounts were found in saved registration data."}</p>
+          </div>
+        )}
+        {!usersState.error && (
+          <div className="edc-admin-security-pagination">
+            <span>{filteredAccounts.length ? `Showing ${(currentPage - 1) * pageSize + 1}–${Math.min(currentPage * pageSize, filteredAccounts.length)} of ${filteredAccounts.length} saved Admin accounts` : "No matching saved Admin accounts"}</span>
+            <div>
+              <button type="button" aria-label="Previous admin accounts page" disabled={currentPage <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))}><ArrowLeft size={14} /></button>
+              <span>Page {currentPage} of {pageCount}</span>
+              <button type="button" aria-label="Next admin accounts page" disabled={currentPage >= pageCount} onClick={() => setPage((value) => Math.min(pageCount, value + 1))}><ArrowRight size={14} /></button>
+            </div>
+          </div>
+        )}
+      </>
+    );
+  }
+
+  function renderActivityTable(records, emptyText) {
+    if (securityActivityState.error) {
+      return <div className="edc-admin-security-empty" role="alert"><ShieldAlert size={20} /><p>{securityActivityState.error}</p></div>;
+    }
+    if (!records.length) {
+      return <div className="edc-admin-security-empty"><FileText size={20} aria-hidden="true" /><p>{emptyText}</p></div>;
+    }
+    return (
+      <div className="edc-admin-security-table-wrap">
+        <table className="edc-admin-security-table edc-admin-security-activity-table">
+          <thead><tr><th scope="col">Timestamp</th><th scope="col">Actor</th><th scope="col">Activity</th><th scope="col">Result</th></tr></thead>
+          <tbody>{records.map((record, index) => (
+            <tr key={record.id || `${record.timestamp}-${record.action}-${index}`}>
+              <td>{formatActivityTimestamp(record.timestamp)}</td>
+              <td>{actorLabel(record)}</td>
+              <td>{typeof record.action === "string" ? record.action : "Activity not recorded"}</td>
+              <td><span className={`edc-admin-security-account-status ${statusTone(record.result)}`}>{record.result || "Not recorded"}</span></td>
+            </tr>
+          ))}</tbody>
+        </table>
+      </div>
+    );
+  }
+
+  const metricCards = [
+    { label: "Total Admins", value: usersState.error ? "—" : adminAccounts.length.toLocaleString(), icon: Users, color: "purple", tab: "roles" },
+    { label: "Current Session", value: hasActiveSession ? "Active" : "Inactive", icon: UserCheck, color: "orange", tab: "sessions" },
+    { label: "2FA", value: "Not available", icon: KeyRound, color: "green", tab: "mfa" },
+    { label: "Failed Admin Logins", value: securityActivityState.error ? "—" : failedAttempts.toLocaleString(), icon: AlertTriangle, color: "red", tab: "login" },
+    { label: "Recorded Login Attempts", value: securityActivityState.error ? "—" : loginAttempts.toLocaleString(), icon: LogOut, color: "violet", tab: "login" },
+    { label: "Guarded Admin Routes", value: ADMIN_SECTIONS.length.toLocaleString(), icon: Layers, color: "purple", tab: "access" },
+  ];
+
+  return (
+    <section className="edc-admin-security-reference">
+      <header className="edc-admin-security-heading">
+        <div>
+          <span className="edc-admin-page-eyebrow">SECURITY &amp; ACCESS MANAGEMENT</span>
+          <h2><ShieldCheck aria-hidden="true" />Admin Security &amp; Access Control</h2>
+          <p>Review saved Admin accounts, browser sign-in records, and the access controls supported by this app.</p>
+        </div>
+        <div className="edc-admin-security-heading-actions">
+          <button type="button" className="edc-admin-action-button" disabled={securityActivityState.error || !securityActivity.length} onClick={onExportLogs}>
+            <FileText size={15} aria-hidden="true" />Export Logs
+          </button>
+          <button type="button" className="edc-admin-button-primary" onClick={onRecordReview}>
+            <ShieldCheck size={15} aria-hidden="true" />Record Security Review
+          </button>
+        </div>
+      </header>
+
+      <p className="edc-admin-security-reference-note">
+        Account and sign-in totals come from this browser's saved records. This frontend does not provide 2FA, IP allowlisting, server-side enforcement, or multi-device session monitoring.
+      </p>
+      {feedback && <p className={`edc-admin-feedback edc-admin-feedback-${feedback.type}`} role={feedback.type === "error" ? "alert" : "status"}>{feedback.message}</p>}
+
+      <div className="edc-admin-security-stats" aria-label="Security summaries">
+        {metricCards.map(({ label, value, icon: Icon, color, tab: targetTab }) => (
+          <button
+            className={`edc-admin-security-stat ${color} edc-admin-metric-card edc-admin-metric-${color}${tab === targetTab ? " is-active" : ""}`}
+            key={label}
+            type="button"
+            aria-pressed={tab === targetTab}
+            onClick={() => setTab(targetTab)}
+          >
+            <span><Icon size={20} aria-hidden="true" /></span>
+            <div><p>{label}</p><strong>{value}</strong></div>
+          </button>
+        ))}
+      </div>
+
+      <nav className="edc-admin-security-tabs" aria-label="Security sections">
+        {SECURITY_TABS.map(([id, label]) => (
+          <button type="button" className={tab === id ? "active" : ""} aria-current={tab === id ? "page" : undefined} key={id} onClick={() => setTab(id)}>
+            {label}
+          </button>
+        ))}
+      </nav>
+
+      {tab === "access" && (
+        <div className="edc-admin-security-workspace">
+          <main className="edc-admin-security-main">
+            <section className="edc-admin-security-card edc-admin-security-accounts-card">
+              <header><h3><Users size={17} aria-hidden="true" />Saved Admin Accounts</h3><span>{usersState.error ? "Count unavailable" : `${adminAccounts.length.toLocaleString()} saved accounts`}</span></header>
+              {renderAccountTable()}
+            </section>
+          </main>
+          <aside className="edc-admin-security-sidebar">
+            <section className="edc-admin-security-card">
+              <header><h3><Layers size={17} aria-hidden="true" />Saved Role Distribution</h3></header>
+              {usersState.error ? (
+                <p className="edc-admin-security-side-note">Role counts are unavailable because saved account data could not be read.</p>
+              ) : roleCounts.length ? (
+                <div className="edc-admin-security-role-overview">
+                  <div className="edc-admin-security-donut" style={{ background: roleBackground }} role="img" aria-label={`${totalRoleAccounts} saved accounts by role`}>
+                    <span><strong>{totalRoleAccounts.toLocaleString()}</strong><small>Accounts</small></span>
+                  </div>
+                  <div className="edc-admin-security-legend">
+                    {roleCounts.map(([role, count], index) => (
+                      <div key={role}><i style={{ backgroundColor: roleColors[index % roleColors.length] }} /><span>{role}</span><strong>{count.toLocaleString()}</strong></div>
+                    ))}
+                  </div>
+                </div>
+              ) : <p className="edc-admin-security-side-note">No saved role assignments are available.</p>}
+              <p className="edc-admin-security-side-note">Counts use unique registered account emails; per-user permission overrides are not stored.</p>
+            </section>
+
+            <section className="edc-admin-security-card">
+              <header><h3><KeyRound size={17} aria-hidden="true" />Security Settings</h3></header>
+              <dl className="edc-admin-security-settings-list">
+                <div><dt>Two-factor authentication</dt><dd>Not available</dd></div>
+                <div><dt>IP allowlisting</dt><dd>Not implemented</dd></div>
+                <div><dt>Failed-login throttling</dt><dd>Not implemented</dd></div>
+                <div><dt>Concurrent sessions</dt><dd>Not monitored</dd></div>
+              </dl>
+            </section>
+
+            <section className="edc-admin-security-card">
+              <header><h3><CheckCircle2 size={17} aria-hidden="true" />Quick Actions</h3></header>
+              <div className="edc-admin-security-quick-actions">
+                <button type="button" onClick={() => setTab("login")}><LogOut size={14} aria-hidden="true" />View Login Activity</button>
+                <Link to="/admin/users"><Users size={14} aria-hidden="true" />Manage User Accounts</Link>
+                <button type="button" onClick={onRecordReview}><ShieldCheck size={14} aria-hidden="true" />Record Security Review</button>
+                <Link to="/admin/audit-logs"><FileText size={14} aria-hidden="true" />Open Audit Logs</Link>
+              </div>
+            </section>
+          </aside>
+        </div>
+      )}
+
+      {tab === "roles" && (
+        <div className="edc-admin-security-tab-grid">
+          <section className="edc-admin-security-card">
+            <header><h3><Users size={17} aria-hidden="true" />Saved Account Roles</h3></header>
+            {usersState.error ? <p className="edc-admin-security-side-note" role="alert">{usersState.error}</p> : roleCounts.length ? (
+              <div className="edc-admin-security-role-overview">
+                <div className="edc-admin-security-donut" style={{ background: roleBackground }} role="img" aria-label={`${totalRoleAccounts} saved accounts by role`}>
+                  <span><strong>{totalRoleAccounts.toLocaleString()}</strong><small>Accounts</small></span>
+                </div>
+                <div className="edc-admin-security-legend">
+                  {roleCounts.map(([role, count], index) => (
+                    <div key={role}><i style={{ backgroundColor: roleColors[index % roleColors.length] }} /><span>{role}</span><strong>{count.toLocaleString()}</strong></div>
+                  ))}
+                </div>
+              </div>
+            ) : <p className="edc-admin-security-side-note">No saved account roles are available.</p>}
+            <p className="edc-admin-security-side-note">Role labels are read from saved account records. This app does not store per-user permission matrices.</p>
+          </section>
+          <section className="edc-admin-security-card">
+            <header><h3><ShieldCheck size={17} aria-hidden="true" />Admin Route Allowlist</h3><span>{ADMIN_SECTIONS.length} routes</span></header>
+            <p className="edc-admin-security-side-note">The current frontend checks this route allowlist and the saved Admin role. These client-side checks are not server authorization.</p>
+            <div className="edc-admin-security-table-wrap">
+              <table className="edc-admin-security-table">
+                <thead><tr><th scope="col">Admin Section</th><th scope="col">Route</th><th scope="col">Access Rule</th></tr></thead>
+                <tbody>{ADMIN_SECTIONS.map((item) => (
+                  <tr key={item.id}><td>{item.title}</td><td><code>{item.path}</code></td><td><span className="edc-admin-security-role-pill">Admin role</span></td></tr>
+                ))}</tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {tab === "login" && (
+        <section className="edc-admin-security-card">
+          <header><h3><LogOut size={17} aria-hidden="true" />Recorded Admin Login Activity</h3><Link to="/admin/audit-logs">Open Full Audit Log <ArrowRight size={14} aria-hidden="true" /></Link></header>
+          <p className="edc-admin-security-side-note">Login attempts are counted only when an Admin sign-in event was saved to this browser's activity log.</p>
+          {renderActivityTable(recentLoginActivity, "No Admin login attempts are recorded in this browser.")}
+          {!securityActivityState.error && loginActivity.length > 0 && <p className="edc-admin-security-table-note">Showing {recentLoginActivity.length} of {loginActivity.length.toLocaleString()} saved Admin sign-in records.</p>}
+        </section>
+      )}
+
+      {tab === "policies" && (
+        <section className="edc-admin-security-card">
+          <header><h3><ShieldCheck size={17} aria-hidden="true" />Security Policy Availability</h3></header>
+          <div className="edc-admin-security-table-wrap">
+            <table className="edc-admin-security-table">
+              <thead><tr><th scope="col">Control</th><th scope="col">Current State</th><th scope="col">Available Evidence</th></tr></thead>
+              <tbody>
+                <tr><td>Admin route allowlist</td><td>Implemented in frontend</td><td>{ADMIN_SECTIONS.length} routes in the current Admin allowlist</td></tr>
+                <tr><td>Admin session</td><td>{hasActiveSession ? "Active in this browser" : "Inactive"}</td><td>Current tab's session storage only</td></tr>
+                <tr><td>Two-factor authentication</td><td>Not available</td><td>No MFA workflow or saved enrollment data</td></tr>
+                <tr><td>IP allowlisting</td><td>Not implemented</td><td>No network policy source</td></tr>
+                <tr><td>Failed-login throttling</td><td>Not implemented</td><td>Saved failed attempts are logged but not throttled</td></tr>
+                <tr><td>Multi-device session revocation</td><td>Not available</td><td>No centralized session store</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p className="edc-admin-security-side-note">No policy switches are shown because the app has no saved policy settings for these controls.</p>
+        </section>
+      )}
+
+      {tab === "mfa" && (
+        <section className="edc-admin-security-unavailable">
+          <span><KeyRound size={24} aria-hidden="true" /></span>
+          <p className="edc-admin-page-eyebrow">NOT CONFIGURED</p>
+          <h3>Two-factor authentication is not available</h3>
+          <p>This frontend has no MFA enrollment, verification, or recovery workflow. No enabled accounts or security codes are assumed.</p>
+        </section>
+      )}
+
+      {tab === "sessions" && (
+        <div className="edc-admin-security-tab-grid">
+          <section className="edc-admin-security-card">
+            <header><h3><UserCheck size={17} aria-hidden="true" />Current Browser Session</h3><span className={`edc-admin-security-account-status ${hasActiveSession ? "active" : "inactive"}`}>{hasActiveSession ? "Active" : "Inactive"}</span></header>
+            <dl className="edc-admin-security-session-list">
+              <div><dt>Account name</dt><dd>{displayName}</dd></div>
+              <div><dt>Account email</dt><dd>{maskedSessionEmail}</dd></div>
+              <div><dt>Saved role</dt><dd>{sessionRole || "Not assigned"}</dd></div>
+              <div><dt>Session storage</dt><dd>Current browser tab</dd></div>
+              <div><dt>Remembered email</dt><dd>{rememberedEmail ? `Stored (${maskedRememberedEmail})` : "Not stored"}</dd></div>
+              <div><dt>Session entries</dt><dd>{storageDiagnostics.sessionEntries ?? "Unavailable"} (count only)</dd></div>
+            </dl>
+            {storageDiagnostics.error && <p className="edc-admin-feedback edc-admin-feedback-error" role="alert">{storageDiagnostics.error}</p>}
+            <p className="edc-admin-security-side-note">Other tabs and devices cannot be enumerated or revoked from this frontend.</p>
+            <div className="edc-admin-security-session-actions">
+              <button type="button" className="edc-admin-action-button edc-admin-security-danger-btn" disabled={!hasActiveSession} onClick={onTerminateSession}><LogOut size={14} />End Current Session</button>
+              <button type="button" className="edc-admin-action-button" disabled={!rememberedEmail} onClick={onClearRememberedEmail}><RotateCcw size={14} />Clear Remembered Email</button>
+            </div>
+          </section>
+          <section className="edc-admin-security-card">
+            <header><h3><AlertTriangle size={17} aria-hidden="true" />Session Limitations</h3></header>
+            <dl className="edc-admin-security-settings-list">
+              <div><dt>Automatic inactivity timeout</dt><dd>Not implemented</dd></div>
+              <div><dt>Server-side invalidation</dt><dd>Not available</dd></div>
+              <div><dt>Concurrent session limiting</dt><dd>Not monitored</dd></div>
+              <div><dt>Remembered login email</dt><dd>{rememberedEmail ? "Stored in this browser" : "Not stored"}</dd></div>
+            </dl>
+          </section>
+        </div>
+      )}
+
+      {tab === "audit" && (
+        <section className="edc-admin-security-card">
+          <header><h3><FileText size={17} aria-hidden="true" />Saved Security Audit Records</h3><Link to="/admin/audit-logs">View Full Activity Log <ArrowRight size={14} aria-hidden="true" /></Link></header>
+          <p className="edc-admin-security-side-note">These are security-category entries from the browser-local Admin activity log; they are not tamper-proof or platform-wide audit records.</p>
+          {renderActivityTable(recentSecurityActivity, "No security-category activity records are stored in this browser.")}
+          {!securityActivityState.error && securityActivity.length > 0 && <p className="edc-admin-security-table-note">Showing {recentSecurityActivity.length} of {securityActivity.length.toLocaleString()} saved security records.</p>}
+        </section>
+      )}
+    </section>
   );
 }
 
