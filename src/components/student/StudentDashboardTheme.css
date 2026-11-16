@@ -38,6 +38,7 @@
 .edc-topbar-account-menu button:hover { background: #f5edff; color: #791adb; }
 .dashboard-page .edc-student-shell { --edc-primary: #8822ec; --edc-primary-dark: #6d0bc9; --edc-dark: #2b1048; --edc-muted: #8b789d; --edc-border: #e5d8f9; --edc-bg: #f7f3ff; min-height: calc(100dvh - 56px); background: radial-gradient(ellipse at 75% 0%, #efe5ff88, transparent 60%), #f7f3ff; color: #2b1048; }
 .dashboard-page .edc-student-shell > .edc-sidebar { display: flex; min-height: 0; padding: 17px 13px 14px; overflow: hidden; border-right: 1px solid #5f2499; background: linear-gradient(180deg, #3c087e, #49108e 50%, #50168f); box-shadow: none; color: #fff; }
+.dashboard-page:has(.edc-main[data-active-tab="overview"]) .edc-student-shell > .edc-sidebar { background: #271944; }
 .dashboard-page .edc-sidebar-heading { display: none; }
 .dashboard-page .edc-student-shell .edc-sidebar-profile { display: flex; align-items: center; gap: 11px; margin: 0 2px 15px; padding: 10px 12px 14px; border: 0; border-bottom: 1px solid #d7b9ed33; border-radius: 0; background: transparent; }
 .dashboard-page .edc-student-shell .edc-sidebar-profile > div { min-width: 0; }

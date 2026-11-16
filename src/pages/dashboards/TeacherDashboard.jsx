@@ -1,6 +1,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { createPortal } from "react-dom";
 import { appendAdminActivityRecord } from "../../components/admin/adminData";
 import { getStudentAcademicContext, getStudentAcademicSubjects, getProgramGroupsForDegreeLevel, INTERMEDIATE_STREAMS, isAcademicProfileComplete, ONLINE_COURSES } from "../../utils/studentRecommendations";
 import {
@@ -57,6 +58,7 @@ import TeacherLessons from "../../components/teacher/TeacherLessons";
 import TeacherStudents from "../../components/teacher/TeacherStudents";
 import TeacherEarnings from "../../components/teacher/TeacherEarnings";
 import { collectInstructorCourseAnalytics } from "../../utils/instructorAnalytics";
+import { getCourseCatalogForDisplay } from "../../utils/teacherCourses";
 import { REVIEW_EVENT } from "../../utils/courseReviews";
 import { ORDERS_EVENT } from "../../utils/studentCart";
 import { ASSIGNMENT_EVENT } from "../../components/assignments/assignmentStorage";
@@ -543,6 +545,11 @@ useEffect(() => {
   return () => events.forEach(event => window.removeEventListener(event, refresh));
 }, [courseKey, profileKey]);
 const courseAnalytics = useMemo(() => collectInstructorCourseAnalytics(email, courses), [email, courses, workspaceRevision]);
+const managedCourseIds = new Set(courses.map((course) => String(course.id)));
+const visibleCatalogCourses = getCourseCatalogForDisplay().filter((course) =>
+  !(String(course.teacherEmail || "").trim().toLowerCase() === String(email || "").trim().toLowerCase()
+    && managedCourseIds.has(String(course.id)))
+);
 const transactions = courseAnalytics.flatMap(course => course.salesRecords).map(record => ({ ...record, date: String(record.purchasedAt || "").slice(0, 10) }));
 const now = new Date();
 const currentMonthKey = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0");
@@ -608,6 +615,12 @@ const [courseSearch, setCourseSearch] = useState("");
 const [categoryFilter, setCategoryFilter] = useState("All");
 const [statusFilter, setStatusFilter] = useState("All");
 const [openCourseMenu, setOpenCourseMenu] = useState("");
+const [courseMenuPosition, setCourseMenuPosition] = useState(null);
+
+function closeCourseMenu() {
+  setOpenCourseMenu("");
+  setCourseMenuPosition(null);
+}
 
 const filteredCourses = courses.filter((course) => {
   const matchesSearch = (course.title || "")
@@ -644,12 +657,20 @@ const courseStatusTabs = [
 useEffect(() => {
   if (!openCourseMenu) return undefined;
   const closeMenu = event => {
-    if (!event.target.closest(".edc-teacher-course-actions-menu")) {
-      setOpenCourseMenu("");
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target?.closest(".edc-teacher-course-actions-menu, .edc-teacher-course-actions-popover")) {
+      closeCourseMenu();
     }
   };
+  const closeOnViewportChange = () => closeCourseMenu();
   document.addEventListener("pointerdown", closeMenu);
-  return () => document.removeEventListener("pointerdown", closeMenu);
+  window.addEventListener("scroll", closeOnViewportChange, true);
+  window.addEventListener("resize", closeOnViewportChange);
+  return () => {
+    document.removeEventListener("pointerdown", closeMenu);
+    window.removeEventListener("scroll", closeOnViewportChange, true);
+    window.removeEventListener("resize", closeOnViewportChange);
+  };
 }, [openCourseMenu]);
 
   function navigateTo(nextTab) {
@@ -1798,34 +1819,60 @@ async function handleTeacherProfileImage(event) {
                           aria-label={`More actions for ${course.title || "course"}`}
                           aria-haspopup="menu"
                           aria-expanded={openCourseMenu === String(course.id)}
-                          onClick={() => setOpenCourseMenu(openCourseMenu === String(course.id) ? "" : String(course.id))}
+                          aria-controls={`teacher-course-menu-${course.id}`}
+                          onClick={event => {
+                            if (openCourseMenu === String(course.id)) {
+                              closeCourseMenu();
+                              return;
+                            }
+                            const rect = event.currentTarget.getBoundingClientRect();
+                            const openAbove = window.innerHeight - rect.bottom < 190;
+                            setCourseMenuPosition({
+                              top: openAbove ? rect.top - 6 : rect.bottom + 6,
+                              right: Math.max(8, window.innerWidth - rect.right),
+                              openAbove,
+                            });
+                            setOpenCourseMenu(String(course.id));
+                          }}
                         >
                           <MoreVertical size={18} />
                         </button>
-                        {openCourseMenu === String(course.id) && (
-                          <div className="edc-teacher-course-actions-popover" role="menu">
-                            <button type="button" role="menuitem" onClick={() => { setOpenCourseMenu(""); navigateTo("lessons"); }}>
+                      </div>
+                      {openCourseMenu === String(course.id) && courseMenuPosition && createPortal(
+                        <div
+                          id={`teacher-course-menu-${course.id}`}
+                          className="edc-teacher-course-actions-popover"
+                          role="menu"
+                          style={{
+                            position: "fixed",
+                            top: courseMenuPosition.top,
+                            right: courseMenuPosition.right,
+                            zIndex: 1100,
+                            transform: courseMenuPosition.openAbove ? "translateY(-100%)" : undefined,
+                          }}
+                        >
+                            <button type="button" role="menuitem" onClick={() => { closeCourseMenu(); navigateTo("lessons"); }}>
                               <BookOpen size={15} /> Manage Lessons
                             </button>
-                            <button type="button" role="menuitem" onClick={() => { setOpenCourseMenu(""); setPreviewCourse(course); }}>
+                            <button type="button" role="menuitem" onClick={() => { closeCourseMenu(); setPreviewCourse(course); }}>
                               <ArrowRight size={15} /> Preview Course
                             </button>
                             {status === "Approved" && (
-                              <button type="button" role="menuitem" onClick={() => { setOpenCourseMenu(""); publishApprovedCourse(course.id); }}>
+                              <button type="button" role="menuitem" onClick={() => { closeCourseMenu(); publishApprovedCourse(course.id); }}>
                                 <CheckCircle2 size={15} /> Publish Course
                               </button>
                             )}
                             {canSubmit && (
-                              <button type="button" role="menuitem" onClick={() => { setOpenCourseMenu(""); submitForApproval(course.id); }}>
+                              <button type="button" role="menuitem" onClick={() => { closeCourseMenu(); submitForApproval(course.id); }}>
                                 <Send size={15} /> Submit for Approval
                               </button>
                             )}
-                            <button type="button" role="menuitem" className="danger" onClick={() => { setOpenCourseMenu(""); deleteCourse(course.id); }}>
+                            <button type="button" role="menuitem" className="danger" onClick={() => { closeCourseMenu(); deleteCourse(course.id); }}>
                               <Trash2 size={15} /> Delete Course
                             </button>
-                          </div>
-                        )}
-                      </div>
+                        </div>,
+                        document.body
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -1849,6 +1896,51 @@ async function handleTeacherProfileImage(event) {
             Create Course
           </button>
         )}
+      </section>
+    )}
+
+    {visibleCatalogCourses.length > 0 && (
+      <section className="edc-teacher-course-marketplace global-course-history-panel">
+        <header className="edc-teacher-courses-heading">
+          <div>
+            <BookOpen size={28} aria-hidden="true" />
+            <div>
+              <h2 className="global-dashboard-section-title">Published &amp; Enrolled Courses</h2>
+              <p>Other catalog courses and student learning-history records. This list is view-only.</p>
+            </div>
+          </div>
+        </header>
+        <div className="edc-teacher-course-table-wrap">
+          <table className="edc-teacher-course-table">
+            <thead>
+              <tr>
+                <th scope="col">Course</th>
+                <th scope="col">Instructor</th>
+                <th scope="col">Category</th>
+                <th scope="col">Lessons</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleCatalogCourses.map(course => (
+                <tr key={`${course.teacherEmail}:${course.id}`}>
+                  <td>
+                    <div className="edc-teacher-course-table-item">
+                      {course.thumbnail || course.image ? (
+                        <img src={course.thumbnail || course.image} alt="" />
+                      ) : (
+                        <span className="edc-teacher-course-table-placeholder"><BookOpen size={22} /></span>
+                      )}
+                      <div><strong>{course.title}</strong></div>
+                    </div>
+                  </td>
+                  <td>{course.instructorName || course.teacherEmail}</td>
+                  <td>{course.category || "Uncategorized"}</td>
+                  <td>{Array.isArray(course.lessons) ? course.lessons.length : Math.max(0, Number(course.lessons) || 0)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </section>
     )}
   </div>
