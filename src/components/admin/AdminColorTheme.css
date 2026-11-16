@@ -26,6 +26,10 @@
   background: linear-gradient(180deg, #3c087e, #49108e 50%, #50168f);
 }
 
+.edc-admin-layout:has(.edc-admin-overview) .edc-admin-sidebar {
+  background: #271944;
+}
+
 .edc-admin-layout .edc-admin-topbar {
   border-bottom-color: #ffffff26;
   background: #2b1d42;
