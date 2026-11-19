@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "css:audit": "node scripts/css-audit.mjs"
   },
   "dependencies": {
     "@noble/hashes": "^2.4.0",

@@ -37,6 +37,7 @@ import {
   ADMIN_PLATFORM_SETTINGS_CHANGED_EVENT,
   getAdminPlatformSettings,
 } from "./adminPlatformSettings";
+import { WorkspaceSidebarProvider } from "../workspace/SidebarContext";
 import "./Admin.css";
 import "./AdminColorTheme.css";
 import "../SectionTypography.css";
@@ -44,7 +45,6 @@ import "../DashboardCardClarity.css";
 
 function AdminLayout({ email, onLogout }) {
   const location = useLocation();
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [preferences, setPreferences] = useState(getAdminPreferences);
   const [platformSettings, setPlatformSettings] = useState(getAdminPlatformSettings);
   const [systemPrefersDark, setSystemPrefersDark] = useState(() => window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false);
@@ -264,31 +264,28 @@ function AdminLayout({ email, onLogout }) {
   }
 
   return (
-    <div className={`edc-admin-layout${preferences.density === "compact" ? " edc-admin-layout-compact" : ""}${platformSettings.appearance.theme === "dark" || (platformSettings.appearance.theme === "system" && systemPrefersDark) ? " edc-admin-theme-dark" : ""}${platformSettings.appearance.sidebar === "compact" ? " edc-admin-sidebar-collapsed" : ""}`}>
-      <AdminSidebar
-        email={email}
-        isOpen={mobileSidebarOpen}
-        onClose={() => setMobileSidebarOpen(false)}
-        platformSettings={platformSettings}
-      />
-      <div className="edc-admin-main">
-        <AdminTopbar
-          sectionTitle={section.pageTitle ?? section.title}
-          email={email}
-          isMenuOpen={mobileSidebarOpen}
-          onMenuClick={() => setMobileSidebarOpen(true)}
-          onLogout={handleAdminLogout}
-          notifications={notificationData.notifications}
-          notificationErrors={notificationData.errors}
-        />
-        <main className="edc-admin-content">
-          {!["dashboard", "users", "courses", "knowledge", "moderation", "finance", "ai-operations", "security", "support", "activity-log", "reports", "settings"].includes(section.id) && <section className="edc-admin-page-heading">
-            <div><p>{section.description}</p></div>
-          </section>}
-          {renderContent()}
-        </main>
+    <WorkspaceSidebarProvider
+      storageKey="educonnect.sidebarCollapsed.admin"
+      defaultOpen={platformSettings.appearance.sidebar !== "compact"}
+    >
+      <div className={`edc-admin-layout${preferences.density === "compact" ? " edc-admin-layout-compact" : ""}${platformSettings.appearance.theme === "dark" || (platformSettings.appearance.theme === "system" && systemPrefersDark) ? " edc-admin-theme-dark" : ""}`}>
+        <AdminSidebar email={email} platformSettings={platformSettings} />
+        <div className="edc-admin-main">
+          <AdminTopbar
+            email={email}
+            onLogout={handleAdminLogout}
+            notifications={notificationData.notifications}
+            notificationErrors={notificationData.errors}
+          />
+          <main className="edc-admin-content">
+            {!["dashboard", "users", "courses", "knowledge", "moderation", "finance", "ai-operations", "security", "support", "activity-log", "reports", "settings"].includes(section.id) && <section className="edc-admin-page-heading">
+              <div><p>{section.description}</p></div>
+            </section>}
+            {renderContent()}
+          </main>
+        </div>
       </div>
-    </div>
+    </WorkspaceSidebarProvider>
   );
 }
 

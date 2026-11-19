@@ -1,23 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Bell, BookOpen, FileText, LogOut, Menu, Search, UserRound, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Bell, LogOut } from "lucide-react";
 import { Link } from "react-router-dom";
+import { SidebarTrigger } from "../workspace/WorkspaceSidebar";
 import { formatAdminNotificationTimestamp } from "./adminNotificationData";
-import { ADMIN_DATA_CHANGED_EVENT, ADMIN_USERS_KEY, getAdminCourses, readAdminArray, readAdminSupportRequestsState, readAdminUsersState } from "./adminData";
-
-function readSearchDirectory() {
-  const users = readAdminUsersState().users;
-  return {
-    users,
-    courses: getAdminCourses(users),
-    requests: readAdminSupportRequestsState().records,
-  };
-}
+import { ADMIN_USERS_KEY, readAdminArray } from "./adminData";
 
 function AdminTopbar({
-  sectionTitle,
   email,
-  isMenuOpen,
-  onMenuClick,
   onLogout,
   notifications,
   notificationErrors,
@@ -26,39 +15,10 @@ function AdminTopbar({
   const notificationMenuRef = useRef(null);
   const notificationButtonRef = useRef(null);
   const notificationPanelRef = useRef(null);
-  const [search, setSearch] = useState("");
-  const [searchFocused, setSearchFocused] = useState(false);
-  const [directory, setDirectory] = useState(readSearchDirectory);
   const recentNotifications = notifications.slice(0, 5);
   const adminAccount = readAdminArray(ADMIN_USERS_KEY).find((user) => user.role === "Admin" && String(user.email || "").toLowerCase() === String(email || "").toLowerCase());
   const adminName = adminAccount?.name?.trim() || "Admin";
   const adminAvatar = adminAccount?.avatar || adminAccount?.profile?.avatar || "";
-  const showGlobalSearch = !["Teacher Applications", "Tutor Marketplace"].includes(sectionTitle);
-  const query = search.trim().toLowerCase();
-  const searchResults = useMemo(() => {
-    if (!query) return [];
-    return [
-      ...directory.users
-        .filter((user) => `${user.name || ""} ${user.email || ""} ${user.role || ""}`.toLowerCase().includes(query))
-        .map((user) => ({ key: `user-${user.email}`, title: user.name || user.email || "Registered user", detail: `${user.role || "Role unavailable"} · ${user.email || "Email unavailable"}`, path: `/admin/users?q=${encodeURIComponent(search.trim())}`, icon: UserRound })),
-      ...directory.courses
-        .filter((course) => `${course.title || ""} ${course.category || ""} ${course.teacherEmail || ""}`.toLowerCase().includes(query))
-        .map((course) => ({ key: `course-${course.teacherEmail}-${course.id}`, title: course.title || "Untitled course", detail: `Course · ${course.teacherEmail || "Teacher unavailable"}`, path: "/admin/courses", icon: BookOpen })),
-      ...directory.requests
-        .filter((request) => `${request.subject || ""} ${request.requesterName || ""} ${request.requesterEmail || ""} ${request.id || ""}`.toLowerCase().includes(query))
-        .map((request) => ({ key: `request-${request.id}`, title: request.subject || "Support request", detail: `Support · ${request.requesterName || request.requesterEmail || "Requester unavailable"}`, path: "/admin/support", icon: FileText })),
-    ].slice(0, 7);
-  }, [directory, query, search]);
-
-  useEffect(() => {
-    const refresh = () => setDirectory(readSearchDirectory());
-    window.addEventListener("storage", refresh);
-    window.addEventListener(ADMIN_DATA_CHANGED_EVENT, refresh);
-    return () => {
-      window.removeEventListener("storage", refresh);
-      window.removeEventListener(ADMIN_DATA_CHANGED_EVENT, refresh);
-    };
-  }, []);
 
   useEffect(() => {
     if (!notificationsOpen) return undefined;
@@ -87,54 +47,10 @@ function AdminTopbar({
   }, [notificationsOpen]);
 
   return (
-    <header className={`edc-admin-topbar${["Overview Dashboard", "Users & Permissions", "Course Review & Approval", "AI Knowledge Governance", "Moderation & Governance", "Financial Management", "AI Operations", "Admin Security & Access Control", "Support & Appeals", "Audit Logs", "Reports & Analytics", "Admin Settings"].includes(sectionTitle) ? " edc-admin-topbar-reference-layout" : ""}`}>
+    <header className="edc-admin-topbar">
       <div className="edc-admin-topbar-heading">
-        <button
-          className="edc-admin-menu-button"
-          type="button"
-          aria-label="Open admin navigation"
-          aria-controls="edc-admin-navigation"
-          aria-expanded={isMenuOpen}
-          onClick={onMenuClick}
-        >
-          <Menu size={21} />
-        </button>
-        <div className="edc-admin-topbar-title">
-          <h1>{sectionTitle || "Admin Panel"}</h1>
-        </div>
+        <SidebarTrigger label="admin" />
       </div>
-
-      {showGlobalSearch && (
-        <div className="edc-admin-global-search">
-          <Search size={18} aria-hidden="true" />
-          <input
-            type="search"
-            value={search}
-            aria-label="Search users, courses, and support tickets"
-            aria-expanded={searchFocused && Boolean(query)}
-            aria-controls="edc-admin-global-search-results"
-            onFocus={() => setSearchFocused(true)}
-            onBlur={() => window.setTimeout(() => setSearchFocused(false), 120)}
-            onChange={(event) => setSearch(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Escape") {
-                setSearch("");
-                setSearchFocused(false);
-                event.currentTarget.blur();
-              }
-            }}
-            placeholder="Search users, courses, tickets, or anything..."
-          />
-          {search && <button type="button" aria-label="Clear search" onMouseDown={(event) => event.preventDefault()} onClick={() => setSearch("")}><X size={15} /></button>}
-          {searchFocused && query && <div className="edc-admin-global-search-results" id="edc-admin-global-search-results">
-            {searchResults.length ? searchResults.map(({ key, title, detail, path, icon: Icon }) => (
-              <Link key={key} to={path} onMouseDown={(event) => event.preventDefault()} onClick={() => { setSearch(""); setSearchFocused(false); }}>
-                <span><Icon size={15} /></span><div><strong>{title}</strong><small>{detail}</small></div>
-              </Link>
-            )) : <p>No saved users, courses, or tickets match this search.</p>}
-          </div>}
-        </div>
-      )}
 
       <div className="edc-admin-account">
         <div className="edc-admin-notification-menu" ref={notificationMenuRef}>
@@ -219,7 +135,10 @@ function AdminTopbar({
         </div>
         <div className="edc-admin-topbar-user">
           <span>{adminAvatar ? <img src={adminAvatar} alt="" /> : adminName.charAt(0).toUpperCase()}</span>
-          <strong>{adminName}</strong>
+          <span className="edc-admin-topbar-user-details">
+            <strong>{adminName}</strong>
+            <small>{adminAccount?.email || email || "Admin account"}</small>
+          </span>
         </div>
         <button
           className="edc-admin-logout edc-dashboard-logout"

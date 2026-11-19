@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { ArrowRight, Bell, ChevronDown, GraduationCap, LogOut, ShieldCheck, UserRound } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { ArrowRight, Bell, ChevronDown, LogOut, UserRound } from "lucide-react";
 import { NOTIFICATIONS_EVENT } from "../../utils/demoNotifications";
+import { SidebarTrigger } from "../workspace/WorkspaceSidebar";
 import "./StudentDashboardTheme.css";
 
 function readAccount(email) {
@@ -53,7 +54,7 @@ export default function StudentDashboardHeader({ email, onLogout, fullName, iden
   };
 
   return <header className="auth-topbar edc-student-topbar">
-    <Link className="auth-brand edc-student-brand" to="/" aria-label="EduConnect AI home"><GraduationCap size={32} strokeWidth={2.2}/><span>EduConnect <b>AI</b></span></Link>
+    <SidebarTrigger label="student" />
     <div className="edc-student-topbar-actions">
       <button
         type="button"

@@ -1,7 +1,23 @@
-import { useCallback, useEffect, useState } from "react";
-import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
-import { GraduationCap, LogOut, Sparkles } from "lucide-react";
-import { ADMIN_PATH_REDIRECTS, ADMIN_ROUTES } from "../components/admin/adminNavigation";
+
+import { useEffect } from "react";
+import {
+  Link,
+  Navigate,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
+
+import {
+  GraduationCap,
+  LogOut,
+  Sparkles,
+} from "lucide-react";
+
+import {
+  ADMIN_PATH_REDIRECTS,
+  ADMIN_ROUTES,
+} from "../components/admin/adminNavigation";
+import { WorkspaceSidebarProvider } from "../components/workspace/SidebarContext";
 import { appendAdminActivityRecord } from "../components/admin/adminData";
 import StudentDashboard from "./dashboards/StudentDashboard";
 import StudentDashboardHeader from "../components/student/StudentDashboardHeader";
@@ -135,28 +151,50 @@ function DashboardPage() {
     );
   }
 
-  if (role === "Admin") return <AdminLayout email={email} onLogout={signOut} />;
+  const welcomeTitle =
+    role === "Teacher"
+      ? "Welcome to your teaching space."
+      : "Welcome to your learning space.";
 
-  const welcomeTitle = role === "Teacher" ? "Welcome to your teaching space." : "Welcome to your learning space.";
-  const welcomeDescription = role === "Teacher" ? "Manage your profile and teaching journey." : "Explore courses and continue your learning journey.";
+  const welcomeDescription =
+    role === "Teacher"
+      ? "Create courses and manage your teaching journey."
+      : "Explore courses and continue your learning journey.";
 
-  return (
-    <main className={`auth-page dashboard-page ${role === "Teacher" ? "teacher-fullscreen-page" : ""}`}>
-      {role === "Student" ? (
-        <StudentDashboardHeader email={email} onLogout={signOut} fullName={account?.fullName} identityVerified={account?.isIdentityVerified === true} />
-      ) : (
-        <header className="auth-topbar">
-          <Link className="auth-brand" to="/" aria-label="EduConnect AI home">
-            <span className="auth-brand-icon"><GraduationCap size={22} /></span>
-            <span>EduConnect <b>AI</b></span>
-          </Link>
-          <div className="dashboard-account">
-            <span className="dashboard-account-role">{role}</span>
-            <span>{email}</span>
-            <button type="button" onClick={signOut} aria-label="Log out"><LogOut size={17} /></button>
-          </div>
-        </header>
-      )}
+  const dashboardContent = (
+    <>
+      {role === "Student" ? <StudentDashboardHeader email={email} onLogout={signOut} /> : <header className="auth-topbar">
+        <Link
+          className="auth-brand"
+          to="/"
+          aria-label="EduConnect AI home"
+        >
+          <span className="auth-brand-icon">
+            <GraduationCap size={22} />
+          </span>
+
+          <span>
+            EduConnect <b>AI</b>
+          </span>
+        </Link>
+
+        <div className="dashboard-account">
+          <span className="dashboard-account-role">
+            {role}
+          </span>
+
+          <span>{email}</span>
+
+          <button
+            type="button"
+            onClick={signOut}
+            aria-label="Log out"
+          >
+            <LogOut size={17} />
+          </button>
+        </div>
+      </header>}
+
       <div className="dashboard-content">
         <section className="dashboard-welcome">
           <div>
@@ -177,7 +215,28 @@ function DashboardPage() {
         )}
         <p className="dashboard-demo-note">Some dashboard content is still stored locally in this browser. Real content permissions must also be enforced by backend APIs.</p>
       </div>
-      <footer className="auth-footer">Copyright 2026 EduConnect AI <span>·</span> Learn something new today.</footer>
+
+      <footer className="auth-footer">
+        Copyright 2026 EduConnect AI
+        <span>·</span>
+        Learn something new today.
+      </footer>
+    </>
+  );
+
+  return (
+    <main
+      className={`auth-page dashboard-page ${
+        role === "Teacher" ? "teacher-fullscreen-page" : ""
+      }`}
+    >
+      {role === "Student" || role === "Teacher" ? (
+        <WorkspaceSidebarProvider
+          storageKey={`educonnect.sidebarCollapsed.${role.toLowerCase()}`}
+        >
+          {dashboardContent}
+        </WorkspaceSidebarProvider>
+      ) : dashboardContent}
     </main>
   );
 }
