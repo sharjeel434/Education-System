@@ -1,4 +1,5 @@
 import { getContentState, enrollContent, unenrollContent, getMongoCourseEnrollments, contentFileUrl, CONTENT_CHANGED_EVENT } from "../../utils/contentApi";
+import { fetchProgress, setLessonCompleted, fetchMyCertificates, issueCertificate, LEARNING_UPDATED_EVENT } from "../../utils/mongoLearningApi";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -604,22 +605,36 @@ export default function StudentDashboard({ email = "student", account, onVerific
   }
 
   function printDemoCertificate(course) {
-    const name = portfolioName.trim() || String(studentProfile.fullName || studentProfile.name || "").trim();
-    if (!name) {
+    const inlineCert = course?.certificate || null;
+    const fallbackName = portfolioName.trim() || String(studentProfile.fullName || studentProfile.name || "").trim();
+    const isMongoCourse = /^[a-f0-9]{24}$/i.test(String(course?.id || ""));
+    if (!inlineCert && !fallbackName && !isMongoCourse) {
       setPortfolioTab("certificates");
       setPortfolioMessage("Add your name to My Profile before previewing a completion record.");
       return;
     }
-    const certificate = certificateInfo(course);
     const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (char) => ({
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
     }[char]));
     const popup = window.open("", "_blank", "width=980,height=760");
     if (!popup) {
-      setPortfolioMessage("Please allow pop-ups to preview and print your demo certificate.");
+      setPortfolioMessage("Please allow pop-ups to preview and print your certificate.");
       return;
     }
-    popup.document.write(`<!doctype html><html><head><meta charset="utf-8"/><title>Demo Completion Record</title>
+    const render = (cert) => {
+      const name = cert?.studentName || fallbackName;
+      const date = cert
+        ? new Date(cert.completedAt || cert.issuedAt).toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" })
+        : certificateInfo(course).date;
+      const heading = cert ? "Certificate of Completion" : "Demo Course Completion Record";
+      const bodyLine = cert ? "has successfully completed" : "for completing all sample lessons in";
+      const recordLine = cert
+        ? `<p>Certificate ID: <strong>${escapeHtml(cert.certificateId)}</strong></p>`
+        : `<p>Completion progress: 100%</p>`;
+      const disclaimerLine = cert
+        ? "Issued by EduConnect AI after verified course completion. Verify this certificate ID with EduConnect AI support."
+        : "Frontend demonstration only - Not an accredited or verified certificate";
+      popup.document.write(`<!doctype html><html><head><meta charset="utf-8"/><title>${escapeHtml(heading)}</title>
       <style>body{font-family:Arial,sans-serif;margin:0;background:#f4f0ff;color:#282044}
       .sheet{box-sizing:border-box;width:95%;max-width:1000px;margin:30px auto;background:white;border:15px solid #7653cb;padding:60px 35px;text-align:center;min-height:590px}
       .brand{font-size:23px;color:#7653cb;font-weight:800}.heading{font-size:38px;margin:45px 0 10px}
@@ -627,14 +642,31 @@ export default function StudentDashboard({ email = "student", account, onVerific
       .disclaimer{font-size:15px;color:#6c6680;margin-top:60px}.print{display:block;margin:10px auto;padding:12px 25px;border:0;border-radius:9px;background:#7653cb;color:white;cursor:pointer}
       @media print{body{background:white}.sheet{margin:0;width:100%;max-width:none;min-height:95vh}.print{display:none}@page{size:landscape;margin:8mm}}</style></head>
       <body><button class="print" onclick="window.print()">Print / Save as PDF</button><main class="sheet">
-      <div class="brand">EduConnect AI</div><div class="heading">Demo Course Completion Record</div>
-      <p>This demo record recognizes</p><div class="name">${escapeHtml(name)}</div>
-      <p>for completing all sample lessons in</p><div class="course">${escapeHtml(course.title)}</div>
-      <p>Completion progress: 100%</p><p>Completion date: ${escapeHtml(certificate.date)}</p>
-      <p class="disclaimer">Frontend demonstration only Â· Not an accredited or verified certificate</p>
+      <div class="brand">EduConnect AI</div><div class="heading">${escapeHtml(heading)}</div>
+      <p>This certificate recognizes</p><div class="name">${escapeHtml(name)}</div>
+      <p>${escapeHtml(bodyLine)}</p><div class="course">${escapeHtml(cert?.courseTitle || course.title)}</div>
+      ${recordLine}<p>Completion date: ${escapeHtml(date)}</p>
+      <p class="disclaimer">${escapeHtml(disclaimerLine)}</p>
       </main></body></html>`);
-    popup.document.close();
-    setPortfolioMessage("Certificate preview opened. Choose Print / Save as PDF in the new tab.");
+      popup.document.close();
+      setPortfolioMessage("Certificate preview opened. Choose Print / Save as PDF in the new tab.");
+    };
+    if (inlineCert || !isMongoCourse) {
+      render(inlineCert);
+      return;
+    }
+    // MongoDB course without a stored record yet: claim it now (backend re-verifies).
+    issueCertificate(course.id)
+      .then((data) => {
+        const cert = data?.certificate || null;
+        if (cert) setMongoCertificates((previous) => previous.some((item) => item.certificateId === cert.certificateId) ? previous : [cert, ...previous]);
+        render(cert);
+      })
+      .catch((error) => {
+        popup.document.write(`<p style="font-family:sans-serif;padding:40px">${escapeHtml(error.message || "The certificate could not be issued.")}</p>`);
+        popup.document.close();
+        setPortfolioMessage(error.message || "The certificate could not be issued.");
+      });
   }
 
 
@@ -976,6 +1008,9 @@ export default function StudentDashboard({ email = "student", account, onVerific
     return null;
   }
 
+  const [mongoProgress, setMongoProgress] = useState({});
+  const [mongoCertificates, setMongoCertificates] = useState([]);
+  const certificateIssueAttempts = useRef(new Set());
   const [courseRevision, setCourseRevision] = useState(0);
   const [localVideoUrl, setLocalVideoUrl] = useState(null);
   useEffect(() => {
@@ -1004,18 +1039,45 @@ export default function StudentDashboard({ email = "student", account, onVerific
     };
   }, []);
   const latestPublishedCourses = useMemo(() => getPublishedTeacherCourses(), [courseRevision]);
+  const mergeMongoProgress = (courseId, progress) => {
+    if (!progress) return;
+    setMongoProgress((previous) => ({ ...previous, [String(courseId)]: progress }));
+  };
+  useEffect(() => {
+    if (getContentState().role !== "student") { setMongoProgress({}); setMongoCertificates([]); return undefined; }
+    let cancelled = false;
+    const loadProgress = () => fetchProgress()
+      .then((items) => {
+        if (cancelled) return;
+        setMongoProgress(Object.fromEntries((items || []).map((item) => [String(item.courseId), item])));
+      })
+      .catch((error) => { if (error.status !== 401 && error.status !== 403) console.error("Could not load course progress", error); });
+    const loadCertificates = () => fetchMyCertificates()
+      .then((items) => { if (!cancelled) setMongoCertificates(items || []); })
+      .catch((error) => { if (error.status !== 401 && error.status !== 403) console.error("Could not load certificates", error); });
+    loadProgress();
+    loadCertificates();
+    window.addEventListener(LEARNING_UPDATED_EVENT, loadProgress);
+    window.addEventListener(LEARNING_UPDATED_EVENT, loadCertificates);
+    window.addEventListener(CONTENT_CHANGED_EVENT, loadProgress);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(LEARNING_UPDATED_EVENT, loadProgress);
+      window.removeEventListener(LEARNING_UPDATED_EVENT, loadCertificates);
+      window.removeEventListener(CONTENT_CHANGED_EVENT, loadProgress);
+    };
+  }, [courseRevision, email]);
   // MongoDB is authoritative for enrolled courses: the list is built from the
   // student's ContentAccess records (returned by /content/state), joined with
   // the approved published catalog. localStorage only carries demo/static
   // courses and per-lesson progress until server-side progress lands.
   const enrolledCourses = useMemo(
     () => {
-      const localProgress = new Map(enrollments.map((item) => [String(item.id), item]));
       const mongoCourses = getMongoCourseEnrollments().map((record) => {
-        const local = localProgress.get(String(record.id));
+        const backend = mongoProgress[String(record.id)];
         const lessonItems = Array.isArray(record.lessons) ? record.lessons : [];
-        const lessonCount = lessonItems.length;
-        const completed = Math.min(lessonCount, Math.max(0, Number(local?.completedLessons) || 0));
+        const lessonCount = Math.max(0, Number(backend?.lessons ?? lessonItems.length) || 0);
+        const completed = Math.min(lessonCount, Math.max(0, Number(backend?.completedLessons) || 0));
         return {
           ...record,
           lessons: lessonCount,
@@ -1023,7 +1085,8 @@ export default function StudentDashboard({ email = "student", account, onVerific
           instructor: record.instructorName || record.instructor || "EduConnect Instructor",
           teacherEmail: record.teacherEmail || "",
           completedLessons: completed,
-          enrolledAt: record.enrolledAt || local?.enrolledAt || null,
+          completedLessonIds: backend?.completedLessonIds || [],
+          enrolledAt: record.enrolledAt || null,
           progress: lessonCount ? Math.round((completed / lessonCount) * 100) : 0,
         };
       });
@@ -1076,7 +1139,7 @@ export default function StudentDashboard({ email = "student", account, onVerific
       return [...mongoCourses, ...demoCourses]
         .filter((course) => course && isModerationVisible("course", `${String(course.teacherEmail || course.instructorEmail || "demo").toLowerCase()}::${course.id}`));
     },
-    [enrollments, latestPublishedCourses, courseRevision]
+    [enrollments, latestPublishedCourses, courseRevision, mongoProgress]
   );
 
   const enrolledPlayerCourse = enrolledCourses.find(c => String(c.id) === String(playerCourseId));
@@ -1109,6 +1172,24 @@ export default function StudentDashboard({ email = "student", account, onVerific
   const completedCourses = enrolledCourses.filter(
     (course) => course.progress === 100
   );
+
+  // Issue MongoDB certificates for completed Mongo courses. Backend re-verifies progress,
+  // enrollment and any configured quiz/assignment criteria; local flags are never trusted.
+  useEffect(() => {
+    for (const course of completedCourses) {
+      const id = String(course.id);
+      if (!/^[a-f0-9]{24}$/i.test(id)) continue;
+      if (mongoCertificates.some((cert) => String(cert.courseId) === id)) continue;
+      if (certificateIssueAttempts.current.has(id)) continue;
+      certificateIssueAttempts.current.add(id);
+      issueCertificate(id)
+        .then((data) => {
+          const cert = data?.certificate;
+          if (cert) setMongoCertificates((previous) => previous.some((item) => item.certificateId === cert.certificateId) ? previous : [cert, ...previous]);
+        })
+        .catch(() => { /* 409 (required quiz/assignment outstanding) or offline: claim from Certificates tab. */ });
+    }
+  }, [completedCourses, mongoCertificates]);
 
   // Compare teacher lesson IDs with the last snapshot for this student.
   // First observation establishes a baseline; it does not create false alerts.
@@ -1168,6 +1249,11 @@ export default function StudentDashboard({ email = "student", account, onVerific
   }, [baseKey, certificateDates]);
 
   function certificateInfo(course) {
+    if (course?.certificate) {
+      return {
+        date: new Date(course.certificate.completedAt || course.certificate.issuedAt).toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" }),
+      };
+    }
     const key = `${course.teacherEmail || "demo"}:${course.id}`;
     return {
       date: certificateDates[key]
@@ -1371,6 +1457,20 @@ export default function StudentDashboard({ email = "student", account, onVerific
     );
     if (!course || !course.lessons) return;
 
+    if (/^[a-f0-9]{24}$/i.test(String(id))) {
+      // MongoDB courses: undo removes the most recently ordered completed lesson server-side.
+      if (amount >= 0) return; // Lesson completions flow through setLessonCompleted with a lesson ID.
+      const doneIds = new Set(course.completedLessonIds || []);
+      const target = [...(course.lessonItems || [])]
+        .filter((lesson) => doneIds.has(String(lesson.id)))
+        .sort((a, b) => ((Number(b.order) || 0) - (Number(a.order) || 0)) || String(b.id).localeCompare(String(a.id)))[0];
+      if (!target) return;
+      setLessonCompleted(id, target.id, false)
+        .then((progress) => mergeMongoProgress(id, progress))
+        .catch((error) => window.alert(error.message));
+      return;
+    }
+
     setEnrollments((previous) => {
       const index = previous.findIndex((item) => String(item.id) === String(id));
       const current = index >= 0 ? Number(previous[index].completedLessons) || 0 : 0;
@@ -1506,8 +1606,19 @@ export default function StudentDashboard({ email = "student", account, onVerific
     );
     if (!course || !course.lessons) return;
     const completed = Math.max(0, Number(course.completedLessons) || 0);
-    // Sequential demo completion keeps the existing count-based storage compatible.
+    // Sequential completion keeps the existing count-based demo storage compatible.
     if (playerLessonIndex !== completed || completed >= course.lessons) return;
+    if (/^[a-f0-9]{24}$/i.test(String(course.id))) {
+      const lesson = course.lessonItems?.[playerLessonIndex];
+      if (!lesson?.id) { window.alert("This lesson cannot be recorded yet. Please refresh and try again."); return; }
+      setLessonCompleted(course.id, lesson.id, true)
+        .then((progress) => {
+          mergeMongoProgress(course.id, progress);
+          if (playerLessonIndex + 1 < course.lessons) setPlayerLessonIndex(playerLessonIndex + 1);
+        })
+        .catch((error) => window.alert(error.message));
+      return;
+    }
     updateLesson(playerCourseId, 1);
     if (playerLessonIndex + 1 < course.lessons) {
       setPlayerLessonIndex(playerLessonIndex + 1);
@@ -2375,7 +2486,11 @@ export default function StudentDashboard({ email = "student", account, onVerific
 
   function Portfolio() {
     const query = portfolioSearch.trim().toLowerCase();
-    const visibleCertificates = completedCourses.filter((course) => !query || String(course.title || "").toLowerCase().includes(query));
+    const certificateEntries = [
+      ...mongoCertificates.map((cert) => ({ id: String(cert.courseId), title: cert.courseTitle, teacherEmail: "", certificate: cert, lessons: null, progress: 100, mongoContent: true })),
+      ...completedCourses.filter((course) => !/^[a-f0-9]{24}$/i.test(String(course.id))),
+    ];
+    const visibleCertificates = certificateEntries.filter((course) => !query || String(course.title || "").toLowerCase().includes(query));
     const visibleProjects = portfolioProjects.filter((project) =>
       [project.title, project.description, project.url, ...(Array.isArray(project.skills) ? project.skills : [])]
         .some((value) => String(value || "").toLowerCase().includes(query)),
@@ -2462,18 +2577,19 @@ export default function StudentDashboard({ email = "student", account, onVerific
           <div className="edc-portfolio-sections">
             <section className="edc-portfolio-section">
               <header><div><h2><Award size={19} />My Certificates</h2><p>Records based on courses completed in your account.</p></div>{completedCourses.length > 4 && <button type="button" onClick={() => navigate("/student/dashboard/portfolio/completed-courses")}>View All Certificates <ArrowRight size={14} /></button>}</header>
-              <p className="edc-portfolio-notice">These are demo course completion records, not verified or accredited certificates.</p>
+              <p className="edc-portfolio-notice">Certificates for completed EduConnect AI courses are verified records. Demo sample courses show unverified completion records.</p>
               {visibleCertificates.length ? <div className="edc-portfolio-certificate-grid">
                 {visibleCertificates.map((course) => {
+                  const cert = course.certificate;
                   const completionDate = certificateInfo(course).date;
                   const lessonCount = Array.isArray(course.lessons) ? course.lessons.length : Number(course.lessons) || 0;
-                  return <article className="edc-portfolio-certificate-card" key={`${course.teacherEmail || ""}:${course.id}`}>
+                  return <article className="edc-portfolio-certificate-card" key={cert ? cert.certificateId : `${course.teacherEmail || ""}:${course.id}`}>
                     <div className="edc-portfolio-certificate-art"><Award size={31} /><span>Course Completion</span></div>
                     <div className="edc-portfolio-certificate-copy">
-                      <span className="edc-portfolio-record-label">Demo completion record</span>
+                      <span className="edc-portfolio-record-label">{cert ? "Verified certificate" : "Demo completion record"}</span>
                       <h3>{course.title}</h3>
-                      <p><CheckCircle2 size={13} />{lessonCount} lessons completed</p>
-                      <p><CalendarDays size={13} />Record date: {completionDate}</p>
+                      <p>{cert ? <><CheckCircle2 size={13} />Certificate ID: {cert.certificateId}</> : <><CheckCircle2 size={13} />{lessonCount} lessons completed</>}</p>
+                      <p><CalendarDays size={13} />{cert ? "Completed" : "Record date"}: {completionDate}</p>
                       <button type="button" onClick={() => printDemoCertificate(course)}>Preview / Save PDF <ArrowRight size={14} /></button>
                     </div>
                   </article>;

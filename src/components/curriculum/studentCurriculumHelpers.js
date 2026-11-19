@@ -114,8 +114,15 @@ export function toggleCurriculumBookmark(email, course) {
   return next.includes(key);
 }
 
-export async function loadStudentCurriculumFile(resourceId) {
-  if (String(resourceId).startsWith("remote:")) return loadContentFile(resourceId);
+export async function loadStudentCurriculumFile(resource) {
+  // MongoDB resources carry an authored id plus a fileId referencing an authenticated,
+  // access-gated ContentFile. Local browser resources carry only the IndexedDB key.
+  const fileId = resource && typeof resource === "object" ? resource.fileId : resource;
+  const fileText = String(fileId || "");
+  const bare = fileText.replace(/^remote:/, "");
+  if (/^[a-f0-9]{24}$/i.test(bare)) return loadContentFile(bare);
+  if (fileText.startsWith("remote:")) return loadContentFile(fileText);
+  const id = String(resource && typeof resource === "object" ? resource.id : resource);
   if (!globalThis.indexedDB) throw new Error("File storage is unavailable in this browser.");
   const db = await new Promise((resolve, reject) => {
     const request = indexedDB.open("educonnect-curriculum-resources", 1);
@@ -123,7 +130,7 @@ export async function loadStudentCurriculumFile(resourceId) {
     request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
   });
   try {
-    const file = await new Promise((resolve, reject) => { const tx = db.transaction("files", "readonly"), request = tx.objectStore("files").get(resourceId); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error); tx.onerror = () => reject(tx.error); });
+    const file = await new Promise((resolve, reject) => { const tx = db.transaction("files", "readonly"), request = tx.objectStore("files").get(id); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error); tx.onerror = () => reject(tx.error); });
     if (!file) throw new Error("This uploaded file is no longer available in this browser.");
     return file;
   } finally { db.close(); }

@@ -44,7 +44,7 @@ function CourseCurriculumView({ email, data, onOpenLesson, onOpenQuiz, onNavigat
   const download = async resource => {
     if (downloading) return;
     setDownloading(String(resource.id)); setMessage("");
-    try { const file = await loadStudentCurriculumFile(resource.id); downloadFile(file); }
+    try { const file = await loadStudentCurriculumFile(resource); downloadFile(file); }
     catch (failure) { setMessage(failure.message || "Could not download this resource."); }
     finally { setDownloading(""); }
   };

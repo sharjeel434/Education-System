@@ -1,11 +1,12 @@
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   addToCart,
   getStudentEmail,
   getEnrollments,
 } from "../../utils/studentCart";
+import { fetchCourseReviews, fetchTeacherSummary } from "../../utils/mongoLearningApi";
 
 import {
   BookOpen,
@@ -34,6 +35,35 @@ export default function CourseDetails({
   const navigate = useNavigate();
   const [cartMessage, setCartMessage] = useState("");
   const [showTeacherProfile, setShowTeacherProfile] = useState(false);
+  const [mongoReviews, setMongoReviews] = useState(null);
+  const [mongoCourseRating, setMongoCourseRating] = useState(null);
+  const [mongoTeacherRating, setMongoTeacherRating] = useState(null);
+  const isMongoCourse = /^[a-f0-9]{24}$/i.test(String(course?.id || ""));
+
+  useEffect(() => {
+    let cancelled = false;
+    setMongoReviews(null);
+    setMongoCourseRating(null);
+    setMongoTeacherRating(null);
+    if (!isMongoCourse) return undefined;
+    fetchCourseReviews(course.id)
+      .then((data) => {
+        if (cancelled) return;
+        setMongoReviews(data.reviews || []);
+        setMongoCourseRating(data.summary || null);
+      })
+      .catch(() => {});
+    if (course.teacherId) {
+      fetchTeacherSummary(course.teacherId)
+        .then((data) => { if (!cancelled) setMongoTeacherRating(data.summary || null); })
+        .catch(() => {});
+    }
+    return () => { cancelled = true; };
+  }, [course?.id, course?.teacherId, isMongoCourse]);
+
+  if (mongoReviews && Array.isArray(mongoReviews)) courseReviews = mongoReviews;
+  if (mongoCourseRating) courseRating = { rating: mongoCourseRating.average, reviewCount: mongoCourseRating.count };
+  if (mongoTeacherRating) teacherRating = { rating: mongoTeacherRating.average, reviewCount: mongoTeacherRating.count };
 
   const lessons = Array.isArray(course?.lessons)
     ? course.lessons
