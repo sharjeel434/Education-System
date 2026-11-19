@@ -1,3 +1,4 @@
+import { getContentState } from "../../utils/contentApi";
 import { addDemoNotification } from "../../utils/demoNotifications";
 
 export const ADMIN_USERS_KEY = "educonnect.registeredUsers";
@@ -115,36 +116,8 @@ export function readAdminUsersState() {
   }
 }
 
-export function getAdminCourses(users) {
-  const teachers = getAdminTeachers(users);
-  const seenCourses = new Set();
-  const courses = [];
-
-  teachers.forEach((teacher) => {
-    const key = `educonnect.teacher.${teacher.email}.courses`;
-
-    readAdminArray(key).forEach((course) => {
-      if (!isRecord(course)) {
-        return;
-      }
-
-      const courseId =
-        course.id === undefined || course.id === null || course.id === ""
-          ? JSON.stringify(course)
-          : String(course.id);
-      const recordKey =
-        `${teacher.email.trim().toLowerCase()}:${courseId}`;
-
-      if (seenCourses.has(recordKey)) {
-        return;
-      }
-
-      seenCourses.add(recordKey);
-      courses.push({ ...course, teacherEmail: teacher.email });
-    });
-  });
-
-  return courses;
+export function getAdminCourses() {
+  return getContentState().role === "admin" ? getContentState().managedCourses : [];
 }
 
 export function getAdminOverviewData() {

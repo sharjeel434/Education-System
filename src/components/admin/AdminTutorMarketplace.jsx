@@ -694,7 +694,7 @@ function AdminTutorMarketplace({ email }) {
           <section className="edc-admin-tutor-side-card">
             <header><h3><Settings size={17} aria-hidden="true" />Verification &amp; Marketplace Settings</h3><Link to="/admin/settings">Settings</Link></header>
             <dl className="edc-admin-tutor-settings-list">
-              <div><dt>Teacher verification required</dt><dd>{platformValue(data.platform.rules.teacherVerificationRequired ? "On" : "Off")}</dd></div>
+              <div><dt>Verification</dt><dd>Optional profile badge</dd></div>
               <div><dt>Course approval required</dt><dd>{platformValue(data.platform.rules.courseApprovalRequired ? "On" : "Off")}</dd></div>
               <div><dt>Course uploads</dt><dd>{platformValue(data.platform.system.courseUploadEnabled ? "On" : "Off")}</dd></div>
               <div><dt>Demo checkout mode</dt><dd>{platformValue(data.platform.marketplace.demoCheckoutMode ? "On" : "Off")}</dd></div>

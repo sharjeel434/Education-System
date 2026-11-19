@@ -1,6 +1,28 @@
 .dashboard-page:has(.edc-student-topbar) { padding-top: var(--edc-navbar-height); background: var(--edc-section-bg); }
 .dashboard-page:has(.edc-student-shell) .auth-topbar.edc-student-topbar { position: fixed; top: 0; right: 0; left: var(--edc-sidebar-current-width, var(--edc-sidebar-width)); transition: left 200ms ease; z-index: 1000; display: flex; align-items: center; gap: 25px; width: auto; max-width: none; height: var(--edc-navbar-height); min-height: var(--edc-navbar-height); padding: 0 23px; border-bottom: 1px solid var(--edc-topbar-border); background: var(--edc-topbar-background); box-shadow: var(--edc-topbar-shadow); backdrop-filter: none; }
 .edc-student-topbar-actions { display: flex; align-items: center; gap: 18px; margin-left: auto; }
+.edc-student-topbar-actions .edc-student-verification {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 8px 12px;
+  border: 1px solid #eec651;
+  border-radius: 10px;
+  background: #eec651;
+  color: #211638;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.edc-student-topbar-actions .edc-student-verification:hover { background: #f7d66c; }
+.edc-student-topbar-actions .edc-student-verification.is-verified { border-color: #bee7d5; background: #ecf9f2; color: #18764e; }
+.edc-student-topbar-actions .edc-student-verification:focus-visible { outline: 3px solid #c9a5e8; outline-offset: 3px; }
 .edc-topbar-notifications { position: relative; }
 .edc-topbar-bell { position: relative; display: grid; width: 30px; height: 35px; place-items: center; padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--edc-topbar-icon); cursor: pointer; }
 .edc-student-topbar .edc-workspace-sidebar-trigger svg { display: block !important; width: 20px !important; height: 20px !important; color: #fff !important; fill: none !important; stroke: #fff !important; stroke-width: 2 !important; }
@@ -78,6 +100,11 @@
   .edc-topbar-notification-panel { position: fixed; top: calc(var(--edc-navbar-height-mobile) + 8px); right: 12px; left: 12px; width: auto; max-height: calc(100dvh - var(--edc-navbar-height-mobile) - 20px); }
   .dashboard-page .edc-student-shell > .edc-main { padding: 14px 12px 22px; }
   .dashboard-page .edc-student-shell .edc-main-header h2 { font-size: 24px; }
+}
+
+@media (max-width: 480px) {
+  .dashboard-page .edc-student-brand > span { display: none; }
+  .edc-student-topbar-actions .edc-student-verification { padding-inline: 9px; font-size: 11px; }
 }
 
 /* Explicit filled/outlined action buttons only; text links and navigation retain their component styles. */

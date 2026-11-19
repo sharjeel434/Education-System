@@ -1,8 +1,11 @@
+import { uploadContentFile, loadContentFile } from "../../utils/contentApi";
 import { useEffect, useMemo, useState } from "react";
 import "./CurriculumBuilder.css";
 import StudentCourseCurriculum from "./StudentCourseCurriculum";
 import { Layers3, Folder, PlaySquare, CircleHelp, ClipboardCheck, Link2, FileText, Download, Eye, EyeOff, Save, Pencil, Trash2, ChevronDown, ChevronUp, GripVertical, Plus, ArrowUpDown, ArrowUp, ArrowDown, Upload, Check, X, GraduationCap, Clock3, AlertCircle, CheckCircle2 } from "lucide-react";
 import { assignmentKey } from "../assignments/assignmentStorage";
+import { teacherQuizzes } from "../../utils/mongoQuizApi";
+import { teacherAssignments } from "../../utils/mongoAssignmentApi";
 const PREFIX="educonnect.curriculum.v1.";
 const EVENT="educonnect:curriculum-updated";
 const key=(teacher,id)=>`${PREFIX}${encodeURIComponent(String(teacher||"").toLowerCase())}.${encodeURIComponent(String(id))}`;
@@ -22,9 +25,11 @@ const DOCUMENT_TYPES=/\.(pdf|txt|md|docx|pptx)$/i;
 const DOWNLOAD_TYPES=/\.(pdf|txt|md|docx|pptx|zip|png|jpe?g|xlsx|csv)$/i;
 function useRevision(){const [n,setN]=useState(0);useEffect(()=>{const f=()=>setN(x=>x+1);["storage","focus",EVENT,"educonnect:quizzes-updated","educonnect:assignments-updated"].forEach(e=>window.addEventListener(e,f));return()=>["storage","focus",EVENT,"educonnect:quizzes-updated","educonnect:assignments-updated"].forEach(e=>window.removeEventListener(e,f))},[]);return n}
 const pluralize=(count,one,many)=>`${count} ${count===1?one:many||one+"s"}`;
+const matchesReference=(record,id)=>[record?.id,record?._id,record?.legacyId].some(value=>value!==undefined&&String(value)===String(id));
 
-function TeacherCurriculumBuilder({role,email,courses=[],onAddLesson,onReorderLessons,onOpenLesson,onDeleteLesson,onEditCourse,onNavigate}){
+function TeacherCurriculumBuilder({role,email,courses=[],onSaveCurriculum,onAddLesson,onReorderLessons,onOpenLesson,onDeleteLesson,onEditCourse,onNavigate}){
   const [courseId,setCourseId]=useState("");
+  const [pendingCurriculum, setPendingCurriculum] = useState(null);
   const [sectionName,setSectionName]=useState("");
   const [lessonTitle,setLessonTitle]=useState("");
   const [lessonDescription,setLessonDescription]=useState("");
@@ -42,14 +47,32 @@ function TeacherCurriculumBuilder({role,email,courses=[],onAddLesson,onReorderLe
   const [importText,setImportText]=useState("");
   const [renamingId,setRenamingId]=useState("");
   const [renameValue,setRenameValue]=useState("");
+  const [mongoAssessments,setMongoAssessments]=useState({courseId:"",quizzes:[],assignments:[],loading:false});
   const revision=useRevision();
   const course=courses.find(c=>String(c.id)===String(courseId))||courses[0];
   const teacher=role==="teacher"?email:course?.teacherEmail;
   const storageKey=course?key(teacher,course.id):"";
   const notify=(text,type="info")=>{setMessage(text);setMessageType(type)};
   const resetTransient=()=>{setMessage("");setExpanded({});setActiveTool("");setRenamingId("");setResourceLesson("");setItemTitle("");setItemDetails("");setItemSection("");setBulkNames("");setImportText("");setChosenSection("");setLessonTitle("");setLessonDescription("");setSectionName("")};
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- revision intentionally re-reads localStorage on curriculum events
-  const saved=useMemo(()=>storageKey?(read(storageKey)||empty()):empty(),[storageKey,revision]);
+  const saved=useMemo(() => {
+    void revision;
+    if (course?.mongoContent) return pendingCurriculum?.id === course.id && pendingCurriculum.revision === course.revision
+      ? pendingCurriculum.value : course.curriculum || empty();
+    return storageKey ? read(storageKey) || empty() : empty();
+  }, [storageKey, revision, course, pendingCurriculum]);
+  useEffect(()=>{
+    void revision;
+    const id=String(course?.id||"");
+    if(!course?.mongoContent)return;
+    let active=true;
+    Promise.all([teacherQuizzes(id),teacherAssignments(id)]).then(([quizData,assignmentData])=>{
+      if(!active)return;
+      setMongoAssessments({courseId:id,loading:false,
+        quizzes:(quizData.quizzes||[]).map(item=>({...item,id:String(item.id||item._id)})),
+        assignments:(assignmentData.assignments||[]).map(item=>({...item,id:String(item.id||item._id)}))});
+    }).catch(error=>{if(active){setMongoAssessments({courseId:id,quizzes:[],assignments:[],loading:false});notify(`Assessments could not be loaded: ${error.message}`,"error")}});
+    return()=>{active=false};
+  },[course?.id,course?.mongoContent,revision]);
   const lessons=useMemo(()=>Array.isArray(course?.lessons)?course.lessons:Array.isArray(course?.lessonItems)?course.lessonItems:[],[course]);
   const sections=useMemo(()=>{
     const existing=saved.sections||[];
@@ -60,12 +83,13 @@ function TeacherCurriculumBuilder({role,email,courses=[],onAddLesson,onReorderLe
   },[saved,lessons]);
   const realSections=useMemo(()=>sections.filter(s=>s.id!=="unassigned"),[sections]);
   const placedLessons=useMemo(()=>realSections.reduce((total,s)=>total+s.lessonIds.length,0),[realSections]);
-  const quizzes=course?array(qkey(teacher,course.id)):[];
-  const assignments=course?array(assignmentKey(teacher,course.id)):[];
+  const mongoAssessmentReady=course?.mongoContent&&mongoAssessments.courseId===String(course.id);
+  const quizzes=course?(course.mongoContent?(mongoAssessmentReady?mongoAssessments.quizzes:[]):array(qkey(teacher,course.id))):[];
+  const assignments=course?(course.mongoContent?(mongoAssessmentReady?mongoAssessments.assignments:[]):array(assignmentKey(teacher,course.id))):[];
   const links=saved.links||[];
   const resources=saved.resources||[];
-  const linkedQuizCount=links.filter(l=>l.type==="quiz"&&quizzes.some(q=>String(q.id)===String(l.id))).length;
-  const linkedAssignmentCount=links.filter(l=>l.type==="assignment"&&assignments.some(a=>String(a.id)===String(l.id))).length;
+  const linkedQuizCount=links.filter(l=>l.type==="quiz"&&quizzes.some(q=>matchesReference(q,l.id))).length;
+  const linkedAssignmentCount=links.filter(l=>l.type==="assignment"&&assignments.some(a=>matchesReference(a,l.id))).length;
   const lessonCount=lessons.length;
   const quizCount=quizzes.length;
   const assignmentCount=assignments.length;
@@ -96,10 +120,27 @@ function TeacherCurriculumBuilder({role,email,courses=[],onAddLesson,onReorderLe
     }
     return {background:`conic-gradient(${stops.join(",")})`};
   })();
-  const persist=(next,successMessage="Curriculum saved.")=>{if(!storageKey){notify("Select a course first.","error");return false}try{localStorage.setItem(storageKey,JSON.stringify(next));window.dispatchEvent(new Event(EVENT));notify(successMessage);return true}catch(e){notify(`Save failed: ${e.message}`,"error");return false}};
-  const syncLessonOrder=orderedSections=>{
+  const persist = (next, successMessage = "Curriculum saved.") => {
+    if (!storageKey) { notify("Select a course first.", "error"); return false; }
+    if (course.mongoContent) {
+      if (!onSaveCurriculum) { notify("Course saving is unavailable.", "error"); return false; }
+      setPendingCurriculum({ id: course.id, revision: course.revision, value: next });
+      Promise.resolve(onSaveCurriculum(course.id, next)).then((saved) => {
+        if (!saved) throw new Error("Curriculum could not be saved. Review the dashboard message.");
+        notify(successMessage);
+      }).catch((error) => { setPendingCurriculum(null); notify(error.message, "error"); });
+      return true;
+    }
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(next));
+      window.dispatchEvent(new Event(EVENT));
+      notify(successMessage);
+      return true;
+    } catch (error) { notify(error.message, "error"); return false; }
+  };
+  const syncLessonOrder=async orderedSections=>{
     if(!onReorderLessons||!course)return true;
-    if(onReorderLessons(course.id,orderedSections.flatMap(section=>section.lessonIds||[]))===false){
+    if(await onReorderLessons(course.id,orderedSections.flatMap(section=>section.lessonIds||[]))===false){
       notify("Curriculum saved, but the course lesson order could not be updated.","error");
       return false;
     }
@@ -124,12 +165,12 @@ function TeacherCurriculumBuilder({role,email,courses=[],onAddLesson,onReorderLe
     const nextSections=(saved.sections||[]).map(s=>s.id===sectionId?{...s,lessonIds:ids}:s);
     if(persist({...saved,sections:nextSections},"Lessons reordered."))syncLessonOrder(nextSections);
   };
-  const createLesson=()=>{
+  const createLesson=async()=>{
     if(!lessonTitle.trim()){notify("Enter a lesson title first.","error");return false}
     if(!course||!onAddLesson){notify("Lesson creation is unavailable right now.","error");return false}
     const id=uid();
     try {
-      if(onAddLesson(course.id,{id,title:lessonTitle.trim(),description:lessonDescription.trim(),duration:"",isFreePreview:false})===false){
+      if(await onAddLesson(course.id,{id,title:lessonTitle.trim(),description:lessonDescription.trim(),duration:"",isFreePreview:false})===false){
         notify("Lesson could not be saved. Check the dashboard message and try again.","error");
         return false;
       }
@@ -152,13 +193,55 @@ function TeacherCurriculumBuilder({role,email,courses=[],onAddLesson,onReorderLe
     if(!file)return;
     if(file.size>20*1024*1024){notify("Maximum file size is 20 MB.","error");return}
     if(!accept.test(file.name)){notify("This file type is not allowed here.","error");return}
+    if (course?.mongoContent) {
+      try {
+        const fileId = await uploadContentFile("document", file);
+        persist({ ...saved, resources: [...resources, { id: "remote:" + fileId, fileId, lessonId: String(lessonId), name: file.name, size: file.size }] }, "Resource attached. Submit the course for review when ready.");
+      } catch (error) { notify(error.message, "error"); }
+      return;
+    }
     const id=uid();try{await put(id,file);persist({...saved,resources:[...resources,{id,lessonId:String(lessonId),name:file.name,size:file.size}]},"Resource attached.")}catch(e){notify(`File save failed: ${e.message}`,"error")}
   };
-  const openResource=async r=>{try{const file=await get(r.id);if(!file)throw Error("File missing from this browser");download(file)}catch(e){notify(e.message,"error")}};
-  const removeResource=async r=>{try{await del(r.id);persist({...saved,resources:resources.filter(x=>x.id!==r.id)},"Resource removed.")}catch(e){notify(e.message,"error")}};
+  const replaceResource=async(current,file)=>{
+    if(!file)return;
+    if(file.size>20*1024*1024){notify("Maximum file size is 20 MB.","error");return}
+    if(!DOWNLOAD_TYPES.test(file.name)){notify("This file type is not allowed here.","error");return}
+    try{
+      let replacement={...current,name:file.name,size:file.size};
+      if(course?.mongoContent){
+        const fileId=await uploadContentFile("document",file);
+        replacement={...replacement,id:`remote:${fileId}`,fileId};
+      }else await put(current.id,file);
+      persist({...saved,resources:resources.map(resource=>resource.id===current.id?replacement:resource)},"Resource replaced. The previous stored file was retained safely.");
+    }catch(error){notify(`Resource could not be replaced: ${error.message}`,"error")}
+  };
+  const moveResource=(resource,direction)=>{
+    const next=[...resources],positions=next.map((item,index)=>({item,index})).filter(entry=>String(entry.item.lessonId)===String(resource.lessonId));
+    const current=positions.findIndex(entry=>entry.item.id===resource.id),target=current+direction;
+    if(current<0||target<0||target>=positions.length)return;
+    const left=positions[current].index,right=positions[target].index;
+    [next[left],next[right]]=[next[right],next[left]];
+    persist({...saved,resources:next},"Resources reordered.");
+  };
+  const openResource=async r=>{try{const file=r.fileId ? await loadContentFile(r.fileId) : await get(r.id);if(!file)throw Error("File missing from this browser");download(file)}catch(e){notify(e.message,"error")}};
+  const removeResource=async r=>{try{if (!r.fileId) await del(r.id);persist({...saved,resources:resources.filter(x=>x.id!==r.id)},"Resource removed.")}catch(e){notify(e.message,"error")}};
   const setLink=(sectionId,type,id,checked)=>{const rest=links.filter(l=>!(l.sectionId===sectionId&&l.type===type&&String(l.id)===String(id)));persist({...saved,links:checked?[...rest,{sectionId,type,id:String(id)}]:rest});notify(checked?"Linked to section.":"Link removed.")};
+  const moveLink=(sectionId,type,id,direction)=>{
+    const next=[...links],positions=next.map((link,index)=>({link,index})).filter(item=>String(item.link.sectionId)===String(sectionId));
+    const current=positions.findIndex(item=>item.link.type===type&&String(item.link.id)===String(id)),target=current+direction;
+    if(current<0||target<0||target>=positions.length)return;
+    const left=positions[current].index,right=positions[target].index;
+    [next[left],next[right]]=[next[right],next[left]];
+    persist({...saved,links:next},"Linked content reordered.");
+  };
   const createAssessment=(type)=>{
     if(!course||!itemTitle.trim()){notify("Enter a title first.","error");return}
+    if(course.mongoContent){
+      setActiveTool("");
+      if(onNavigate)onNavigate(type==="quiz"?"quizzes":"course-assignments");
+      else notify(`Open Course ${type==="quiz"?"Quizzes":"Assignments"} to create the MongoDB record.`,"error");
+      return;
+    }
     const id=uid(), title=itemTitle.trim();
     try {
       if(type==="quiz"){
@@ -228,11 +311,11 @@ function TeacherCurriculumBuilder({role,email,courses=[],onAddLesson,onReorderLe
     persist({...saved,sections:(saved.sections||[]).map((section,i)=>({...section,title:(names[i]||section.title).slice(0,160)}))});
     setActiveTool("");notify(`${pluralize(Math.min(names.length,(saved.sections||[]).length),"section name","section names")} updated.`);
   };
-  const deleteLesson=lesson=>{
+  const deleteLesson=async lesson=>{
     if(!course)return;
     if(!onDeleteLesson){assignLesson(lesson.id,"unassigned");notify("Lesson moved to Unassigned (course deletion is unavailable).");return}
     if(!window.confirm(`Delete “${lesson.title||"Untitled Lesson"}”? It will be removed from this course and its curriculum. This can't be undone.`))return;
-    if(onDeleteLesson(course.id,lesson.id,{skipConfirm:true})===false){
+    if(await onDeleteLesson(course.id,lesson.id,{skipConfirm:true})===false){
       notify("Lesson could not be deleted. Check the dashboard message and try again.","error");
       return;
     }
@@ -241,12 +324,19 @@ function TeacherCurriculumBuilder({role,email,courses=[],onAddLesson,onReorderLe
     const savedCurriculum=persist({...saved,sections:nextSections,resources:resources.filter(r=>String(r.lessonId)!==String(lesson.id))},"Lesson deleted and removed from the curriculum.");
     if(!savedCurriculum)return;
     syncLessonOrder(nextSections);
-    Promise.allSettled(removed.map(r=>del(r.id))).then(results=>{
+    Promise.allSettled(removed.filter(r=>!r.fileId).map(r=>del(r.id))).then(results=>{
       if(results.some(result=>result.status==="rejected"))notify("Lesson was deleted, but one or more attachment files could not be removed.","error");
     });
   };
   const tools=[{name:"Add Section",icon:Folder},{name:"Add Lesson",icon:PlaySquare},{name:"Add Quiz",icon:CircleHelp},{name:"Add Assignment",icon:ClipboardCheck},{name:"Add Resource",icon:Link2},{name:"Add Article (Text)",icon:FileText},{name:"Add Download",icon:Download}];
-  const chooseTool=(name)=>{setActiveTool(name);setPreview(false);setMessage("")};
+  const chooseTool=(name)=>{
+    if(course?.mongoContent&&["Add Quiz","Add Assignment"].includes(name)){
+      if(onNavigate)onNavigate(name==="Add Quiz"?"quizzes":"course-assignments");
+      else notify(`Open Course ${name==="Add Quiz"?"Quizzes":"Assignments"} to create it.`,"error");
+      return;
+    }
+    setActiveTool(name);setPreview(false);setMessage("");
+  };
   const courseDetailsDone=Boolean(course&&String(course.title||"").trim()&&String(course.description||"").trim());
   const buildDone=realSections.length>0&&realSections.some(section=>section.lessonIds.length>0);
   const resourcesDone=attached>0;
@@ -290,21 +380,20 @@ function TeacherCurriculumBuilder({role,email,courses=[],onAddLesson,onReorderLe
       <aside className="ecc-panel ecc-tools" aria-label="Curriculum tools"><h3>Curriculum Tools</h3>{tools.map(t=><button key={t.name} type="button" className={activeTool===t.name?"ecc-tool ecc-tool-active":"ecc-tool"} onClick={()=>chooseTool(t.name)} aria-pressed={activeTool===t.name}><t.icon size={22}/><span>+ {t.name}</span></button>)}</aside>
       <main className="ecc-panel ecc-main" aria-label="Course curriculum"><div className="ecc-main-head"><h3><Layers3 size={26}/> Course Curriculum</h3><span>Total: {pluralize(sectionCount,"Section")} · {pluralize(lessonCount,"Lesson")} · {pluralize(quizCount,"Quiz","Quizzes")} · {pluralize(assignmentCount,"Assignment")}</span></div>
         {activeTool==="Add Section"&&!preview&&<div className="ecc-inline-editor"><h4>Create Section</h4><div className="ecc-inline"><input value={sectionName} onChange={e=>setSectionName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addSection()} placeholder="e.g. Introduction to React" maxLength={160} aria-label="Section title"/><button type="button" className="ecc-btn ecc-purple" onClick={()=>{if(addSection())setActiveTool("")}}>Add Section</button><button type="button" className="ecc-btn" onClick={()=>setActiveTool("")}>Cancel</button></div></div>}
-        {activeTool==="Add Lesson"&&!preview&&<div className="ecc-inline-editor"><h4>Create Video Lesson</h4><div className="ecc-form"><input value={lessonTitle} onChange={e=>setLessonTitle(e.target.value)} placeholder="Lesson title" maxLength={200} aria-label="Lesson title"/><textarea value={lessonDescription} onChange={e=>setLessonDescription(e.target.value)} placeholder="Lesson description" maxLength={2000} aria-label="Lesson description"/><select value={chosenSection} onChange={e=>setChosenSection(e.target.value)} aria-label="Section for new lesson"><option value="">Unassigned</option>{realSections.map(x=><option key={x.id} value={x.id}>{x.title}</option>)}</select><button type="button" className="ecc-btn ecc-purple" onClick={()=>{if(createLesson())setActiveTool("")}}>Create Lesson</button><button type="button" className="ecc-btn" onClick={()=>setActiveTool("")}>Cancel</button></div></div>}
+        {activeTool==="Add Lesson"&&!preview&&<div className="ecc-inline-editor"><h4>Create Video Lesson</h4><div className="ecc-form"><input value={lessonTitle} onChange={e=>setLessonTitle(e.target.value)} placeholder="Lesson title" maxLength={200} aria-label="Lesson title"/><textarea value={lessonDescription} onChange={e=>setLessonDescription(e.target.value)} placeholder="Lesson description" maxLength={2000} aria-label="Lesson description"/><select value={chosenSection} onChange={e=>setChosenSection(e.target.value)} aria-label="Section for new lesson"><option value="">Unassigned</option>{realSections.map(x=><option key={x.id} value={x.id}>{x.title}</option>)}</select><button type="button" className="ecc-btn ecc-purple" onClick={async()=>{if(await createLesson())setActiveTool("")}}>Create Lesson</button><button type="button" className="ecc-btn" onClick={()=>setActiveTool("")}>Cancel</button></div></div>}
         {(["Add Quiz","Add Assignment","Add Article (Text)"].includes(activeTool))&&!preview&&<div className="ecc-inline-editor"><h4>{activeTool}</h4><div className="ecc-form"><input value={itemTitle} onChange={e=>setItemTitle(e.target.value)} placeholder="Title" maxLength={200} aria-label="Title"/><textarea value={itemDetails} onChange={e=>setItemDetails(e.target.value)} placeholder={activeTool==="Add Assignment"?"Assignment instructions":"Description / text content"} maxLength={4000} aria-label="Details"/><select value={itemSection} onChange={e=>setItemSection(e.target.value)} aria-label="Section"><option value="">No section</option>{realSections.map(x=><option key={x.id} value={x.id}>{x.title}</option>)}</select><button type="button" className="ecc-btn ecc-purple" onClick={()=>{if(activeTool==="Add Article (Text)"){if(!itemTitle.trim()){notify("Enter an article title first.","error");return}setLessonTitle(itemTitle);setLessonDescription(itemDetails);setChosenSection(itemSection);setActiveTool("Add Lesson");notify("Review the article lesson and click Create Lesson.")}else createAssessment(activeTool==="Add Quiz"?"quiz":"assignment")}}>{activeTool==="Add Article (Text)"?"Continue to Lesson":"Create Draft"}</button><button type="button" className="ecc-btn" onClick={()=>setActiveTool("")}>Cancel</button></div></div>}
         {(["Add Resource","Add Download"].includes(activeTool))&&!preview&&<div className="ecc-inline-editor"><h4>{activeTool==="Add Resource"?"Attach a document to a lesson":"Add a downloadable file to a lesson"}</h4><p className="ecc-editor-note">{activeTool==="Add Resource"?"Allowed: PDF, TXT, MD, DOCX, PPTX · up to 20 MB.":"Allowed: PDF, TXT, MD, DOCX, PPTX, ZIP, PNG, JPG, XLSX, CSV · up to 20 MB."}</p><div className="ecc-form"><select value={resourceLesson} onChange={e=>setResourceLesson(e.target.value)} aria-label="Lesson to attach file to"><option value="">Select lesson</option>{lessons.map(l=><option key={l.id} value={l.id}>{l.title}</option>)}</select><input type="file" disabled={!resourceLesson} accept={activeTool==="Add Resource"?".pdf,.txt,.md,.docx,.pptx":".pdf,.txt,.md,.docx,.pptx,.zip,.png,.jpg,.jpeg,.xlsx,.csv"} onChange={e=>{addResource(resourceLesson,e.target.files?.[0],activeTool==="Add Resource"?DOCUMENT_TYPES:DOWNLOAD_TYPES);e.target.value=""}} aria-label="Choose file to attach"/><button type="button" className="ecc-btn" onClick={()=>setActiveTool("")}>Close</button></div></div>}
         {activeTool==="Bulk Edit"&&!preview&&<div className="ecc-inline-editor"><h4>Bulk Rename Sections</h4><p className="ecc-editor-note">One section title per line, in current order. Extra lines are ignored; missing lines keep the current title.</p><textarea rows={5} value={bulkNames} onChange={e=>setBulkNames(e.target.value)} aria-label="Section titles, one per line"/><div className="ecc-inline"><button type="button" className="ecc-btn ecc-purple" onClick={bulkRename}>Apply Names</button><button type="button" className="ecc-btn" onClick={()=>setActiveTool("")}>Cancel</button></div></div>}
         {activeTool==="Import Curriculum"&&!preview&&<div className="ecc-inline-editor"><h4>Import Curriculum JSON</h4><p className="ecc-editor-note">Restores sections, assessment links and resource references from an exported file. You will be asked to confirm before anything is replaced.</p><input type="file" accept=".json,application/json" onChange={async e=>{const f=e.target.files?.[0];if(f){if(f.size>1024*1024){notify("JSON file must be under 1 MB","error");return}try{setImportText(await f.text())}catch{notify("Could not read that file.","error")}}}} aria-label="Choose curriculum JSON file"/><textarea rows={4} value={importText} onChange={e=>setImportText(e.target.value)} placeholder="Paste exported curriculum JSON" aria-label="Curriculum JSON"/><div className="ecc-inline"><button type="button" className="ecc-btn ecc-purple" onClick={importCurriculum}><Upload size={16}/> Import &amp; Replace</button><button type="button" className="ecc-btn" onClick={()=>setActiveTool("")}>Cancel</button></div></div>}
         {activeTool==="Reorder Content"&&!preview&&<div className="ecc-inline-editor"><h4>Reorder Content</h4><p className="ecc-editor-note">Move sections and lessons up or down. Changes save automatically.</p><div className="ecc-reorder-list">{realSections.map((section,index,list)=><div className="ecc-reorder-section" key={section.id}><div className="ecc-reorder-row"><GripVertical size={15} aria-hidden="true"/><Folder size={16} aria-hidden="true"/><span className="ecc-reorder-title">{index+1}. {section.title}</span><button type="button" className="ecc-icon-btn ecc-small" disabled={index===0} onClick={()=>moveSection(section.id,-1)} aria-label={`Move ${section.title} up`}><ArrowUp size={14}/></button><button type="button" className="ecc-icon-btn ecc-small" disabled={index===list.length-1} onClick={()=>moveSection(section.id,1)} aria-label={`Move ${section.title} down`}><ArrowDown size={14}/></button></div>{section.lessonIds.map((lessonId,li,lessonList)=>{const lesson=lessons.find(l=>String(l.id)===String(lessonId));return lesson&&<div className="ecc-reorder-row ecc-reorder-lesson" key={lessonId}><GripVertical size={15} aria-hidden="true"/><PlaySquare size={15} aria-hidden="true"/><span className="ecc-reorder-title">{index+1}.{li+1} {lesson.title||"Untitled Lesson"}</span><button type="button" className="ecc-icon-btn ecc-small" disabled={li===0} onClick={()=>moveLesson(section.id,lessonId,-1)} aria-label="Move lesson up"><ArrowUp size={14}/></button><button type="button" className="ecc-icon-btn ecc-small" disabled={li===lessonList.length-1} onClick={()=>moveLesson(section.id,lessonId,1)} aria-label="Move lesson down"><ArrowDown size={14}/></button></div>})}</div>)}{!realSections.length&&<p className="ecc-editor-note">No sections yet — add a section first, then reorder here.</p>}</div><button type="button" className="ecc-btn" onClick={()=>setActiveTool("")}>Done</button></div>}
-        {!sections.length?<div className="ecc-empty">No sections yet. Click <strong>+ Add Section</strong> to start building your curriculum.</div>:sections.map((section,si)=>{const isOpen=expanded[section.id]??si===0;const linkedQuizzes=links.filter(l=>l.sectionId===section.id&&l.type==="quiz"&&quizzes.some(q=>String(q.id)===String(l.id)));const linkedAssignments=links.filter(l=>l.sectionId===section.id&&l.type==="assignment"&&assignments.some(a=>String(a.id)===String(l.id)));const countParts=[pluralize(section.lessonIds.length,"Lesson")];if(linkedQuizzes.length)countParts.push(pluralize(linkedQuizzes.length,"Quiz","Quizzes"));if(linkedAssignments.length)countParts.push(pluralize(linkedAssignments.length,"Assignment"));return <article className="ecc-chapter" key={section.id}>
+        {!sections.length?<div className="ecc-empty">No sections yet. Click <strong>+ Add Section</strong> to start building your curriculum.</div>:sections.map((section,si)=>{const isOpen=expanded[section.id]??si===0;const linkedQuizzes=links.filter(l=>l.sectionId===section.id&&l.type==="quiz"&&quizzes.some(q=>matchesReference(q,l.id)));const linkedAssignments=links.filter(l=>l.sectionId===section.id&&l.type==="assignment"&&assignments.some(a=>matchesReference(a,l.id)));const linkedItems=links.filter(link=>String(link.sectionId)===String(section.id)).flatMap(link=>{const record=(link.type==="quiz"?quizzes:assignments).find(item=>matchesReference(item,link.id));return record?[{link,record}]:[]});const countParts=[pluralize(section.lessonIds.length,"Lesson")];if(linkedQuizzes.length)countParts.push(pluralize(linkedQuizzes.length,"Quiz","Quizzes"));if(linkedAssignments.length)countParts.push(pluralize(linkedAssignments.length,"Assignment"));return <article className="ecc-chapter" key={section.id}>
           <div className="ecc-chapter-head"><GripVertical size={17} aria-hidden="true"/><Folder size={22} aria-hidden="true"/>{renamingId===section.id?<span className="ecc-rename"><input autoFocus value={renameValue} maxLength={160} onChange={e=>setRenameValue(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")confirmRename();if(e.key==="Escape")setRenamingId("")}} aria-label="Section title"/><button type="button" title="Save section name" className="ecc-icon-btn" onClick={confirmRename}><Check size={15}/></button><button type="button" title="Cancel rename" className="ecc-icon-btn" onClick={()=>setRenamingId("")}><X size={15}/></button></span>:<button type="button" className="ecc-chapter-name" onClick={()=>setExpanded(v=>({...v,[section.id]:!isOpen}))}>{si+1}. {section.title}</button>}<span className="ecc-chapter-count">{countParts.join(" · ")}</span>{section.id==="unassigned"&&<span className="ecc-badge">Needs a section</span>}{!preview&&section.id!=="unassigned"&&<button type="button" title="Rename section" className="ecc-icon-btn" onClick={()=>startRename(section)}><Pencil size={15}/></button>}<button type="button" className="ecc-icon-btn" aria-label={isOpen?"Collapse section":"Expand section"} aria-expanded={isOpen} onClick={()=>setExpanded(v=>({...v,[section.id]:!isOpen}))}>{isOpen?<ChevronUp size={20}/>:<ChevronDown size={20}/>}</button></div>
           {isOpen&&<div className="ecc-chapter-body">{section.lessonIds.map((lessonId,li)=>{const lesson=lessons.find(l=>String(l.id)===String(lessonId));if(!lesson)return null;const attachOpen=resourceLesson===String(lessonId);return <div key={lessonId} className="ecc-lesson-block"><div className="ecc-lesson-row"><GripVertical size={17} aria-hidden="true"/><span className="ecc-lesson-icon"><PlaySquare size={17}/></span><strong>{si+1}.{li+1} {lesson.title||"Untitled Lesson"}</strong><span className="ecc-lesson-duration"><Clock3 size={12} aria-hidden="true"/> {lesson.duration||"Video"}</span>{!preview&&<><button type="button" title="Move lesson up" aria-label="Move lesson up" className="ecc-icon-btn ecc-small" disabled={li===0} onClick={()=>moveLesson(section.id,lessonId,-1)}><ArrowUp size={13}/></button><button type="button" title="Move lesson down" aria-label="Move lesson down" className="ecc-icon-btn ecc-small" disabled={li===section.lessonIds.length-1} onClick={()=>moveLesson(section.id,lessonId,1)}><ArrowDown size={13}/></button><button type="button" title="Edit lesson" aria-label={`Edit ${lesson.title||"lesson"}`} className="ecc-icon-btn" onClick={()=>{if(onOpenLesson)onOpenLesson(course.id,lesson.id);else notify("Open Lessons in the Teacher Dashboard to edit this lesson.","error")}}><Pencil size={16}/></button><button type="button" title="Delete lesson" aria-label={`Delete ${lesson.title||"lesson"}`} className="ecc-icon-btn ecc-danger" onClick={()=>deleteLesson(lesson)}><Trash2 size={16}/></button></>}</div>
           {!preview&&attachOpen&&<div className="ecc-resource-editor"><label>Attach PDF / document<input type="file" accept=".pdf,.txt,.md,.docx,.pptx,.zip,.png,.jpg,.jpeg,.xlsx,.csv" onChange={e=>{addResource(lessonId,e.target.files?.[0],DOWNLOAD_TYPES);e.target.value=""}}/></label><button type="button" onClick={()=>setResourceLesson("")}>Close</button></div>}
-          {resources.filter(r=>r.lessonId===String(lessonId)).map(r=><div className="ecc-resource-row" key={r.id}><FileText size={14} aria-hidden="true"/><span className="ecc-resource-name">{r.name}</span><button type="button" onClick={()=>openResource(r)}>Download</button>{!preview&&<button type="button" onClick={()=>removeResource(r)}>Remove</button>}</div>)}
+          {resources.filter(r=>r.lessonId===String(lessonId)).map((r,ri,list)=><div className="ecc-resource-row" key={r.id}><FileText size={14} aria-hidden="true"/><span className="ecc-resource-name">{r.name}</span><button type="button" onClick={()=>openResource(r)}>Download</button>{!preview&&<><button type="button" disabled={ri===0} onClick={()=>moveResource(r,-1)} aria-label={`Move ${r.name} up`}><ArrowUp size={13}/></button><button type="button" disabled={ri===list.length-1} onClick={()=>moveResource(r,1)} aria-label={`Move ${r.name} down`}><ArrowDown size={13}/></button><label className="ecc-resource-replace">Replace<input type="file" accept=".pdf,.txt,.md,.docx,.pptx,.zip,.png,.jpg,.jpeg,.xlsx,.csv" onChange={event=>{replaceResource(r,event.target.files?.[0]);event.target.value=""}}/></label><button type="button" onClick={()=>removeResource(r)}>Remove</button></>}</div>)}
           {!preview&&<div className="ecc-lesson-extra"><button type="button" onClick={()=>setResourceLesson(attachOpen?"":String(lessonId))}><Plus size={13}/> Attach resource</button><select aria-label="Move lesson to section" value={section.id} onChange={e=>assignLesson(lessonId,e.target.value)}><option value="unassigned">Unassigned</option>{realSections.map(x=><option key={x.id} value={x.id}>{x.title}</option>)}</select></div>}</div>})}
-          {linkedQuizzes.map(l=>{const q=quizzes.find(x=>String(x.id)===String(l.id));return q&&<div className="ecc-assessment-row" key={`q${l.id}`}><GripVertical size={16} aria-hidden="true"/><span className="ecc-assessment-icon"><CircleHelp size={17}/></span><strong>Quiz: {q.title}</strong><span className="ecc-assessment-meta">{pluralize(q.questions?.length||0,"Question")}</span>{!preview&&<><button type="button" title="Edit quiz" aria-label={`Edit quiz ${q.title}`} className="ecc-icon-btn" onClick={()=>{if(onNavigate)onNavigate("quizzes");else notify("Open Course Quizzes to edit this quiz.","error")}}><Pencil size={16}/></button><button type="button" title="Unlink quiz from section" aria-label="Unlink quiz" className="ecc-icon-btn ecc-danger" onClick={()=>setLink(section.id,"quiz",l.id,false)}><Trash2 size={16}/></button></>}</div>})}
-          {linkedAssignments.map(l=>{const a=assignments.find(x=>String(x.id)===String(l.id));return a&&<div className="ecc-assessment-row" key={`a${l.id}`}><GripVertical size={16} aria-hidden="true"/><span className="ecc-assessment-icon"><ClipboardCheck size={17}/></span><strong>Assignment: {a.title}</strong><span className="ecc-assessment-meta">{a.maxMarks?`${a.maxMarks} marks`:"Assignment"}</span>{!preview&&<><button type="button" title="Edit assignment" aria-label={`Edit assignment ${a.title}`} className="ecc-icon-btn" onClick={()=>{if(onNavigate)onNavigate("course-assignments");else notify("Open Course Assignments to edit this assignment.","error")}}><Pencil size={16}/></button><button type="button" title="Unlink assignment from section" aria-label="Unlink assignment" className="ecc-icon-btn ecc-danger" onClick={()=>setLink(section.id,"assignment",l.id,false)}><Trash2 size={16}/></button></>}</div>})}
-          {!preview&&(quizzes.length>0||assignments.length>0)&&<details className="ecc-link-panel"><summary>+ Link existing quiz or assignment</summary>{quizzes.map(q=><label key={q.id}><input type="checkbox" checked={linkedQuizzes.some(l=>String(l.id)===String(q.id))} onChange={e=>setLink(section.id,"quiz",q.id,e.target.checked)}/> Quiz: {q.title}</label>)}{assignments.map(a=><label key={a.id}><input type="checkbox" checked={linkedAssignments.some(l=>String(l.id)===String(a.id))} onChange={e=>setLink(section.id,"assignment",a.id,e.target.checked)}/> Assignment: {a.title}</label>)}</details>}
+          {linkedItems.map(({link,record},index)=><div className="ecc-assessment-row" key={`${link.type}${link.id}`}><GripVertical size={16} aria-hidden="true"/><span className="ecc-assessment-icon">{link.type==="quiz"?<CircleHelp size={17}/>:<ClipboardCheck size={17}/>}</span><strong>{link.type==="quiz"?"Quiz":"Assignment"}: {record.title}</strong><span className="ecc-assessment-meta">{link.type==="quiz"?pluralize(record.questions?.length||0,"Question"):(record.maxMarks?`${record.maxMarks} marks`:"Assignment")}</span>{!preview&&<><button type="button" title="Move linked content up" aria-label={`Move ${record.title} up`} className="ecc-icon-btn ecc-small" disabled={index===0} onClick={()=>moveLink(section.id,link.type,link.id,-1)}><ArrowUp size={13}/></button><button type="button" title="Move linked content down" aria-label={`Move ${record.title} down`} className="ecc-icon-btn ecc-small" disabled={index===linkedItems.length-1} onClick={()=>moveLink(section.id,link.type,link.id,1)}><ArrowDown size={13}/></button><button type="button" title={`Edit ${link.type}`} aria-label={`Edit ${record.title}`} className="ecc-icon-btn" onClick={()=>{if(onNavigate)onNavigate(link.type==="quiz"?"quizzes":"course-assignments");else notify(`Open Course ${link.type==="quiz"?"Quizzes":"Assignments"} to edit this item.`,"error")}}><Pencil size={16}/></button><button type="button" title={`Unlink ${link.type} from section`} aria-label={`Unlink ${record.title}`} className="ecc-icon-btn ecc-danger" onClick={()=>setLink(section.id,link.type,link.id,false)}><Trash2 size={16}/></button></>}</div>)}
+          {!preview&&(quizzes.length>0||assignments.length>0)&&<details className="ecc-link-panel"><summary>+ Link existing quiz or assignment</summary>{quizzes.map(q=><label key={q.id}><input type="checkbox" checked={linkedQuizzes.some(l=>matchesReference(q,l.id))} onChange={e=>setLink(section.id,"quiz",q.id,e.target.checked)}/> Quiz: {q.title}</label>)}{assignments.map(a=><label key={a.id}><input type="checkbox" checked={linkedAssignments.some(l=>matchesReference(a,l.id))} onChange={e=>setLink(section.id,"assignment",a.id,e.target.checked)}/> Assignment: {a.title}</label>)}</details>}
           {!preview&&section.id!=="unassigned"&&<div className="ecc-section-actions"><button type="button" onClick={()=>moveSection(section.id,-1)} disabled={si===0}><ArrowUp size={12}/> Move Section</button><button type="button" onClick={()=>moveSection(section.id,1)} disabled={si===realSections.length-1}><ArrowDown size={12}/> Move Section</button><button type="button" className="ecc-danger-text" onClick={()=>removeSection(section)}>Delete Section</button></div>}</div>}</article>})}
       </main>
       <aside className="ecc-right" aria-label="Curriculum statistics and quick actions"><div className="ecc-panel ecc-structure-card"><h3><ClipboardCheck size={21}/> Course Structure</h3><div className="ecc-structure"><div className="ecc-donut" style={donutStyle} role="img" aria-label={`Curriculum ${completion} percent complete`}><div className="ecc-donut-center"><strong>{completion}%</strong><small>Complete</small></div></div><ul className="ecc-legend"><li><i className="ecc-dot ecc-dot-purple"/>Lessons <strong>{lessonCount}</strong></li><li><i className="ecc-dot ecc-dot-yellow"/>Quizzes <strong>{quizCount}</strong></li><li><i className="ecc-dot ecc-dot-lavender"/>Assignments <strong>{assignmentCount}</strong></li><li><i className="ecc-dot ecc-dot-grey"/>Sections <strong>{sectionCount}</strong></li></ul></div></div>

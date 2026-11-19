@@ -23,6 +23,7 @@ import {
 
 import CourseDetails from "./CourseDetails";
 import CartPage from "./CartPage";
+import { fetchCourseReviews, fetchTeacherSummary } from "../../utils/mongoLearningApi";
 import "./PublishedCourses.css";
 
 function teacherRatingSummary(course, courses, reviews) {
@@ -113,6 +114,9 @@ export default function PublishedCourses({
     getPublishedTeacherCourses()
   );
   const [reviews, setReviews] = useState(() => getReviews());
+  // MongoDB-backed rating aggregates (authorized database records) keyed by course/teacher ID.
+  const [mongoSummaries, setMongoSummaries] = useState({});
+  const [mongoTeacherSummaries, setMongoTeacherSummaries] = useState({});
 
   // Selected course
   const [selectedCourse, setSelectedCourse] = useState(null);
@@ -152,6 +156,35 @@ export default function PublishedCourses({
   }, [courses, educationProfile, subjectFilter, relatedTo, searchQuery, categoryFilter]);
 
   // Refresh published courses when teacher or admin data changes.
+  useEffect(() => {
+    let cancelled = false;
+    const mongoCourses = courses.filter((course) => /^[a-f0-9]{24}$/i.test(String(course.id)));
+    if (!mongoCourses.length) { setMongoSummaries({}); setMongoTeacherSummaries({}); return undefined; }
+    const courseIds = [...new Set(mongoCourses.map((course) => String(course.id)))];
+    Promise.all(courseIds.map((id) => fetchCourseReviews(id).then((data) => [id, data.summary]).catch(() => null)))
+      .then((pairs) => {
+        if (cancelled) return;
+        setMongoSummaries(Object.fromEntries(pairs.filter(Boolean).map(([id, summary]) => [id, summary])));
+      });
+    const teacherIds = [...new Set(mongoCourses.map((course) => course.teacherId).filter(Boolean).map(String))];
+    Promise.all(teacherIds.map((id) => fetchTeacherSummary(id).then((data) => [id, data.summary]).catch(() => null)))
+      .then((pairs) => {
+        if (cancelled) return;
+        setMongoTeacherSummaries(Object.fromEntries(pairs.filter(Boolean).map(([id, summary]) => [id, summary])));
+      });
+    return () => { cancelled = true; };
+  }, [courses]);
+
+  const toMongoRating = (summary) => summary ? { rating: summary.count ? summary.average : null, reviewCount: summary.count || 0 } : null;
+  const teacherRatingFor = (course) => {
+    const mongo = toMongoRating(mongoTeacherSummaries[String(course?.teacherId || "")]);
+    return mongo || teacherRatingSummary(course, courses, reviews);
+  };
+  const courseRatingFor = (course) => {
+    const mongo = toMongoRating(mongoSummaries[String(course?.id || "")]);
+    return mongo || courseRatingSummary(course, reviews);
+  };
+
   useEffect(() => {
     function refreshCourses() {
       setCourses(getPublishedTeacherCourses());
@@ -297,8 +330,8 @@ export default function PublishedCourses({
     return (
       <CourseDetails
         course={latestCourse || selectedCourse}
-        teacherRating={teacherRatingSummary(latestCourse || selectedCourse, courses, reviews)}
-        courseRating={courseRatingSummary(latestCourse || selectedCourse, reviews)}
+        teacherRating={teacherRatingFor(latestCourse || selectedCourse)}
+        courseRating={courseRatingFor(latestCourse || selectedCourse)}
         courseReviews={reviews.filter((review) => review.courseKey === courseReviewKey(latestCourse || selectedCourse))}
         onBack={closeCourse}
         onOpenCart={openCart}
@@ -323,7 +356,7 @@ export default function PublishedCourses({
       );
     }
 
-    return <CourseDetails course={routeCourse} teacherRating={teacherRatingSummary(routeCourse, courses, reviews)} courseRating={courseRatingSummary(routeCourse, reviews)} courseReviews={reviews.filter((review) => review.courseKey === courseReviewKey(routeCourse))} onBack={closeCourse} onOpenCart={openCart} />;
+    return <CourseDetails course={routeCourse} teacherRating={teacherRatingFor(routeCourse)} courseRating={courseRatingFor(routeCourse)} courseReviews={reviews.filter((review) => review.courseKey === courseReviewKey(routeCourse))} onBack={closeCourse} onOpenCart={openCart} />;
   }
 
   if (layout === "carousel") {
@@ -377,7 +410,7 @@ export default function PublishedCourses({
                     <span className="edc-explore-course-rating">
                       <Star size={14} fill="currentColor" />
                       {(() => {
-                        const summary = teacherRatingSummary(course, courses, reviews);
+                        const summary = teacherRatingFor(course);
                         return summary.rating === null
                           ? "No ratings yet"
                           : `${summary.rating.toFixed(1)} teacher rating · ${summary.reviewCount} reviews`;
@@ -468,7 +501,7 @@ export default function PublishedCourses({
             const descriptionKey = `${course.teacherEmail || ""}:${course.id}`;
             const courseImage = course.thumbnail || course.image;
             const fullDescription = course.description || "Learn with EduConnect AI.";
-            const teacherRating = teacherRatingSummary(course, courses, reviews);
+            const teacherRating = teacherRatingFor(course);
             const isLongDescription = fullDescription.length > 150;
             const isExpanded = Boolean(expandedDescriptions[descriptionKey]);
             const visibleDescription = isLongDescription && !isExpanded

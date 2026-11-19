@@ -1,3 +1,4 @@
+import { refreshContent } from "../../utils/contentApi";
 import { useEffect, useState } from "react";
 import { Check, Download, Eye, X } from "lucide-react";
 import { BOOKS_CHANGED_EVENT, adminSetBookStatus, getBookRecords, getBookReviews, loadBookFile, removeBookReview } from "../../utils/books";
@@ -9,6 +10,7 @@ export default function AdminBookApprovals() {
   const [reason, setReason] = useState({});
   const [notice, setNotice] = useState("");
   useEffect(() => {
+    refreshContent().catch((error) => setNotice(error.message));
     const refresh = () => { setBooks(getBookRecords()); setReviews(getBookReviews()); };
     window.addEventListener(BOOKS_CHANGED_EVENT, refresh); window.addEventListener("storage", refresh);
     window.addEventListener("educonnect:book-reviews-changed", refresh);
@@ -27,9 +29,12 @@ export default function AdminBookApprovals() {
       window.setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch (error) { tab?.close(); setNotice(error.message); }
   }
-  function decide(book, status) {
+  async function decide(book, status) {
     if (status === "Rejected" && !String(reason[book.id] || "").trim()) { setNotice("Enter a reason before rejecting a book."); return; }
-    adminSetBookStatus(book.id, status, reason[book.id] || ""); setNotice(`“${book.title}” is now ${status}.`); setBooks(getBookRecords());
+    try { await adminSetBookStatus(book.id, status, reason[book.id] || ""); }
+    catch (error) { setNotice(error.message); return; }
+    const current = getBookRecords().find((item) => item.id === book.id);
+    setNotice(`“${book.title}” is now ${current?.status || status}.`); setBooks(getBookRecords());
   }
   const pending = books.filter((book) => book.status === "Pending Approval");
   const approved = books.filter((book) => book.status === "Approved");

@@ -1,4 +1,5 @@
 import { isModerationVisible } from "./moderationVisibility";
+import { loadContentFile } from "./contentApi";
 
 const SCHOOL_SUBJECTS = {
   1: ["English", "Urdu", "Mathematics", "General Knowledge"],
@@ -342,7 +343,7 @@ export function getPublishedPdfResources(courses = [], includeModerated = false)
     if (!course.teacherEmail || !course.id) continue;
     const key = `${CURRICULUM_PREFIX}${encodeURIComponent(String(course.teacherEmail).toLowerCase())}.${encodeURIComponent(String(course.id))}`;
     try {
-      const curriculum = JSON.parse(window.localStorage.getItem(key) || "{}");
+      const curriculum = course.mongoContent ? course.curriculum || {} : JSON.parse(window.localStorage.getItem(key) || "{}");
       (Array.isArray(curriculum.resources) ? curriculum.resources : []).filter((resource) => /\.pdf$/i.test(resource.name || "")).forEach((resource) => {
         const resourceKey = `${String(course.teacherEmail).toLowerCase()}::${course.id}::${resource.id}`;
         if (!includeModerated && !isModerationVisible("pdf", resourceKey)) return;
@@ -356,6 +357,7 @@ export function getPublishedPdfResources(courses = [], includeModerated = false)
 }
 
 export async function loadCurriculumResource(resourceId) {
+  if (String(resourceId).startsWith("remote:")) return loadContentFile(resourceId);
   if (typeof window === "undefined" || !window.indexedDB) throw new Error("File storage is unavailable.");
   const db = await new Promise((resolve, reject) => {
     const request = window.indexedDB.open(CURRICULUM_DB, 1);

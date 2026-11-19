@@ -1,4 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import MongoCourseQuizzes from "./MongoCourseQuizzes";
+import { isMongoId, publishTeacherQuiz, removeTeacherQuiz, saveTeacherQuiz } from "../../utils/mongoQuizApi";
+import { loadTeacherQuizCourse } from "../../utils/importBrowserQuizzes";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   BarChart3,
   BookOpen,
@@ -21,29 +24,8 @@ import "./CourseQuizzes.css";
 import "./CourseQuizzesTeacher.css";
 import StudentCourseQuizzes from "./StudentCourseQuizzes";
 
-const QUIZ_PREFIX = "educonnect.quiz.v1.";
-const ATTEMPT_PREFIX = "educonnect.quizAttempt.v1.";
-const STUDENT_PREFIX = "educonnect.student.";
-const EVENT = "educonnect:quizzes-updated";
 const normalize = (value) => String(value ?? "").trim().toLowerCase();
-const quizKey = (teacherEmail, courseId) =>
-  `${QUIZ_PREFIX}${encodeURIComponent(normalize(teacherEmail))}.${encodeURIComponent(String(courseId))}`;
 const quizIdentity = (courseId, quizId) => `${String(courseId)}::${String(quizId)}`;
-const read = (key, fallback) => {
-  try {
-    return JSON.parse(localStorage.getItem(key) || "null") ?? fallback;
-  } catch {
-    return fallback;
-  }
-};
-const readArray = (key) => {
-  const value = read(key, []);
-  return Array.isArray(value) ? value : [];
-};
-const write = (key, value) => {
-  localStorage.setItem(key, JSON.stringify(value));
-  window.dispatchEvent(new Event(EVENT));
-};
 const uid = () => (typeof crypto !== "undefined" && crypto.randomUUID)
   ? crypto.randomUUID()
   : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -84,22 +66,6 @@ const formatMonth = (date) =>
   date.toLocaleDateString(undefined, { month: "short", timeZone: "UTC" });
 const formatScore = (value) =>
   Number.isFinite(Number(value)) ? `${Math.round(Number(value))}%` : "—";
-
-function useQuizRecords() {
-  const [version, setVersion] = useState(0);
-  useEffect(() => {
-    const refresh = () => setVersion((value) => value + 1);
-    window.addEventListener(EVENT, refresh);
-    window.addEventListener("storage", refresh);
-    window.addEventListener("focus", refresh);
-    return () => {
-      window.removeEventListener(EVENT, refresh);
-      window.removeEventListener("storage", refresh);
-      window.removeEventListener("focus", refresh);
-    };
-  }, []);
-  return version;
-}
 
 function getMonths(count) {
   const now = new Date();
@@ -197,7 +163,9 @@ function ScoreDistribution({ scores }) {
 }
 
 function TeacherQuizzes({ email, courses }) {
-  const version = useQuizRecords();
+  const [records, setRecords] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [courseId, setCourseId] = useState("");
   const [courseFilter, setCourseFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -208,61 +176,36 @@ function TeacherQuizzes({ email, courses }) {
   const [detail, setDetail] = useState(null);
   const selected = courses.find((course) => String(course.id) === String(courseId)) || courses[0];
   const selectedId = selected?.id;
-  const quizzes = useMemo(
-    () => {
-      void version;
-      return selectedId === undefined || selectedId === null
-        ? []
-        : readArray(quizKey(email, selectedId));
-    },
-    [email, selectedId, version],
-  );
-  const allQuizzes = useMemo(
-    () => {
-      void version;
-      return courses.flatMap((course) =>
-        readArray(quizKey(email, course.id))
-          .filter((quiz) => quiz && typeof quiz === "object")
-          .map((quiz) => ({
-            ...quiz,
-            courseId: course.id,
-            courseTitle: course.title || "Untitled course",
-            teacherEmail: email,
-            questions: Array.isArray(quiz.questions) ? quiz.questions : [],
-          })),
-      );
-    },
-    [courses, email, version],
-  );
-  const allAttempts = useMemo(() => {
-    void version;
-    const records = [];
-    for (let index = 0; index < localStorage.length; index += 1) {
-      const key = localStorage.key(index) || "";
-      if (key.startsWith(ATTEMPT_PREFIX)) records.push(...readArray(key));
-    }
-    return records;
-  }, [version]);
-  const enrolledStudents = useMemo(() => {
-    void version;
-    const byCourse = new Map();
-    const courseIds = new Set(courses.map((course) => String(course.id)));
-    for (let index = 0; index < localStorage.length; index += 1) {
-      const key = localStorage.key(index) || "";
-      if (!key.startsWith(STUDENT_PREFIX) || !key.endsWith(".enrollments")) continue;
-      const student = normalize(key.slice(STUDENT_PREFIX.length, -".enrollments".length));
-      const rows = readArray(key);
-      rows.forEach((row) => {
-        if (!row || typeof row !== "object") return;
-        const rowCourseId = String(row?.id ?? "");
-        if (!courseIds.has(rowCourseId)) return;
-        if (row.teacherEmail && normalize(row.teacherEmail) !== normalize(email)) return;
-        if (!byCourse.has(rowCourseId)) byCourse.set(rowCourseId, new Map());
-        byCourse.get(rowCourseId).set(student, row);
-      });
-    }
-    return byCourse;
-  }, [courses, email, version]);
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    const validCourses = courses.filter(course => isMongoId(course.id || course._id));
+    const settled = await Promise.allSettled(validCourses.map(course => loadTeacherQuizCourse(course, email)));
+    const errors = [];
+    const next = settled.flatMap((result, index) => {
+      const course = validCourses[index];
+      if (result.status === "rejected") { errors.push(course.title + ": " + result.reason.message); return []; }
+      errors.push(...result.value.warnings);
+      return [{ course, ...result.value }];
+    });
+    setRecords(next);
+    setLoading(false);
+    if (errors.length) setMessage(errors.join(" "));
+    return errors;
+  }, [courses, email]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void refresh(); }, 0);
+    const onFocus = () => { void refresh(); };
+    window.addEventListener("focus", onFocus);
+    return () => { window.clearTimeout(timer); window.removeEventListener("focus", onFocus); };
+  }, [refresh]);
+  const allQuizzes = useMemo(() => records.flatMap(({ course, quizzes }) =>
+    quizzes.map(quiz => ({ ...quiz, id: String(quiz.id || quiz._id), courseId: String(course.id || course._id), courseTitle: course.title, teacherEmail: email })),
+  ), [records, email]);
+  const quizzes = allQuizzes.filter(quiz => String(quiz.courseId) === String(selectedId));
+  const allAttempts = useMemo(() => records.flatMap(({ attempts = [] }) => attempts.map(attempt => ({ ...attempt, teacherEmail: email }))), [records, email]);
+  const enrolledStudents = useMemo(() => new Map(records.map(({ course, students = [] }) => [
+    String(course.id || course._id), new Map(students.map(student => [normalize(student.email), { studentEmail: student.email, studentName: student.name }])),
+  ])), [records]);
   const quizRows = useMemo(
     () => allQuizzes.map((quiz) => {
       const identity = quizIdentity(quiz.courseId, quiz.id);
@@ -340,9 +283,9 @@ function TeacherQuizzes({ email, courses }) {
       ),
     }));
 
-  const save = () => {
-    if (!selected) {
-      setMessage("Select a course before saving a quiz.");
+  const save = async () => {
+    if (!selected || !isMongoId(selected.id || selected._id)) {
+      setMessage("Save or import this course in My Courses before adding quizzes.");
       return;
     }
     const title = editing.title.trim();
@@ -379,24 +322,23 @@ function TeacherQuizzes({ email, courses }) {
       courseId: selected.id,
       updatedAt: new Date().toISOString(),
     };
-    const previous = quizzes.find((quiz) => quiz.id === record.id);
-    const justPublished = record.published && !previous?.published;
-    if (justPublished) record.publishedAt = new Date().toISOString();
-    const next = previous
-      ? quizzes.map((quiz) => quiz.id === record.id ? record : quiz)
-      : [...quizzes, record];
-    write(quizKey(email, selected.id), next);
-    if (justPublished) {
-      notifyEnrolledStudents(email, selected.id, {
-        id: `quiz-published:${record.id}:${record.publishedAt}`,
-        type: "quiz",
-        title: "New quiz available",
-        message: `${record.title} is now available in ${selected.title || "your course"}.`,
-        link: "quizzes",
-      });
-    }
-    setEditing(null);
-    setMessage("Quiz saved successfully.");
+    setBusy(true);
+    setMessage("");
+    try {
+      const { quiz } = await saveTeacherQuiz(selected.id || selected._id, record);
+      setEditing(null);
+      if (record.published) {
+        try { await publishTeacherQuiz(selected.id || selected._id, quiz.id || quiz._id, true); }
+        catch (error) {
+          await refresh();
+          setMessage("Quiz saved as a draft. " + error.message);
+          return;
+        }
+      }
+      const warnings = await refresh();
+      setMessage(["Quiz saved successfully.", ...warnings].join(" "));
+    } catch (error) { setMessage(error.message || "Quiz could not be saved. Please try again."); }
+    finally { setBusy(false); }
   };
 
   const startEditing = (quiz) => {
@@ -405,32 +347,36 @@ function TeacherQuizzes({ email, courses }) {
     setMessage("");
   };
 
-  const remove = (quiz) => {
-    if (!window.confirm(`Delete "${quiz.title}"? Past student attempts will remain in local demo storage.`)) return;
-    const key = quizKey(email, quiz.courseId);
-    write(key, readArray(key).filter((item) => item.id !== quiz.id));
-    setMessage("Quiz deleted.");
+  const remove = async (quiz) => {
+    if (!window.confirm('Delete "' + quiz.title + '"? Past student attempts will be retained.')) return;
+    setBusy(true);
+    setMessage("");
+    try {
+      await removeTeacherQuiz(quiz.courseId, quiz.id);
+      const warnings = await refresh();
+      setMessage(["Quiz deleted.", ...warnings].join(" "));
+    } catch (error) { setMessage(error.message); }
+    finally { setBusy(false); }
   };
 
-  const togglePublish = (quiz) => {
+  const togglePublish = async (quiz) => {
     const publishing = !quiz.published;
-    const updated = {
-      ...quiz,
-      published: publishing,
-      publishedAt: publishing ? new Date().toISOString() : quiz.publishedAt,
-    };
-    const key = quizKey(email, quiz.courseId);
-    write(key, readArray(key).map((item) => item.id === quiz.id ? updated : item));
-    if (publishing) {
-      const course = courses.find((item) => String(item.id) === String(quiz.courseId));
-      notifyEnrolledStudents(email, quiz.courseId, {
-        id: `quiz-published:${updated.id}:${updated.publishedAt}`,
-        type: "quiz",
-        title: "New quiz available",
-        message: `${updated.title} is now available in ${course?.title || "your course"}.`,
-        link: "quizzes",
-      });
-    }
+    setBusy(true);
+    setMessage("");
+    try {
+      await publishTeacherQuiz(quiz.courseId, quiz.id, publishing);
+      const warnings = await refresh();
+      setMessage([publishing ? "Quiz published." : "Quiz unpublished.", ...warnings].join(" "));
+      if (publishing) {
+        try {
+          notifyEnrolledStudents(email, quiz.courseId, {
+            id: "quiz-published:" + quiz.id + ":" + Date.now(), type: "quiz", title: "New quiz available",
+            message: quiz.title + " is now available in " + (quiz.courseTitle || "your course") + ".", link: "quizzes",
+          });
+        } catch { /* Publication is already persisted even if a browser notification fails. */ }
+      }
+    } catch (error) { setMessage(error.message); }
+    finally { setBusy(false); }
   };
 
   if (detail) {
@@ -509,7 +455,7 @@ function TeacherQuizzes({ email, courses }) {
         <button
           type="button"
           className="edc-tq-create"
-          disabled={!selected}
+          disabled={!selected || loading || busy}
           onClick={() => {
             setEditing(initialForm());
             setMessage("");
@@ -521,7 +467,7 @@ function TeacherQuizzes({ email, courses }) {
 
       <p className="edc-tq-notice">
         <CircleAlert size={16} />
-        Quiz and attempt data is saved in this browser. Metrics include saved submissions only; no sample quizzes or attempts are added.
+        Quizzes and student submissions are saved to your account. Previously saved browser quizzes are transferred automatically; browser originals are kept as a backup.
       </p>
 
       <section className="edc-tq-stats" aria-label="Quiz summary">
@@ -583,7 +529,7 @@ function TeacherQuizzes({ email, courses }) {
           ))}
           <div className="edc-quiz-actions">
             <button type="button" onClick={() => setEditing((current) => ({ ...current, questions: [...current.questions, emptyQuestion()] }))}>+ Add MCQ</button>
-            <button type="button" className="edc-quiz-primary" onClick={save}>Save Quiz</button>
+            <button type="button" disabled={busy || loading} className="edc-quiz-primary" onClick={save}>{busy ? "Saving..." : "Save Quiz"}</button>
             <button type="button" onClick={() => setEditing(null)}>Cancel</button>
           </div>
         </section>
@@ -635,18 +581,18 @@ function TeacherQuizzes({ email, courses }) {
                     <td><span className={`edc-tq-status ${row.published ? "published" : "draft"}`}>{row.published ? "Published" : "Draft"}</span></td>
                     <td>
                       <div className="edc-tq-row-actions">
-                        <button type="button" aria-label={`View ${row.title} attempts`} title="View enrolled students and attempts" onClick={() => setDetail({ quizId: row.id, courseId: row.courseId, panel: "total" })}><Eye size={15} /></button>
-                        <button type="button" aria-label={`Edit ${row.title}`} title="Edit quiz" onClick={() => startEditing(row)}><Edit3 size={15} /></button>
-                        <button type="button" aria-label={`View ${row.title} average score`} title="View latest scores" onClick={() => setDetail({ quizId: row.id, courseId: row.courseId, panel: "average" })}><BarChart3 size={15} /></button>
-                        <button type="button" aria-label={`${row.published ? "Unpublish" : "Publish"} ${row.title}`} title={row.published ? "Unpublish quiz" : "Publish quiz"} onClick={() => togglePublish(row)}>{row.published ? <CheckCircle2 size={15} /> : <Clock3 size={15} />}</button>
-                        <button type="button" aria-label={`Delete ${row.title}`} title="Delete quiz" onClick={() => remove(row)}><Trash2 size={15} /></button>
+                        <button type="button" disabled={busy || loading} aria-label={`View ${row.title} attempts`} title="View enrolled students and attempts" onClick={() => setDetail({ quizId: row.id, courseId: row.courseId, panel: "total" })}><Eye size={15} /></button>
+                        <button type="button" disabled={busy || loading} aria-label={`Edit ${row.title}`} title="Edit quiz" onClick={() => startEditing(row)}><Edit3 size={15} /></button>
+                        <button type="button" disabled={busy || loading} aria-label={`View ${row.title} average score`} title="View latest scores" onClick={() => setDetail({ quizId: row.id, courseId: row.courseId, panel: "average" })}><BarChart3 size={15} /></button>
+                        <button type="button" disabled={busy || loading} aria-label={`${row.published ? "Unpublish" : "Publish"} ${row.title}`} title={row.published ? "Unpublish quiz" : "Publish quiz"} onClick={() => togglePublish(row)}>{row.published ? <CheckCircle2 size={15} /> : <Clock3 size={15} />}</button>
+                        <button type="button" disabled={busy || loading} aria-label={`Delete ${row.title}`} title="Delete quiz" onClick={() => remove(row)}><Trash2 size={15} /></button>
                       </div>
                     </td>
                   </tr>
                 ))}
                 {!filteredRows.length && (
                   <tr><td colSpan={8} className="edc-tq-empty-cell">
-                    {quizRows.length
+                    {loading ? "Loading saved quizzes..." : quizRows.length
                       ? "No quizzes match these filters."
                       : courses.length
                         ? "No quizzes have been created yet. Create one to see it here."
@@ -706,14 +652,33 @@ function TeacherQuizzes({ email, courses }) {
       </div>
 
       <p className="edc-tq-foot">
-        Attempts and scores are saved locally in this browser. Average scores use each learner’s latest saved attempt per quiz; no sample activity or growth rates are displayed.
+        Attempts and scores are saved to your account. Average scores use each learner’s latest saved attempt per quiz; no sample activity or growth rates are displayed.
       </p>
     </main>
   );
 }
 
-export default function CourseQuizzes({ role, email, courses = [], ...props }) {
-  return role === "teacher"
-    ? <TeacherQuizzes email={email} courses={courses} />
-    : <StudentCourseQuizzes key={email} email={email} courses={courses} {...props} />;
+
+export default function CourseQuizzes({
+  role,
+  email,
+  courses = [],
+  ...props
+}) {
+  return role === "teacher" ? (
+    <TeacherQuizzes
+      key={email}
+      email={email}
+      courses={courses}
+    />
+  ) : courses.some(course => isMongoId(course.id || course._id)) ? (
+    <MongoCourseQuizzes key={email} role={role} courses={courses} />
+  ) : (
+    <StudentCourseQuizzes
+      key={email}
+      email={email}
+      courses={courses}
+      {...props}
+    />
+  );
 }

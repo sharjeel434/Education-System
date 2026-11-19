@@ -178,7 +178,7 @@ export function TeacherWorkspaceHeader({
         </button>
         {accountOpen && (
           <div className="edc-to-account-menu">
-            <strong>{profile.name || "Teacher"}</strong>
+            <strong>{profile.name || "Teacher"} {identityVerified && <VerifiedBadge />}</strong>
             <button
               type="button"
               onClick={() => {

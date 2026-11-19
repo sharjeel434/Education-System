@@ -1,3 +1,4 @@
+import { enrollContent } from "../../utils/contentApi";
 import { useEffect, useMemo, useState } from "react";
 import { BookOpen, Download, ExternalLink, Heart, Search, Send, Star, UserRound, X } from "lucide-react";
 import { createBookSystemId, getBookReviews, getPublishedBooks, isBookPurchased, loadBookFile, saveBookReview } from "../../utils/books";
@@ -145,6 +146,7 @@ export default function BookTeacherHub({ email, profile, courses = [], cart = []
     const readingTab = download ? null : window.open("about:blank", "_blank");
     if (readingTab) readingTab.opener = null;
     try {
+      if (book.mongoContent && book.isFree && !preview) await enrollContent([{ ...book, itemType: "book" }]);
       const file = await loadBookFile(preview ? book.previewFileId : book.pdfFileId);
       if (!file) throw new Error("This PDF is not available in this browser.");
       const url = URL.createObjectURL(file);

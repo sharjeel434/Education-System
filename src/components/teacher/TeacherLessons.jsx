@@ -16,6 +16,7 @@ import {
   Users,
 } from "lucide-react";
 import "./TeacherLessons.css";
+import { contentFileUrl } from "../../utils/contentApi";
 
 const courseStatusLabel = status => {
   const normalized = String(status || "Draft").trim().toLowerCase();
@@ -31,7 +32,7 @@ const durationLabel = value => {
   return /^\d+(?:\.\d+)?$/.test(duration) ? `${duration} min` : duration;
 };
 
-const lessonHasVideo = lesson => Boolean(lesson.hasLocalVideo || lesson.videoUrl || lesson.video || lesson.url);
+const lessonHasVideo = lesson => Boolean(lesson.videoFileId || lesson.hasLocalVideo || lesson.videoUrl || lesson.video || lesson.url);
 
 export default function TeacherLessons({
   courses = [],
@@ -200,6 +201,7 @@ export default function TeacherLessons({
                             <span className="edc-tl-lesson-icon">{hasVideo ? <FileVideo size={20} /> : <BookOpen size={20} />}</span>
                             <span>
                               <strong>{lesson.title || "Untitled lesson"}</strong>
+                              {lesson.videoFileId && <a href={contentFileUrl(lesson.videoFileId)} target="_blank" rel="noreferrer">Preview video</a>}
                               <small>{courseFilter === "all" ? (course.title || "Untitled course") : (lesson.description || "No description")}</small>
                             </span>
                           </div>

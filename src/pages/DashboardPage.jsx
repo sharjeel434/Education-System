@@ -23,8 +23,9 @@ import StudentDashboard from "./dashboards/StudentDashboard";
 import StudentDashboardHeader from "../components/student/StudentDashboardHeader";
 import TeacherDashboard from "./dashboards/TeacherDashboard";
 import AdminLayout from "../components/admin/AdminLayout";
-
 import "./AuthPages.css";
+import { apiFetch } from "../utils/api";
+import { clearContentSession, refreshContent } from "../utils/contentApi";
 
 const DASHBOARDS = {
   Student: "/student/dashboard",
@@ -35,39 +36,27 @@ const DASHBOARDS = {
 function DashboardPage() {
   const navigate = useNavigate();
   const location = useLocation();
-
-  const role = window.sessionStorage.getItem(
-    "educonnect.demoRole"
-  );
-
-  const email = window.sessionStorage.getItem(
-    "educonnect.demoEmail"
-  );
-  const isBlockedAdminRoute = Boolean(
-    email && role && role !== "Admin" && location.pathname.startsWith("/admin/"),
-  );
+  const role = window.sessionStorage.getItem("educonnect.demoRole");
+  const email = window.sessionStorage.getItem("educonnect.demoEmail");
+  const [account, setAccount] = useState(null);
+  const [authState, setAuthState] = useState("loading");
+  const [retryCount, setRetryCount] = useState(0);
+  const refreshAccount = useCallback(() => setRetryCount((value) => value + 1), []);
 
   useEffect(() => {
-    window.scrollTo(0, 0);
-  }, []);
+    window.addEventListener("focus", refreshAccount);
+    const timer = account?.cnicVerification?.status === "pending" ? window.setInterval(refreshAccount, 15000) : null;
+    return () => {
+      window.removeEventListener("focus", refreshAccount);
+      if (timer) window.clearInterval(timer);
+    };
+  }, [account?.cnicVerification?.status, refreshAccount]);
+  const isBlockedAdminRoute = Boolean(email && role && role !== "Admin" && location.pathname.startsWith("/admin/"));
+
+  useEffect(() => { window.scrollTo(0, 0); }, []);
 
   useEffect(() => {
     if (!isBlockedAdminRoute) return;
-
-    const dedupeKey = "educonnect.audit.lastBlockedAdminRoute";
-    const now = Date.now();
-    try {
-      const previous = JSON.parse(window.sessionStorage.getItem(dedupeKey) || "null");
-      if (
-        previous?.role === role &&
-        previous?.path === location.pathname &&
-        now - Number(previous.timestamp || 0) < 1500
-      ) return;
-      window.sessionStorage.setItem(dedupeKey, JSON.stringify({ role, path: location.pathname, timestamp: now }));
-    } catch {
-      // Continue to record the access attempt if session storage is unavailable.
-    }
-
     try {
       appendAdminActivityRecord({
         actor: email,
@@ -81,55 +70,85 @@ function DashboardPage() {
         targetName: location.pathname,
         previousValue: role,
         newValue: "Blocked",
-        description: `${role} account attempted to open an Admin route and was redirected. No session token or credential data was recorded.`,
+        description: "Unauthorized Admin route access was blocked.",
         result: "Blocked",
         status: "Blocked",
       });
-    } catch {
-      // A local audit write failure must not interfere with the role redirect.
-    }
+    } catch { /* Local audit logging must not interrupt navigation */ }
   }, [email, isBlockedAdminRoute, location.pathname, role]);
 
-  if (
-    !email ||
-    !["Student", "Teacher", "Admin"].includes(role)
-  ) {
-    return <Navigate to="/login" replace />;
-  }
+  useEffect(() => {
+    if (!email || !role) {
+      return;
+    }
+    const controller = new AbortController();
+    (async () => {
+      try {
+        const response = await apiFetch("/auth/me", {
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          setAuthState((current) => response.status === 401 || response.status === 403 ? "invalid" : current === "valid" ? current : "error");
+          return;
+        }
+        const data = await response.json();
+        const user = data.user;
+        if (!user || user.email?.toLowerCase() !== email.toLowerCase() || user.role?.toLowerCase() !== role.toLowerCase()) {
+          setAuthState("invalid");
+          return;
+        }
+        setAccount(user);
+        refreshContent(true).catch(console.error);
+        setAuthState("valid");
+      } catch (error) {
+        if (error.name !== "AbortError") setAuthState((current) => current === "valid" ? current : "error");
+      }
+    })();
+    return () => controller.abort();
+  }, [email, role, retryCount]);
 
-  if (role === "Admin" && ADMIN_PATH_REDIRECTS[location.pathname]) {
-    return <Navigate to={ADMIN_PATH_REDIRECTS[location.pathname]} replace />;
-  }
-
-  const expectedPath = DASHBOARDS[role];
-  const isRoleSubpage =
-    ["Student", "Teacher"].includes(role) &&
-    location.pathname.startsWith(`${expectedPath}/`);
-  const isAdminSubpage =
-    role === "Admin" && ADMIN_ROUTES.includes(location.pathname);
-
-  if (
-    location.pathname !== expectedPath &&
-    !isRoleSubpage &&
-    !isAdminSubpage
-  ) {
-    return <Navigate to={expectedPath} replace />;
-  }
-
-  function signOut() {
-    window.sessionStorage.removeItem(
-      "educonnect.demoEmail"
-    );
-
-    window.sessionStorage.removeItem(
-      "educonnect.demoRole"
-    );
-
+  async function signOut() {
+    try {
+      const response = await apiFetch("/auth/logout", { method: "POST" });
+      if (!response.ok && response.status !== 401) throw new Error("Could not log out. Please try again.");
+      clearContentSession();
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Could not log out. Please try again.");
+      return;
+    }
+    window.sessionStorage.removeItem("educonnect.demoEmail");
+    window.sessionStorage.removeItem("educonnect.demoRole");
+    window.sessionStorage.removeItem("educonnect.authToken");
     navigate("/login", { replace: true });
   }
 
-  if (role === "Admin") {
-    return <AdminLayout email={email} onLogout={signOut} />;
+  if (!email || !["Student", "Teacher", "Admin"].includes(role)) {
+    return <Navigate to="/login" replace />;
+  }
+  if (role === "Admin" && ADMIN_PATH_REDIRECTS[location.pathname]) {
+    return <Navigate to={ADMIN_PATH_REDIRECTS[location.pathname]} replace />;
+  }
+  const expectedPath = DASHBOARDS[role];
+  const isRoleSubpage = ["Student", "Teacher"].includes(role) && location.pathname.startsWith(`${expectedPath}/`);
+  const isAdminSubpage = role === "Admin" && ADMIN_ROUTES.includes(location.pathname);
+  if (location.pathname !== expectedPath && !isRoleSubpage && !isAdminSubpage) {
+    return <Navigate to={expectedPath} replace />;
+  }
+  if (authState === "loading") {
+    return <main className="auth-page dashboard-page" style={{ padding: 32 }}><p>Verifying your account...</p></main>;
+  }
+  if (authState === "invalid") {
+    return <Navigate to="/login" replace />;
+  }
+  if (authState === "error") {
+    return (
+      <main className="auth-page dashboard-page" style={{ padding: 32 }}>
+        <h2>Cannot verify your account</h2>
+        <p>Check that the backend is running, then try again.</p>
+        <button type="button" onClick={() => setRetryCount((value) => value + 1)}>Retry</button>
+        <button type="button" onClick={signOut}>Log out</button>
+      </main>
+    );
   }
 
   const welcomeTitle =
@@ -179,35 +198,22 @@ function DashboardPage() {
       <div className="dashboard-content">
         <section className="dashboard-welcome">
           <div>
-            <span className="auth-eyebrow">
-              <Sparkles size={14} />
-              YOUR {role.toUpperCase()} DASHBOARD
-            </span>
-
+            <span className="auth-eyebrow"><Sparkles size={14} /> YOUR {role.toUpperCase()} DASHBOARD</span>
             <h1>{welcomeTitle}</h1>
             <p>{welcomeDescription}</p>
           </div>
-
-          <div className="dashboard-welcome-icon">
-            <GraduationCap size={48} />
-          </div>
+          <div className="dashboard-welcome-icon"><GraduationCap size={48} /></div>
         </section>
-
-        {role === "Student" && (
-          <StudentDashboard email={email} />
-        )}
-
+        {role === "Student" && <StudentDashboard email={email} account={account} onVerificationSubmitted={refreshAccount} />}
         {role === "Teacher" && (
-          <TeacherDashboard email={email} />
+          <TeacherDashboard
+            email={email}
+            account={account}
+            onVerificationSubmitted={refreshAccount}
+            onLogout={signOut}
+          />
         )}
-
-        <p className="dashboard-demo-note">
-          Frontend demo only. Data is stored in
-          this browser. Secure authentication,
-          approvals, payments and shared data
-          will be connected during backend
-          development.
-        </p>
+        <p className="dashboard-demo-note">Some dashboard content is still stored locally in this browser. Real content permissions must also be enforced by backend APIs.</p>
       </div>
 
       <footer className="auth-footer">

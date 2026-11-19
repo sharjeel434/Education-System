@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import {
   Link,
@@ -14,15 +13,31 @@ import {
   LockKeyhole,
   Mail,
 } from "lucide-react";
-import { sha256 } from "@noble/hashes/sha2.js";
-import {
-  bytesToHex,
-  utf8ToBytes,
-} from "@noble/hashes/utils.js";
 import { appendAdminActivityRecord } from "../components/admin/adminData";
+import { apiFetch } from "../utils/api";
 import "./AuthPages.css";
 
-const USERS_KEY = "educonnect.registeredUsers";
+async function loginAccount(email, password) {
+  let response;
+  try {
+    response = await apiFetch("/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+  } catch {
+    throw new Error("Cannot connect to backend. Please check that it is running.");
+  }
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.message || "Login failed. Please try again.");
+  }
+  if (!data.success || !data.user?.email || !["student", "teacher", "admin"].includes(data.user.role)) {
+    throw new Error("Invalid login response from backend.");
+  }
+  return data;
+}
 
 function recordAdminLoginAttempt(email, success, description) {
   try {
@@ -44,42 +59,6 @@ function recordAdminLoginAttempt(email, success, description) {
   }
 }
 
-function findSavedAccount(email) {
-  try {
-    const users = JSON.parse(
-      window.localStorage.getItem(USERS_KEY) || "[]"
-    );
-
-    return Array.isArray(users)
-      ? users.find(
-          (user) =>
-            user.email?.toLowerCase() ===
-            email.trim().toLowerCase()
-        )
-      : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-async function checkPassword(user, password) {
-  if (typeof user?.password === "string") {
-    return user.password === password;
-  }
-
-  if (!user?.salt || !user?.passwordHash) {
-    return false;
-  }
-
-  const passwordHash = bytesToHex(
-    sha256(
-      utf8ToBytes(`${user.salt}:${password}`)
-    )
-  );
-
-  return passwordHash === user.passwordHash;
-}
-
 function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -99,6 +78,7 @@ function LoginPage() {
   );
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const [notice, setNotice] = useState(
     location.state?.registeredEmail
@@ -128,16 +108,7 @@ function LoginPage() {
       return;
     }
 
-    const adminEmail = import.meta.env.DEV
-      ? import.meta.env.VITE_ADMIN_EMAIL?.trim().toLowerCase()
-      : "";
-    const adminPassword = import.meta.env.DEV
-      ? import.meta.env.VITE_ADMIN_PASSWORD
-      : "";
     const normalizedEmail = email.trim().toLowerCase();
-    const isConfiguredAdminEmail =
-      Boolean(adminEmail && adminPassword) &&
-      normalizedEmail === adminEmail;
 
     if (!password) {
       setError("Please enter your password.");
@@ -152,69 +123,29 @@ function LoginPage() {
     }
 
     let authenticatedUser;
-
-    if (isConfiguredAdminEmail) {
-      if (password !== adminPassword) {
-        recordAdminLoginAttempt(
-          normalizedEmail,
-          false,
-          "An Admin sign-in attempt failed its credential check. No password or credential value was stored.",
-        );
-        setError("That password does not match this account.");
-        return;
-      }
-
-      const registeredAccount = findSavedAccount(email);
-
-      if (
-        registeredAccount &&
-        registeredAccount.role !== "Admin"
-      ) {
-        recordAdminLoginAttempt(
-          normalizedEmail,
-          false,
-          "An Admin sign-in attempt was blocked because the saved account does not have the Admin role.",
-        );
-        setError("This account does not have Admin access.");
-        return;
-      }
-
-      authenticatedUser = {
-        email: adminEmail,
-        role: "Admin",
-      };
-    } else {
-      const user = findSavedAccount(email);
-
-      if (!user) {
-        setError(
-          "This email is not registered yet. Please create an account first."
-        );
-        return;
-      }
-
-      if (!(await checkPassword(user, password))) {
-        if (user.role === "Admin") {
-          recordAdminLoginAttempt(
-            normalizedEmail,
-            false,
-            "An Admin sign-in attempt failed its credential check. No password or credential value was stored.",
-          );
-        }
-        setError(
-          "That password does not match this account."
-        );
-        return;
-      }
-
-      authenticatedUser = user;
+    setLoading(true);
+    try {
+      const result = await loginAccount(normalizedEmail, password);
+      authenticatedUser = result.user;
+    } catch (loginError) {
+      setError(loginError instanceof Error ? loginError.message : "Login failed.");
+      setLoading(false);
+      return;
     }
+    setLoading(false);
 
-    if (authenticatedUser.role === "Admin") {
+    const dashboardRole =
+      authenticatedUser.role === "admin"
+        ? "Admin"
+        : authenticatedUser.role === "teacher"
+          ? "Teacher"
+          : "Student";
+
+    if (dashboardRole === "Admin") {
       recordAdminLoginAttempt(
         authenticatedUser.email,
         true,
-        "Admin signed in successfully. No password or session token was stored.",
+        "Admin signed in through the backend API. Credentials were not recorded."
       );
     }
 
@@ -229,53 +160,31 @@ function LoginPage() {
       );
     }
 
-    window.sessionStorage.setItem(
-      "educonnect.demoEmail",
-      authenticatedUser.email
-    );
+    // Compatibility with the existing dashboard UI while it is migrated.
+    window.sessionStorage.setItem("educonnect.demoEmail", authenticatedUser.email);
+    window.sessionStorage.removeItem("educonnect.authToken");
 
     window.sessionStorage.setItem(
       "educonnect.demoRole",
-      authenticatedUser.role
+      dashboardRole
     );
 
     const dashboardPath =
-      authenticatedUser.role === "Admin"
+      dashboardRole === "Admin"
         ? "/admin/dashboard"
-        : authenticatedUser.role === "Teacher"
+        : dashboardRole === "Teacher"
           ? "/teacher/dashboard"
           : "/student/dashboard";
 
     navigate(dashboardPath, {
       replace: true,
-      ...(authenticatedUser.role === "Student" && typeof location.state?.studentTab === "string"
+      ...(dashboardRole === "Student" && typeof location.state?.studentTab === "string"
         ? { state: { studentTab: location.state.studentTab } }
         : {}),
     });
   };
 
-  const handleForgotPassword = () => {
-    setError("");
-    setNotice("");
-
-    if (!email.trim()) {
-      setError(
-        "Enter your email address first to request a password reset."
-      );
-      return;
-    }
-
-    if (
-      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
-    ) {
-      setError("Please enter a valid email address.");
-      return;
-    }
-
-    setNotice(
-      "Password reset will be available when account recovery is connected."
-    );
-  };
+  const handleForgotPassword = () => navigate("/forgot-password");
 
   return (
     <main className="auth-page">
@@ -487,23 +396,22 @@ function LoginPage() {
               <button
                 className="auth-submit"
                 type="submit"
+                disabled={loading}
               >
-                Log in
+                {loading ? "Logging in..." : "Log in"}
                 <ArrowRight size={17} />
               </button>
             </form>
 
             <p className="auth-signup-prompt">
-              Don’t have an account?{" "}
+              Don't have an account?{" "}
               <Link to="/signup">
                 Sign up
               </Link>
             </p>
 
             <p className="auth-demo-note">
-              Register this email before logging in.
-              This frontend preview keeps account
-              details in this browser.
+              Sign in using an account registered with EduConnect AI backend.
             </p>
           </div>
         </section>
@@ -519,3 +427,4 @@ function LoginPage() {
 }
 
 export default LoginPage;
+

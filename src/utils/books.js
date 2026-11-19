@@ -1,4 +1,5 @@
 import { isModerationVisible } from "./moderationVisibility";
+import { getContentState, loadContentFile, reviewContent } from "./contentApi";
 import { appendAdminActivityRecord } from "../components/admin/adminData";
 
 export const BOOKS_STORAGE_KEY = "educonnect.books.v1";
@@ -31,7 +32,8 @@ function notify() {
 }
 
 export function getBookRecords() {
-  return readList(BOOKS_STORAGE_KEY);
+  const state = getContentState();
+  return ["teacher", "admin"].includes(state.role) ? state.managedBooks : state.books;
 }
 
 export function getTeacherBooks(email) {
@@ -42,7 +44,7 @@ export function getTeacherBooks(email) {
 export function getPublishedBooks() {
   // Admin approval makes the book safe to show to students. “Published” is
   // retained as the explicit final catalog state for older/admin workflows.
-  return getBookRecords().filter((book) => ["Approved", "Published"].includes(book.status) && isModerationVisible("pdf", book.id));
+  return getContentState().books.filter((book) => isModerationVisible("pdf", book.id));
 }
 
 export function saveBookRecords(records) {
@@ -81,6 +83,7 @@ export function saveBookFile(id, file) {
 }
 
 export function loadBookFile(id) {
+  if (String(id || "").startsWith("remote:")) return loadContentFile(id);
   return withStore("readonly", (store) => store.get(id));
 }
 
@@ -169,9 +172,14 @@ export function deleteTeacherBook(email, id) {
   return true;
 }
 
-export function adminSetBookStatus(id, status, reason = "") {
+export async function adminSetBookStatus(id, status, reason = "") {
   const book = getBookRecords().find((item) => String(item.id) === String(id));
   if (!book) return false;
+  if (book.mongoContent) {
+    const decision = { Approved: "approve", Published: "publish", Rejected: "reject", Unpublished: "unpublish", "Pending Approval": "return" }[status];
+    await reviewContent("books", book, decision, reason);
+    return true;
+  }
   const timestamp = new Date().toISOString();
   saveBookRecord({ ...book, status, rejectionReason: status === "Rejected" ? reason.trim() : "", reviewedAt: timestamp, publishedAt: status === "Published" ? timestamp : book.publishedAt });
   return true;
@@ -191,6 +199,9 @@ export function getStudentBookPurchases(email) {
 }
 
 export function isBookPurchased(email, bookId) {
+  const state = getContentState();
+  if (state.role === "student" && state.email?.toLowerCase() === String(email).toLowerCase()
+    && state.accesses.some((entry) => entry.kind === "book" && String(entry.contentId) === String(bookId))) return true;
   return getStudentBookPurchases(email).some((item) => String(item.id) === String(bookId));
 }
 

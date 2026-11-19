@@ -21,6 +21,10 @@
   --edc-admin-surface: var(--edc-primary-surface-dark-mode);
 }
 
+.edc-admin-layout:has(.edc-admin-overview) .edc-admin-sidebar {
+  background: #271944;
+}
+
 .edc-admin-layout .edc-admin-topbar {
   border-bottom-color: var(--edc-topbar-border);
   background: var(--edc-topbar-background);
