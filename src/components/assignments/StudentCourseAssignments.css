@@ -165,7 +165,7 @@
 .edc-sa-dashboard-list,.edc-sa-performance>section{min-width:0;padding:12px;border:1px solid #e5d8f9;border-radius:14px;background:linear-gradient(145deg,#fff,#faf7ff);box-shadow:0 4px 12px #38115d08}
 .edc-sa-dashboard-list>header,.edc-sa-performance>section>header{display:flex;align-items:center;justify-content:space-between;gap:9px;min-height:24px;padding-bottom:8px;border-bottom:1px solid #eee5f7}
 .edc-sa-dashboard-list>header h3,.edc-sa-performance>section>header h3{display:flex;align-items:center;gap:6px;margin:0;color:#30104f;font-size:14px;font-weight:750}
-.edc-sa-dashboard-list>header h3 svg,.edc-sa-performance>section>header h3 svg{color:#8822ec}
+.edc-sa-dashboard-list>header h3 svg,.edc-sa-performance>section>header h3 svg{color:var(--edc-primary)}
 .edc-sa-dashboard-list>header>label{display:flex;align-items:center;gap:4px;color:#806c93;font-size:9px}
 .edc-sa-dashboard-list>header select{height:27px;padding:0 7px;border:1px solid #e3d8f6;border-radius:6px;background:#fff;color:#54376b;font-size:9px}
 .edc-sa-dashboard-rows{display:grid}
@@ -173,7 +173,7 @@
 .edc-sa-dashboard-row:last-child{border-bottom:0}
 .edc-sa-dashboard-row:hover{background:#fbf8ff}
 .edc-sa-dashboard-row:focus-visible{outline:2px solid #b884e4;outline-offset:1px}
-.edc-sa-dashboard-row>.edc-sa-course-icon{width:38px;height:38px;flex-basis:38px;border-radius:9px;background:#eee5ff;color:#8822ec}
+.edc-sa-dashboard-row>.edc-sa-course-icon{width:38px;height:38px;flex-basis:38px;border-radius:9px;background:#eee5ff;color:var(--edc-primary)}
 .edc-sa-dashboard-row-copy{display:grid;gap:3px;min-width:0}
 .edc-sa-dashboard-row-copy>button{overflow:hidden;padding:0;border:0;background:transparent;color:#32164e;font-size:10px;font-weight:750;text-align:left;text-overflow:ellipsis;white-space:nowrap}
 .edc-sa-dashboard-row-copy>button:hover{color:#7820c9}

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { ArrowRight, Bell, ChevronDown, GraduationCap, LogOut, UserRound } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { ArrowRight, Bell, ChevronDown, LogOut, UserRound } from "lucide-react";
 import { NOTIFICATIONS_EVENT } from "../../utils/demoNotifications";
+import { SidebarTrigger } from "../workspace/WorkspaceSidebar";
 import "./StudentDashboardTheme.css";
 
 function readAccount(email) {
@@ -53,7 +54,7 @@ export default function StudentDashboardHeader({ email, onLogout }) {
   };
 
   return <header className="auth-topbar edc-student-topbar">
-    <Link className="auth-brand edc-student-brand" to="/" aria-label="EduConnect AI home"><GraduationCap size={32} strokeWidth={2.2}/><span>EduConnect <b>AI</b></span></Link>
+    <SidebarTrigger label="student" />
     <div className="edc-student-topbar-actions">
       <div className="edc-topbar-notifications" ref={notificationMenu}>
         <button type="button" className="edc-topbar-bell" aria-label={`Notifications, ${account.unread} unread`} aria-haspopup="dialog" aria-expanded={notificationsOpen} aria-controls="edc-topbar-notification-panel" onClick={() => { setMenuOpen(false); setNotificationsOpen(open => !open); }}><Bell size={21}/>{account.unread > 0 && <span/>}</button>

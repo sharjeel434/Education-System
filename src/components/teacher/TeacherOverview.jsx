@@ -13,16 +13,13 @@ import {
   Layers3,
   ListChecks,
   LogOut,
-  Menu,
   MessageCircle,
   Plus,
-  Search,
   Star,
   Upload,
   UserRound,
   Users,
   Wallet,
-  X,
   Zap,
 } from "lucide-react";
 import NotificationsCenter from "../notifications/NotificationsCenter";
@@ -38,6 +35,7 @@ import {
   visibleCourseDiscussions,
 } from "../../utils/discussionHelpers";
 import "./TeacherOverview.css";
+import { SidebarTrigger } from "../workspace/WorkspaceSidebar";
 
 const currency = (value) =>
   `PKR ${Number(value || 0).toLocaleString("en-PK", { maximumFractionDigits: 0 })}`;
@@ -63,22 +61,14 @@ export function TeacherAvatar({ profile, size = "" }) {
 
 export function TeacherWorkspaceHeader({
   profile,
-  courses,
-  students,
-  navigation,
   unread,
   notifications = [],
   onReadNotification,
   onReadAllNotifications,
   onDeleteNotification,
   onNavigate,
-  onEdit,
-  onStudent,
   onLogout,
-  onOpenMenu,
 }) {
-  const [query, setQuery] = useState("");
-  const [searchOpen, setSearchOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [showAllNotifications, setShowAllNotifications] = useState(false);
@@ -87,7 +77,6 @@ export function TeacherWorkspaceHeader({
   useEffect(() => {
     const close = (event) => {
       if (!root.current?.contains(event.target)) {
-        setSearchOpen(false);
         setAccountOpen(false);
         setNotificationsOpen(false);
         setShowAllNotifications(false);
@@ -95,7 +84,6 @@ export function TeacherWorkspaceHeader({
     };
     const escape = (event) => {
       if (event.key === "Escape") {
-        setSearchOpen(false);
         setAccountOpen(false);
         setNotificationsOpen(false);
         setShowAllNotifications(false);
@@ -109,116 +97,10 @@ export function TeacherWorkspaceHeader({
       document.removeEventListener("keydown", escape);
     };
   }, [notificationsOpen]);
-  const search = query.trim().toLowerCase();
-  const matches = (value) =>
-    String(value || "")
-      .toLowerCase()
-      .includes(search);
-  const results = search
-    ? [
-        ...courses
-          .filter((course) => matches(`${course.title} ${course.category}`))
-          .map((course) => ({
-            id: `course:${course.id}`,
-            title: course.title,
-            detail: "Course",
-            icon: BookOpen,
-            action: () => onEdit(course),
-          })),
-        ...students
-          .filter((student) => matches(`${student.name} ${student.email}`))
-          .map((student) => ({
-            id: `student:${student.email}`,
-            title: student.name,
-            detail: student.email,
-            icon: UserRound,
-            action: () => onStudent(student.email),
-          })),
-        ...navigation
-          .filter(([, label]) => matches(label))
-          .map(([id, label, Icon]) => ({
-            id: `page:${id}`,
-            title: label,
-            detail: "Teacher workspace",
-            icon: Icon,
-            action: () => onNavigate(id),
-          })),
-      ].slice(0, 7)
-    : [];
 
   return (
     <header className="edc-to-workspace-header" ref={root}>
-      <button
-        type="button"
-        className="edc-to-menu-toggle"
-        aria-label="Open teacher navigation"
-        onClick={() => {
-          setNotificationsOpen(false);
-          onOpenMenu();
-        }}
-      >
-        <Menu size={23} />
-      </button>
-      <form
-        className="edc-to-search"
-        role="search"
-        onSubmit={(event) => {
-          event.preventDefault();
-          setSearchOpen(true);
-        }}
-      >
-        <Search size={22} />
-        <input
-          type="search"
-          aria-label="Search your courses, students and workspace"
-          placeholder="Search courses, students, or content..."
-          value={query}
-          onFocus={() => {
-            setSearchOpen(true);
-            setAccountOpen(false);
-            setNotificationsOpen(false);
-          }}
-          onChange={(event) => {
-            setQuery(event.target.value);
-            setSearchOpen(true);
-          }}
-        />
-        {query && (
-          <button
-            type="button"
-            aria-label="Clear search"
-            onClick={() => setQuery("")}
-          >
-            <X size={16} />
-          </button>
-        )}
-        {searchOpen && search && (
-          <div className="edc-to-search-results">
-            {results.length ? (
-              results.map(({ id, title, detail, icon: Icon, action }) => (
-                <button
-                  type="button"
-                  key={id}
-                  onClick={() => {
-                    setSearchOpen(false);
-                    setQuery("");
-                    action();
-                  }}
-                >
-                  <Icon size={18} />
-                  <span>
-                    <strong>{title}</strong>
-                    <small>{detail}</small>
-                  </span>
-                  <ChevronRight size={16} />
-                </button>
-              ))
-            ) : (
-              <p>No matching courses, students or workspace pages.</p>
-            )}
-          </div>
-        )}
-      </form>
+      <SidebarTrigger label="teacher" />
       <div className="edc-to-notification-menu">
         <button
           ref={notificationButton}
@@ -231,7 +113,6 @@ export function TeacherWorkspaceHeader({
           onClick={() => {
             setNotificationsOpen((open) => !open);
             setShowAllNotifications(false);
-            setSearchOpen(false);
             setAccountOpen(false);
           }}
         >
@@ -289,7 +170,6 @@ export function TeacherWorkspaceHeader({
           aria-label="Teacher account menu"
           onClick={() => {
             setAccountOpen((value) => !value);
-            setSearchOpen(false);
             setNotificationsOpen(false);
           }}
         >

@@ -31,7 +31,6 @@ import {
   ShieldAlert,
   LifeBuoy,
   Crown,
-  ChevronRight,
   Eye,
   Mail,
   BriefcaseBusiness,
@@ -55,6 +54,7 @@ import { NOTIFICATIONS_EVENT } from "../../utils/demoNotifications";
 
 import TeacherOverview, { TeacherWorkspaceHeader } from "../../components/teacher/TeacherOverview";
 import TeacherLessons from "../../components/teacher/TeacherLessons";
+import WorkspaceSidebar from "../../components/workspace/WorkspaceSidebar";
 import TeacherStudents from "../../components/teacher/TeacherStudents";
 import TeacherEarnings from "../../components/teacher/TeacherEarnings";
 import { collectInstructorCourseAnalytics } from "../../utils/instructorAnalytics";
@@ -66,48 +66,7 @@ import { DISCUSSIONS_EVENT } from "../../utils/courseDiscussions";
 import "../../components/teacher/TeacherColorTheme.css";
 import "../../components/DashboardCardClarity.css";
 
-const purple = "#8822ec";
-
-const styles = {
-  panel: {
-    padding: 20,
-    border: "1px solid #e9e5f5",
-    borderRadius: 16,
-    background: "#fff",
-  },
-  button: {
-    padding: "10px 15px",
-    border: 0,
-    borderRadius: 9,
-    background: purple,
-    color: "#fff",
-    fontWeight: 600,
-    cursor: "pointer",
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 7,
-  },
-  lightButton: {
-    padding: "10px 15px",
-    border: 0,
-    borderRadius: 9,
-    background: "#f3edff",
-    color: purple,
-    fontWeight: 600,
-    cursor: "pointer",
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 7,
-  },
-  input: {
-    width: "100%",
-    padding: 12,
-    border: "1px solid #ddd6fe",
-    borderRadius: 9,
-    font: "inherit",
-    boxSizing: "border-box",
-  },
-};
+const purple = "var(--edc-primary)";
 
 function readSaved(key, fallback) {
   try {
@@ -233,6 +192,41 @@ const navigation = [
   ["help-support", "Help & Support", LifeBuoy],
   ["appeals", "Moderation & Appeals", ShieldAlert],
 ];
+
+function TeacherSidebar({
+  activeTab,
+  profileImage,
+  displayName,
+  onNavigate,
+  onCreate,
+}) {
+  return (
+    <WorkspaceSidebar
+      menuConfig={navigation.map(([id, label, icon]) => ({
+        id,
+        route: id,
+        label,
+        icon,
+        sectionKey: "teacher-management",
+        active: activeTab === id,
+        ariaCurrent: activeTab === id ? "page" : undefined,
+      }))}
+      profile={{ avatar: profileImage, name: displayName, subline: "Teacher" }}
+      ariaLabel="Teacher navigation"
+      onNavigate={onNavigate}
+      footer={
+        <div className="edc-workspace-sidebar-footer-card edc-teacher-sidebar-promo">
+          <Crown size={25} fill="currentColor" aria-hidden="true" />
+          <strong>Keep Teaching</strong>
+          <p>Build your courses and share your knowledge.</p>
+          <button type="button" onClick={onCreate}>
+            Create Course <Plus size={14} aria-hidden="true" />
+          </button>
+        </div>
+      }
+    />
+  );
+}
 
 function TeacherProfileOverview({
   profile,
@@ -544,6 +538,8 @@ useEffect(() => {
   events.forEach(event => window.addEventListener(event, refresh));
   return () => events.forEach(event => window.removeEventListener(event, refresh));
 }, [courseKey, profileKey]);
+// Analytics also reads localStorage-backed records refreshed by workspace events.
+// eslint-disable-next-line react-hooks/exhaustive-deps
 const courseAnalytics = useMemo(() => collectInstructorCourseAnalytics(email, courses), [email, courses, workspaceRevision]);
 const managedCourseIds = new Set(courses.map((course) => String(course.id)));
 const visibleCatalogCourses = getCourseCatalogForDisplay().filter((course) =>
@@ -574,7 +570,6 @@ const studentCourses = [
   ...new Set(enrolledStudents.map((student) => student.courseTitle)),
 ];
 
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(() => courseForEdit?.id ?? null);
   const [courseForm, setCourseForm] = useState(() =>
@@ -589,8 +584,7 @@ const studentCourses = [
         }
       : { ...emptyCourse }
   );
-  const [lessonInputs, setLessonInputs] = useState({});
-  
+
 const [selectedLessonCourse, setSelectedLessonCourse] = useState("");
 const [editingLessonId, setEditingLessonId] = useState(null);
 const [showLessonForm, setShowLessonForm] = useState(false);
@@ -675,7 +669,6 @@ useEffect(() => {
 
   function navigateTo(nextTab) {
     setTab(nextTab);
-    setMobileMenuOpen(false);
     if (location.pathname !== "/teacher/dashboard") {
       navigate("/teacher/dashboard");
     }
@@ -700,7 +693,6 @@ useEffect(() => {
 
     });
     setTab("courses");
-    setMobileMenuOpen(false);
     navigate(`/teacher/dashboard/courses/${encodeURIComponent(course.id)}/edit`);
   }
 
@@ -829,39 +821,6 @@ function removeThumbnail() {
     updateCourses((previous) =>
       previous.filter((course) => course.id !== id)
     );
-  }
-
-  function addLesson(courseId) {
-    const title = (lessonInputs[courseId] || "").trim();
-
-    if (!title) {
-      alert("Please enter a lesson title.");
-      return;
-    }
-
-    const lessonId =
-      window.crypto?.randomUUID?.() ||
-      `${Date.now()}-${Math.random()}`;
-
-    updateCourses((previous) =>
-      previous.map((course) =>
-        course.id === courseId
-          ? {
-              ...course,
-              status: "Draft",
-              lessons: [
-                ...(course.lessons || []),
-                { id: lessonId, title },
-              ],
-            }
-          : course
-      )
-    );
-
-    setLessonInputs((previous) => ({
-      ...previous,
-      [courseId]: "",
-    }));
   }
 
   function removeLesson(courseId, lessonId, options) {
@@ -1306,161 +1265,97 @@ async function handleTeacherProfileImage(event) {
     );
 
     return (
-      <section className="edc-teacher-course-edit-page">
-        <div className="edc-teacher-course-edit-content">
-          <button
-            type="button"
-            className="edc-teacher-course-edit-back"
-            onClick={closeCourseEditor}
-          >
-            <ArrowLeft size={17} />
-            Back to My Courses
-          </button>
-
-          {course ? (
-            <>
-              {courseStorageError && (
-                <p className="edc-teacher-storage-error" role="alert">
-                  {courseStorageError}
-                </p>
-              )}
-              <header className="edc-teacher-course-edit-heading">
-                <span>COURSE MANAGEMENT</span>
-                <h1>Edit Course</h1>
-                <p>Update the details for “{course.title}”.</p>
-              </header>
-              <TeacherCourseEditor
-                courseForm={courseForm}
-                setCourseForm={setCourseForm}
-                editingId={editingId}
-                teacherFocusLabel={teacherFocusLabel}
-                onSave={saveCourse}
-                onCancel={closeCourseEditor}
-                onThumbnailUpload={handleThumbnailUpload}
-                onRemoveThumbnail={removeThumbnail}
-              />
-            </>
-          ) : (
-            <section className="edc-teacher-course-edit-not-found" role="alert">
-              <h1>Course not found</h1>
-              <p>This course may have been deleted or is no longer available.</p>
-              <button type="button" onClick={closeCourseEditor}>
-                Return to My Courses
+      <section className="edc-teacher-shell">
+        <TeacherSidebar
+          activeTab={tab}
+          profileImage={teacherProfileImage}
+          displayName={teacherDisplayName}
+          onNavigate={navigateTo}
+          onCreate={startCreate}
+        />
+        <main className="edc-teacher-main">
+          <TeacherWorkspaceHeader
+            profile={{ ...profile, name: teacherDisplayName }}
+            unread={unreadNotifications}
+            notifications={notifications}
+            onReadNotification={markNotificationRead}
+            onReadAllNotifications={markAllNotificationsRead}
+            onDeleteNotification={deleteNotification}
+            onNavigate={navigateTo}
+            onLogout={signOut}
+          />
+          <section className="edc-teacher-course-edit-page">
+            <div className="edc-teacher-course-edit-content">
+              <button
+                type="button"
+                className="edc-teacher-course-edit-back"
+                onClick={closeCourseEditor}
+              >
+                <ArrowLeft size={17} />
+                Back to My Courses
               </button>
-            </section>
-          )}
-        </div>
+
+              {course ? (
+                <>
+                  {courseStorageError && (
+                    <p className="edc-teacher-storage-error" role="alert">
+                      {courseStorageError}
+                    </p>
+                  )}
+                  <header className="edc-teacher-course-edit-heading">
+                    <span>COURSE MANAGEMENT</span>
+                    <h1>Edit Course</h1>
+                    <p>Update the details for “{course.title}”.</p>
+                  </header>
+                  <TeacherCourseEditor
+                    courseForm={courseForm}
+                    setCourseForm={setCourseForm}
+                    editingId={editingId}
+                    teacherFocusLabel={teacherFocusLabel}
+                    onSave={saveCourse}
+                    onCancel={closeCourseEditor}
+                    onThumbnailUpload={handleThumbnailUpload}
+                    onRemoveThumbnail={removeThumbnail}
+                  />
+                </>
+              ) : (
+                <section className="edc-teacher-course-edit-not-found" role="alert">
+                  <h1>Course not found</h1>
+                  <p>This course may have been deleted or is no longer available.</p>
+                  <button type="button" onClick={closeCourseEditor}>
+                    Return to My Courses
+                  </button>
+                </section>
+              )}
+            </div>
+          </section>
+        </main>
       </section>
     );
   }
 
   return (
     <section className="edc-teacher-shell">
-      {/* MOBILE MENU */}
-
-      {mobileMenuOpen && (
-        <button
-          type="button"
-          className="edc-teacher-backdrop"
-          aria-label="Close navigation"
-          onClick={() => setMobileMenuOpen(false)}
-        />
-      )}
-
-      {/* SIDEBAR */}
-
-      <aside
-        className={`edc-teacher-sidebar ${
-          mobileMenuOpen ? "edc-teacher-sidebar-open" : ""
-        }`}
-      >
-        <div className="edc-teacher-brand">
-          <div className="edc-teacher-brand-icon">
-            <GraduationCap size={23} />
-          </div>
-
-          <div>
-            <strong>EduConnect <b>AI</b></strong>
-            <span>Teacher Workspace</span>
-          </div>
-
-          <button
-            type="button"
-            className="edc-teacher-close"
-            aria-label="Close menu"
-            onClick={() => setMobileMenuOpen(false)}
-          >
-            <X size={19} />
-          </button>
-        </div>
-
-        <div className="edc-teacher-user">
-          <div className="edc-teacher-avatar">
-            {teacherProfileImage ? (
-              <img src={teacherProfileImage} alt="Instructor" style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }} />
-            ) : (
-              (profile.name || "T").charAt(0).toUpperCase()
-            )}
-          </div>
-
-          <div style={{ minWidth: 0 }}>
-            <strong>{teacherDisplayName}</strong>
-            <span style={{ overflowWrap: "anywhere" }}>
-              Teacher
-            </span>
-          </div>
-        </div>
-
-        <span className="edc-teacher-menu-label">
-          MANAGEMENT
-        </span>
-
-        <nav
-          className="edc-teacher-nav"
-          aria-label="Teacher navigation"
-        >
-          {navigation.map(([id, label, Icon]) => (
-            <button
-              key={id}
-              type="button"
-              className={`edc-teacher-nav-item ${
-                tab === id ? "active" : ""
-              }`}
-              onClick={() => navigateTo(id)}
-            >
-              <Icon size={19} />
-              <span>{label}</span>
-            </button>
-          ))}
-        </nav>
-
-        <div className="edc-teacher-sidebar-tip">
-          <Crown size={27} fill="currentColor" />
-          <strong>Keep Growing</strong>
-          <p>Build your courses and share your knowledge.</p>
-          <button type="button" onClick={startCreate}>Create Course <ChevronRight size={15} /></button>
-        </div>
-
-      </aside>
+      <TeacherSidebar
+        activeTab={tab}
+        profileImage={teacherProfileImage}
+        displayName={teacherDisplayName}
+        onNavigate={navigateTo}
+        onCreate={startCreate}
+      />
 
       {/* MAIN CONTENT */}
 
       <main className="edc-teacher-main">
         <TeacherWorkspaceHeader
           profile={{ ...profile, name: teacherDisplayName }}
-          courses={courses}
-          students={uniqueStudents}
-          navigation={navigation}
           unread={unreadNotifications}
           notifications={notifications}
           onReadNotification={markNotificationRead}
           onReadAllNotifications={markAllNotificationsRead}
           onDeleteNotification={deleteNotification}
           onNavigate={navigateTo}
-          onEdit={startEdit}
-          onStudent={() => navigateTo("students")}
           onLogout={signOut}
-          onOpenMenu={() => setMobileMenuOpen(true)}
         />
         {tab !== "courses" && (
           <header className="edc-teacher-topbar">

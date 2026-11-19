@@ -17,6 +17,7 @@ import {
   ADMIN_PATH_REDIRECTS,
   ADMIN_ROUTES,
 } from "../components/admin/adminNavigation";
+import { WorkspaceSidebarProvider } from "../components/workspace/SidebarContext";
 import { appendAdminActivityRecord } from "../components/admin/adminData";
 import StudentDashboard from "./dashboards/StudentDashboard";
 import StudentDashboardHeader from "../components/student/StudentDashboardHeader";
@@ -141,14 +142,8 @@ function DashboardPage() {
       ? "Create courses and manage your teaching journey."
       : "Explore courses and continue your learning journey.";
 
-  
-return (
-    <main
-      className={`auth-page dashboard-page ${
-        role === "Teacher" ? "teacher-fullscreen-page" : ""
-      }`}
-    >
-
+  const dashboardContent = (
+    <>
       {role === "Student" ? <StudentDashboardHeader email={email} onLogout={signOut} /> : <header className="auth-topbar">
         <Link
           className="auth-brand"
@@ -220,6 +215,22 @@ return (
         <span>·</span>
         Learn something new today.
       </footer>
+    </>
+  );
+
+  return (
+    <main
+      className={`auth-page dashboard-page ${
+        role === "Teacher" ? "teacher-fullscreen-page" : ""
+      }`}
+    >
+      {role === "Student" || role === "Teacher" ? (
+        <WorkspaceSidebarProvider
+          storageKey={`educonnect.sidebarCollapsed.${role.toLowerCase()}`}
+        >
+          {dashboardContent}
+        </WorkspaceSidebarProvider>
+      ) : dashboardContent}
     </main>
   );
 }

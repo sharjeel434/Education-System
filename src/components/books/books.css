@@ -116,7 +116,7 @@
 .edc-books-directory .edc-book-clear{border:1px solid #e4d7f6;background:#f0e7ff;color:#7727bc}
 .edc-books-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
 .edc-books-stats article{display:flex;align-items:center;gap:11px;min-width:0;padding:13px;border:1px solid #e5d8f9;border-radius:14px;background:linear-gradient(135deg,#fff,#f8f3ff);box-shadow:0 4px 13px #4512780b}
-.edc-books-stat-icon{display:grid;flex:0 0 42px;width:42px;height:42px;place-items:center;border-radius:12px;background:#efe5ff;color:#8822ec}
+.edc-books-stat-icon{display:grid;flex:0 0 42px;width:42px;height:42px;place-items:center;border-radius:12px;background:#efe5ff;color:var(--edc-primary)}
 .edc-books-stats article:nth-child(1),.edc-books-stats article:nth-child(4){border-color:#dfd0fb;background:#eee5ff}
 .edc-books-stats article:nth-child(2){border-color:#d3e4ff;background:#e5f1ff}
 .edc-books-stats article:nth-child(3){border-color:#d1ebd2;background:#e7f7ed}
@@ -129,7 +129,7 @@
 .edc-books-toolbar{display:grid;grid-template-columns:minmax(220px,1fr) minmax(150px,.48fr) auto auto;gap:9px;align-items:end;padding:12px;border:1px solid #e5d8f9;border-radius:13px;background:#fff}
 .edc-books-toolbar>label{display:grid;gap:5px;color:#654777;font-size:11px;font-weight:700}
 .edc-books-toolbar input,.edc-books-toolbar select{width:100%;min-width:0;min-height:37px;padding:8px 10px;border:1px solid #dfd1f1;border-radius:8px;background:#fbf9ff;color:#32164e;font:inherit;font-size:12px}
-.edc-books-toolbar .edc-books-search>div{display:flex;align-items:center;gap:8px;min-height:37px;padding:0 10px;border:1px solid #dfd1f1;border-radius:8px;background:#fbf9ff;color:#8822ec}
+.edc-books-toolbar .edc-books-search>div{display:flex;align-items:center;gap:8px;min-height:37px;padding:0 10px;border:1px solid #dfd1f1;border-radius:8px;background:#fbf9ff;color:var(--edc-primary)}
 .edc-books-toolbar .edc-books-search input{padding:7px 0;border:0;background:transparent;outline:0}
 .edc-books-toolbar>button{min-height:37px;justify-content:center;white-space:nowrap}
 .edc-books-advanced-filters{grid-column:1/-1;border-top:1px solid #eee6f8;padding-top:8px;color:#633987;font-size:12px}
@@ -139,13 +139,13 @@
 .edc-books-directory-panels{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:start}
 .edc-books-directory-panels.edc-books-teachers-only{grid-template-columns:minmax(0,1fr)}
 .edc-books-directory-panel{display:grid;gap:10px;min-width:0;padding:13px;border:1px solid #e5d8f9;border-radius:15px;background:linear-gradient(145deg,#fff,#faf7ff);box-shadow:0 5px 16px #38115d0a}
-.edc-books-panel-heading{display:flex;align-items:center;gap:9px;color:#8822ec}
+.edc-books-panel-heading{display:flex;align-items:center;gap:9px;color:var(--edc-primary)}
 .edc-books-panel-heading>div{display:flex;align-items:baseline;justify-content:space-between;gap:8px;width:100%;min-width:0}
 .edc-books-panel-heading h3{margin:0;color:#30104f;font-size:16px}
 .edc-books-panel-heading span{color:#8b789d;font-size:10px;white-space:nowrap}
 .edc-books-subject-chips{display:flex;gap:5px;overflow-x:auto;padding:1px 0 4px;scrollbar-width:thin}
 .edc-books-directory .edc-books-subject-chips button{flex:none;padding:6px 9px;border:1px solid #e2d5f6;background:#f8f4ff;color:#59347d;font-size:10px;font-weight:600;white-space:nowrap}
-.edc-books-directory .edc-books-subject-chips button.active{border-color:#8822ec;background:#8822ec;color:#fff}
+.edc-books-directory .edc-books-subject-chips button.active{border-color:var(--edc-primary);background:var(--edc-primary);color:#fff}
 .edc-books-directory-caption{margin:-3px 0 0;color:#806c93;font-size:10px;line-height:1.4}
 .edc-books-directory-grid{grid-template-columns:minmax(0,1fr);gap:7px}
 .edc-books-directory-grid .edc-public-book-card{display:grid;grid-template-columns:68px minmax(0,1fr);align-items:stretch;border-color:#e8ddf6;border-radius:11px;box-shadow:none}
