@@ -283,7 +283,6 @@ function AdminSettings({ preferences, platformSettings }) {
               <SettingsHeading title="Quick Configuration" description="Existing browser-saved controls; these do not replace server-side enforcement." />
               <div className="edc-admin-settings-toggles">
                 <Toggle title="Allow New User Registration" description="Saved registration preference; this frontend setting does not block account creation." checked={system.registrationEnabled} onChange={(value) => update("system", "registrationEnabled", value)} />
-                <Toggle title="Require Teacher Verification" description="Used by the existing teacher application review flow." checked={rules.teacherVerificationRequired} onChange={(value) => update("rules", "teacherVerificationRequired", value)} />
                 <Toggle title="Require Course Approval" description="Saved course publishing policy." checked={rules.courseApprovalRequired} onChange={(value) => update("rules", "courseApprovalRequired", value)} />
                 <Toggle title="Enable Course Uploads" description="Configuration only; server upload controls are unavailable." checked={system.courseUploadEnabled} onChange={(value) => update("system", "courseUploadEnabled", value)} />
               </div>
@@ -314,7 +313,6 @@ function AdminSettings({ preferences, platformSettings }) {
             <section className="edc-admin-panel edc-admin-settings-panel">
               <SettingsHeading title="Platform Rules" description="Review and publishing preferences used by the existing Admin workflows." />
               <div className="edc-admin-settings-toggles">
-                <Toggle title="Teacher Verification Required" description="Require application review before a teacher is approved." checked={rules.teacherVerificationRequired} onChange={(value) => update("rules", "teacherVerificationRequired", value)} />
                 <Toggle title="Course Approval Required" description="Keep course approval as a saved platform policy." checked={rules.courseApprovalRequired} onChange={(value) => update("rules", "courseApprovalRequired", value)} />
                 <Toggle title="PDF/eBook Approval Required" description="Saved approval preference for submitted learning materials." checked={rules.ebookApprovalRequired} onChange={(value) => update("rules", "ebookApprovalRequired", value)} />
               </div>

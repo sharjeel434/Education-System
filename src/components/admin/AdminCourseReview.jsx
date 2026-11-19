@@ -1,3 +1,4 @@
+import { reviewContent, refreshContent, contentFileUrl } from "../../utils/contentApi";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
@@ -29,7 +30,6 @@ import {
   getAdminCourses,
   getAdminTeachers,
   readAdminArray,
-  updateAdminCourseStatus,
 } from "./adminData";
 import { createCsvContent, downloadCsv } from "./adminCsvUtils";
 
@@ -267,7 +267,7 @@ function readCourseSnapshot() {
       teacherName:
         displayValue(teacher?.name) !== "Not provided"
           ? displayValue(teacher?.name)
-          : displayValue(profile.name),
+          : displayValue(course.teacherName || profile.name),
       teacherAvatar:
         teacher?.avatar ||
         teacher?.profile?.avatar ||
@@ -382,6 +382,7 @@ function AdminCourseReview() {
       if (event.key === "Escape") setSelectedCourse(null);
     }
 
+    refreshContent().catch((error) => setError(error.message));
     window.addEventListener("storage", refreshCourses);
     window.addEventListener(ADMIN_DATA_CHANGED_EVENT, refreshCourses);
     window.addEventListener("keydown", closeOnEscape);
@@ -534,7 +535,7 @@ function AdminCourseReview() {
     }
   }
 
-  function changeCourseStatus(course, nextStatus) {
+  async function changeCourseStatus(course, nextStatus) {
     setMessage("");
     setError("");
 
@@ -549,12 +550,15 @@ function AdminCourseReview() {
     }
 
     try {
-      updateAdminCourseStatus(
-        course.teacherEmail,
-        course.id,
-        nextStatus,
-        nextStatus === "Changes Requested" ? { revisionNotes } : {},
-      );
+      const reason = nextStatus === "Rejected"
+        ? window.prompt("Reason for rejection", revisionNotes)?.trim()
+        : revisionNotes.trim();
+      if (["Rejected", "Changes Requested"].includes(nextStatus) && !reason) {
+        setError("A reason is required.");
+        return;
+      }
+      const decision = { Approved: "approve", Rejected: "reject", Suspended: "unpublish", "Changes Requested": "reject" }[nextStatus];
+      await reviewContent("courses", course, decision, reason);
       const manager = window.sessionStorage.getItem("educonnect.demoEmail") || "Admin";
       appendAdminActivityRecord({
         id: `course-${course.teacherEmail}-${course.id}-${Date.now()}`,
@@ -592,7 +596,7 @@ function AdminCourseReview() {
       closeDetails();
       setMessage(
         nextStatus === "Approved"
-          ? "Course approved. It has not been published."
+          ? "Course approved and published. It is now available to Students."
           : nextStatus === "Rejected"
             ? "Course rejected. The course and its content were preserved."
             : nextStatus === "Suspended"
@@ -651,6 +655,9 @@ function AdminCourseReview() {
         {course.lessons.map((lesson, index) => (
           <li key={lesson?.id ?? `${courseKey(course)}-lesson-${index}`}>
             <strong>{lessonText(lesson, "title")}</strong>
+            {lesson.content && <p>{lesson.content}</p>}
+            {lesson.videoFileId && <video controls preload="metadata" src={contentFileUrl(lesson.videoFileId)} style={{ width: "100%", maxHeight: 300 }} />}
+            {lesson.fileId && <a href={contentFileUrl(lesson.fileId)} target="_blank" rel="noreferrer">Open lesson attachment</a>}
             {lessonText(lesson, "description") !== "Not provided" && (
               <span>{lessonText(lesson, "description")}</span>
             )}
@@ -984,7 +991,7 @@ function AdminCourseReview() {
                     : "No saved reviewer notes."}
                 </p>
                 <p className="edc-admin-course-publishing-note">
-                  Approval does not publish the course or approve shared AI knowledge. Those actions are not supported here.
+                  Approval publishes the reviewed course and lessons. Later Teacher edits require a new review.
                 </p>
               </section>
             </>
@@ -1062,9 +1069,14 @@ function AdminCourseReview() {
                   <h5>Learning outcomes</h5>
                   {renderFieldList(arrayField(selectedCourse, ["learningOutcomes", "outcomes"]))}
                 </section>
+                <section className="edc-admin-course-section">
+                  <h5>Requirements</h5>
+                  {renderFieldList(arrayField(selectedCourse, ["requirements"]))}
+                </section>
                 <section className="edc-admin-course-section edc-admin-course-content">
                   <h5>Lessons</h5>
                   {renderLessonContent(selectedCourse)}
+                  {(selectedCourse.curriculum?.resources || []).map((resource) => <p key={resource.id}><a href={contentFileUrl(resource.fileId)} target="_blank" rel="noreferrer">{resource.name}</a></p>)}
                 </section>
                 <section className="edc-admin-course-section">
                   <h5>Media</h5>

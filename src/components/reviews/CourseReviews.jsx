@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { BookOpen, CalendarDays, MessageCircle, Search, Star, Users } from "lucide-react";
-import { courseReviewKey, getReviews, resolveReviewStudent, REVIEW_EVENT } from "../../utils/courseReviews";
+import { courseReviewKey } from "../../utils/courseReviews";
+import { fetchTeacherReviews, LEARNING_UPDATED_EVENT } from "../../utils/mongoLearningApi";
 import ReportAction from "../moderation/ReportAction";
 import StudentCourseReviews from "./StudentCourseReviews";
 import "./CourseReviews.css";
@@ -50,7 +51,7 @@ function ReviewCourseImage({ course }) {
 }
 
 function TeacherCourseReviews({ email, courses = [] }) {
-  const [reviews, setReviews] = useState(() => getReviews());
+  const [reviews, setReviews] = useState([]);
   const [ratingFilter, setRatingFilter] = useState("all");
   const [courseFilter, setCourseFilter] = useState("all");
   const [studentFilter, setStudentFilter] = useState("all");
@@ -58,31 +59,33 @@ function TeacherCourseReviews({ email, courses = [] }) {
   const [page, setPage] = useState(1);
 
   useEffect(() => {
-    const refresh = () => setReviews(getReviews());
-    [REVIEW_EVENT, "storage", "focus"].forEach(event => window.addEventListener(event, refresh));
-    return () => [REVIEW_EVENT, "storage", "focus"].forEach(event => window.removeEventListener(event, refresh));
+    let cancelled = false;
+    const refresh = () => fetchTeacherReviews()
+      .then(items => { if (!cancelled) setReviews(items); })
+      .catch(error => { if (error.status !== 401 && error.status !== 403) console.error("Could not load course reviews", error); });
+    refresh();
+    [LEARNING_UPDATED_EVENT, "focus"].forEach(event => window.addEventListener(event, refresh));
+    return () => { cancelled = true; [LEARNING_UPDATED_EVENT, "focus"].forEach(event => window.removeEventListener(event, refresh)); };
   }, []);
 
   const courseByKey = useMemo(() => new Map(courses.map(course => {
     const identified = { ...course, teacherEmail: course.teacherEmail || email };
     return [courseReviewKey(identified), identified];
   })), [courses, email]);
+  const courseById = useMemo(() => new Map(courses.map(course => [String(course.id), { ...course, teacherEmail: course.teacherEmail || email }])), [courses, email]);
 
   const courseReviews = useMemo(() => reviews
-    .filter(review => review && courseByKey.has(review.courseKey))
-    .map(review => {
-      const course = courseByKey.get(review.courseKey);
-      return {
-        review,
-        course,
-        author: resolveReviewStudent(review),
-        rating: Number(review.rating),
-        date: review.updatedAt || review.createdAt,
-      };
-    })
+    .filter(review => review && courseById.has(String(review.courseId)))
+    .map(review => ({
+      review: { ...review, courseKey: String(review.courseId), studentEmail: `${review.studentName || "student"}#${review.id}` },
+      course: courseById.get(String(review.courseId)),
+      author: { studentName: review.studentName || "Student", studentAvatar: "" },
+      rating: Number(review.rating),
+      date: review.updatedAt || review.createdAt,
+    }))
     .filter(item => Number.isInteger(item.rating) && item.rating >= 1 && item.rating <= 5)
     .sort((left, right) => reviewTimestamp(right.date) - reviewTimestamp(left.date)),
-  [courseByKey, reviews]);
+  [courseById, reviews]);
 
   const averageRating = courseReviews.length
     ? courseReviews.reduce((sum, item) => sum + item.rating, 0) / courseReviews.length

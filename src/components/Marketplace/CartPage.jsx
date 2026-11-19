@@ -22,9 +22,9 @@ export default function CartPage({ email, onBack, onComplete }) {
     setCart(getCart(email));
   }
 
-  function checkout() {
+  async function checkout() {
     try {
-      demoCheckout(email);
+      await demoCheckout(email);
       setCart([]);
       setSuccess(true);
       setError("");

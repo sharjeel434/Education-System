@@ -18,6 +18,7 @@ import AdminOverview from "./AdminOverview";
 import AdminSystemHealth from "./AdminSystemHealth";
 import AdminSupportModeration from "./AdminSupportModeration";
 import AdminTeacherApplications from "./AdminTeacherApplications";
+import AdminIdentityVerifications from "./AdminIdentityVerifications";
 import AdminTutorMarketplace from "./AdminTutorMarketplace";
 import AdminUserManagement from "./AdminUserManagement";
 import AdminSidebar from "./AdminSidebar";
@@ -140,6 +141,7 @@ function AdminLayout({ email, onLogout }) {
     if (section.id === "teachers") {
       return <AdminTeacherApplications />;
     }
+    if (section.id === "identity-verification") return <AdminIdentityVerifications />;
 
     if (section.id === "courses") {
       return <AdminCourseReview />;

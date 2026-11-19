@@ -39,18 +39,16 @@ function CourseArt({ course }) {
 }
 function CourseCard({ course }) {
   const isProgram = course.kind === "program";
-  const isEnrollmentSnapshot = Boolean(course.isEnrollmentSnapshot);
   const count = isProgram ? course.subjects.length : course.lessonCount;
   const hasCoverImage = Boolean(course.thumbnail || course.image);
-  const cover = <><CourseArt course={course} /><h3>{course.title}</h3><span className="edc-home-cover-tag">{course.category || "Course"}</span>{!isEnrollmentSnapshot && <span className="edc-home-cover-arrow"><Play size={13} fill="currentColor" /></span>}</>;
   return <article className="edc-home-course-card">
-    {isEnrollmentSnapshot
-      ? <div className={`edc-home-course-cover${hasCoverImage ? " has-image" : ""}`}>{cover}</div>
-      : <Link className={`edc-home-course-cover${hasCoverImage ? " has-image" : ""}`} to={landingCourseUrl(course)} state={{ from: "/" }} onClick={() => window.scrollTo({ top: 0 })}>{cover}</Link>}
-    <div className="edc-home-course-body"><h3 className="edc-home-course-title global-course-title">{isEnrollmentSnapshot ? course.title : <Link to={landingCourseUrl(course)} state={{ from: "/" }}>{course.title}</Link>}</h3>
+    <Link className={`edc-home-course-cover${hasCoverImage ? " has-image" : ""}`} to={landingCourseUrl(course)} state={{ from: "/" }} onClick={() => window.scrollTo({ top: 0 })}>
+      <CourseArt course={course} /><h3>{course.title}</h3><span className="edc-home-cover-tag">{course.category || "Course"}</span><span className="edc-home-cover-arrow"><Play size={13} fill="currentColor" /></span>
+    </Link>
+    <div className="edc-home-course-body"><h3 className="edc-home-course-title"><Link to={landingCourseUrl(course)} state={{ from: "/" }}>{course.title}</Link></h3>
       {isProgram ? <p className="edc-home-program-subjects">{course.subjects.join(" · ")}</p> : <div className="edc-home-course-author"><Avatar name={course.instructorName} source={course.instructorProfile?.avatar} /><span>{course.instructorName || "Course instructor"}</span><Rating rating={course.rating} count={course.reviewCount} /></div>}
       <div className="edc-home-course-meta">{course.category && <span><Layers size={13} />{course.category}</span>}{course.level && <span><UserRound size={13} />{course.level}</span>}<span><BookOpen size={13} />{count} {isProgram ? "subjects" : count === 1 ? "lesson" : "lessons"}</span></div>
-      <div className="edc-home-course-bottom">{!isProgram && !isEnrollmentSnapshot && <strong>{money(course.price)}</strong>}{isEnrollmentSnapshot ? <span className="global-course-history-note">In student learning history</span> : <Link className="edc-home-primary" to={landingCourseUrl(course)} state={{ from: "/" }} onClick={() => window.scrollTo({ top: 0 })}>View Course <ArrowRight size={13} /></Link>}</div>
+      <div className="edc-home-course-bottom">{!isProgram && <strong>{money(course.price)}</strong>}<Link className="edc-home-primary" to={landingCourseUrl(course)} state={{ from: "/" }} onClick={() => window.scrollTo({ top: 0 })}>View Course <ArrowRight size={13} /></Link></div>
     </div>
   </article>;
 }
@@ -84,7 +82,7 @@ export default function LandingPage({ page = "home", fields = [], faqs = [], onO
   useEffect(() => {
     if (location.hash) document.getElementById(location.hash.slice(1))?.scrollIntoView({ block: "start" });
   }, [location.hash, page]);
-  useEffect(() => { const refresh = () => { setCatalog(readLandingCatalog()); setSession(currentSession()); }; const events = ["storage", "focus", "educonnect:student-header-changed", "educonnect:student-data-changed", "educonnect:teacher-courses-changed", "educonnect:teacher-profile-changed", "educonnect:books-changed", "educonnect:book-reviews-changed", "educonnect:reviews-changed", "educonnect:moderation-visibility-changed", "educonnect:admin-data-changed"]; events.forEach(event => window.addEventListener(event, refresh)); return () => events.forEach(event => window.removeEventListener(event, refresh)); }, []);
+  useEffect(() => { const refresh = () => { setCatalog(readLandingCatalog()); setSession(currentSession()); }; const events = ["storage", "focus", "educonnect:student-header-changed", "educonnect:teacher-courses-changed", "educonnect:teacher-profile-changed", "educonnect:books-changed", "educonnect:book-reviews-changed", "educonnect:reviews-changed", "educonnect:moderation-visibility-changed", "educonnect:admin-data-changed"]; events.forEach(event => window.addEventListener(event, refresh)); return () => events.forEach(event => window.removeEventListener(event, refresh)); }, []);
   useEffect(() => { const outside = event => { if (!searchRoot.current?.contains(event.target)) setSearchOpen(false); if (!menuRoot.current?.contains(event.target)) setCoursesOpen(false); }; const escape = event => { if (event.key === "Escape") { setCoursesOpen(false); setSearchOpen(false); setMobile(false); } }; document.addEventListener("pointerdown", outside); document.addEventListener("keydown", escape); return () => { document.removeEventListener("pointerdown", outside); document.removeEventListener("keydown", escape); }; }, []);
   const results = searchLandingCatalog(catalog, search), suggestions = results.slice(0, 6);
   const clearMenus = () => { setMobile(false); setCoursesOpen(false); setSearchOpen(false); };
@@ -105,7 +103,7 @@ export default function LandingPage({ page = "home", fields = [], faqs = [], onO
   const categories = [...catalog.categories];
   TOPICS.forEach(([name]) => { if (!categories.some(item => item.name.toLowerCase() === name.toLowerCase())) categories.push({ name, count: 0 }); });
   const visibleCategories = categories.slice(0, 8);
-  const featuredCourses = featuredLandingCourses(catalog, catalog.courses.length + 3);
+  const featuredCourses = featuredLandingCourses(catalog, 3);
   const footerSubjectGroups = [
     { title: "Education Levels", links: [
       { name: "School Classes", to: "/courses" },
@@ -171,7 +169,7 @@ export default function LandingPage({ page = "home", fields = [], faqs = [], onO
           { title: "Research Workspace", description: "Bring your ideas and research together", icon: FlaskConical, tab: "research" },
         ].map(({ title, description, icon: Icon, action, tab }) => <button type="button" key={title} onClick={action || (() => workspace(tab))}><Icon size={31} strokeWidth={1.7} /><h2>{title}</h2><p>{description}</p></button>)}
       </section>
-      <section id="courses" className="edc-home-section"><header className="edc-home-section-heading"><h2>Published &amp; Enrolled Courses</h2><Link to="/courses">View All Courses <ArrowRight size={17} /></Link></header>{featuredCourses.length ? <div className="edc-home-course-grid">{featuredCourses.map(course => <CourseCard key={course.key} course={course} />)}</div> : <EmptyContent title="No courses available yet">Courses will appear here when teachers publish them or students enroll.</EmptyContent>}</section>
+      <section id="courses" className="edc-home-section"><header className="edc-home-section-heading"><h2>Featured Courses</h2><Link to="/courses">View All Courses <ArrowRight size={17} /></Link></header>{featuredCourses.length ? <div className="edc-home-course-grid">{featuredCourses.map(course => <CourseCard key={course.key} course={course} />)}</div> : <EmptyContent title="No published courses yet">Courses will appear here when teachers publish them.</EmptyContent>}</section>
 
     <section id="fields" className="edc-home-section"><header className="edc-home-section-heading"><h2>Popular Study Fields</h2><button type="button" onClick={() => openDialog({ kind: "categories" })}>View All Categories <ArrowRight size={17} /></button></header><div className="edc-home-category-grid">{visibleCategories.map(category => { const Icon = categoryIcon(category.name); return <Link key={category.name} to={landingCatalogUrl("", category.name)}><Icon size={30} strokeWidth={1.8} /><h3>{category.name}</h3><span>{category.count ? `${category.count} ${category.count === 1 ? "course" : "courses"}` : "Explore subjects"}</span></Link>; })}</div><StudyPartners className="edc-home-study-partners" /></section>
 

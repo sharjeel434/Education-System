@@ -48,6 +48,13 @@ export const ADMIN_SECTIONS = [
     icon: BookOpenCheck,
   },
   {
+    id: "identity-verification",
+    path: "/admin/identity-verification",
+    title: "Identity Verification",
+    description: "Review teacher and student CNIC submissions.",
+    icon: ShieldCheck,
+  },
+  {
     id: "books",
     path: "/admin/books",
     title: "Book Approvals",
@@ -272,7 +279,7 @@ export const ADMIN_NAV_GROUPS = [
   {
     id: "users-access",
     label: "USERS & ACCESS",
-    items: getSectionsById(["users", "teachers"]),
+    items: getSectionsById(["users", "teachers", "identity-verification"]),
   },
   {
     id: "content-governance",

@@ -1,4 +1,5 @@
 import { appendAdminActivityRecord } from "../components/admin/adminData";
+import { enrollContent, getContentState } from "./contentApi";
 
 const cartKey = (email) => `educonnect.student.${email}.cart`;
 const enrollmentKey = (email) => `educonnect.student.${email}.enrollments`;
@@ -29,7 +30,15 @@ export function getCart(email) {
 }
 
 export function getEnrollments(email) {
-  return email ? readList(enrollmentKey(email)) : [];
+  if (!email) return [];
+  const saved = readList(enrollmentKey(email));
+  const state = getContentState();
+  if (state.role !== "student" || state.email?.toLowerCase() !== email.toLowerCase()) return saved;
+  const records = state.courses.filter((course) => state.accesses.some((entry) => entry.kind === "course" && String(entry.contentId) === String(course.id)));
+  return [...saved.filter((item) => !records.some((course) => String(course.id) === String(item.id))), ...records.map((record) => {
+    const progress = saved.find((item) => String(item.id) === String(record.id));
+    return { ...record, completedLessons: progress?.completedLessons || 0, progress: progress?.progress || 0, enrolledAt: progress?.enrolledAt || record.createdAt };
+  })];
 }
 
 export function getStudentOrders(email) {
@@ -70,13 +79,13 @@ export function removeFromCart(email, id) {
   notifyChange();
 }
 
-export function demoCheckout(email) {
+export async function demoCheckout(email) {
   if (!email) throw new Error("Student login required.");
 
   const cart = getCart(email);
   if (!cart.length) throw new Error("Your cart is empty.");
-
   const enrolled = getEnrollments(email);
+  await enrollContent(cart);
   const newCourses = cart
     .filter((item) => !enrolled.some((course) => String(course.id) === String(item.id)))
     .map((item) => ({

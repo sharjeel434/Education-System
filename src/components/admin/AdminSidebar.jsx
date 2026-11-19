@@ -81,7 +81,7 @@ function AdminSidebar({ email, isOpen, onClose, platformSettings }) {
         <div className="edc-admin-sidebar-footer">
           <strong>{websiteName}</strong>
           <p>Admin workspace</p>
-          <span><i className="edc-admin-status-dot" aria-hidden="true" /> Frontend demo environment</span>
+          <span><i className="edc-admin-status-dot" aria-hidden="true" /> Admin session active</span>
         </div>
       </aside>
     </>

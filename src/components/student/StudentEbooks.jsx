@@ -86,6 +86,7 @@ export default function StudentEbooks({
     const publishedById = new Map(publishedBooks.map((book) => [String(book.id), book]));
     purchasedBooks.filter((book) => isModerationVisible("pdf", book.id)).forEach((purchase) => {
       const current = publishedById.get(String(purchase.id));
+      if (/^[a-f0-9]{24}$/i.test(String(purchase.id)) && !current) return;
       const book = { ...purchase, ...current, purchasedAt: purchase.purchasedAt, isPurchased: true };
       bookMap.set(String(book.id), book);
     });

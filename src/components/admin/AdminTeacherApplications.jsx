@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { apiFetch } from "../../utils/api";
 import {
   ArrowLeft,
   ArrowRight,
@@ -21,12 +22,7 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import {
-  ADMIN_DATA_CHANGED_EVENT,
-  ADMIN_USERS_KEY,
   appendAdminActivityRecord,
-  getAdminTeachers,
-  readAdminArray,
-  updateAdminTeacherStatus,
 } from "./adminData";
 import {
   ADMIN_PLATFORM_SETTINGS_CHANGED_EVENT,
@@ -132,10 +128,31 @@ function statusClass(application) {
   return "edc-admin-status-unknown";
 }
 
+function mapTeacher(teacher) {
+  return {
+    ...teacher,
+    id: teacher._id,
+    name: teacher.fullName || teacher.name || "Not provided",
+    status: teacher.teacherStatus || "pending",
+  };
+}
+
+async function teacherApi(path, method = "GET") {
+  let response;
+  try {
+    response = await apiFetch(path.replace(/^\/api\//, "/"), { method });
+  } catch {
+    throw new Error("Cannot connect to backend. Check that port 5000 is running.");
+  }
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.message || `Request failed (${response.status})`);
+  return data;
+}
+
 function AdminTeacherApplications() {
-  const [applications, setApplications] = useState(() =>
-    getAdminTeachers(readAdminArray(ADMIN_USERS_KEY)),
-  );
+  const [applications, setApplications] = useState([]);
+  const [loadingApplications, setLoadingApplications] = useState(true);
+  const [savingTeacherId, setSavingTeacherId] = useState(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedApplication, setSelectedApplication] = useState(null);
@@ -145,10 +162,20 @@ function AdminTeacherApplications() {
   const [platformSettings, setPlatformSettings] = useState(getAdminPlatformSettings);
   const pageSize = 8;
 
-  useEffect(() => {
-    function refreshApplications() {
-      setApplications(getAdminTeachers(readAdminArray(ADMIN_USERS_KEY)));
+  async function refreshApplications() {
+    try {
+      const data = await teacherApi("/api/admin/teachers");
+      setApplications((data.teachers || []).map(mapTeacher));
+      setError("");
+    } catch (loadError) {
+      setError(loadError.message || "Could not load teachers.");
+    } finally {
+      setLoadingApplications(false);
     }
+  }
+
+  useEffect(() => {
+    void refreshApplications();
 
     function closeOnEscape(event) {
       if (event.key === "Escape") setSelectedApplication(null);
@@ -158,14 +185,10 @@ function AdminTeacherApplications() {
       setPlatformSettings(getAdminPlatformSettings());
     }
 
-    window.addEventListener("storage", refreshApplications);
-    window.addEventListener(ADMIN_DATA_CHANGED_EVENT, refreshApplications);
     window.addEventListener(ADMIN_PLATFORM_SETTINGS_CHANGED_EVENT, refreshPlatformSettings);
     window.addEventListener("keydown", closeOnEscape);
 
     return () => {
-      window.removeEventListener("storage", refreshApplications);
-      window.removeEventListener(ADMIN_DATA_CHANGED_EVENT, refreshApplications);
       window.removeEventListener(ADMIN_PLATFORM_SETTINGS_CHANGED_EVENT, refreshPlatformSettings);
       window.removeEventListener("keydown", closeOnEscape);
     };
@@ -255,8 +278,7 @@ function AdminTeacherApplications() {
     setError("");
     try {
       exportApplications(filteredApplications);
-      setMessage(`Exported ${filteredApplications.length} teacher application${filteredApplications.length === 1 ? "" : "s"}.`);
-    } catch (exportError) {
+      setMessage(`Exported ${filteredApplications.length} teacher application${filteredApplications.length === 1 ? "" : "s"}.`);    } catch (exportError) {
       setError(exportError instanceof Error ? exportError.message : "The applications could not be exported.");
     }
   }
@@ -277,55 +299,46 @@ function AdminTeacherApplications() {
     }
   }
 
-  function changeApplicationStatus(application, nextStatus) {
+  async function changeApplicationStatus(application, nextStatus) {
     setMessage("");
     setError("");
 
-    if (
-      nextStatus === "rejected" &&
-      !window.confirm(
-        `Reject the teacher application for ${teacherName(application)}?`,
-      )
-    ) {
+    if (nextStatus === "rejected" &&
+      !window.confirm(`Reject the teacher application for ${teacherName(application)}?`)) {
       return;
     }
 
+    setSavingTeacherId(application.id);
     try {
-      const updatedUsers = updateAdminTeacherStatus(
-        application.email,
-        nextStatus,
-      );
+      const action = nextStatus === "approved" ? "approve" : "reject";
+      await teacherApi(`/api/admin/teachers/${encodeURIComponent(application.id)}/${action}`, "PATCH");
       const manager = window.sessionStorage.getItem("educonnect.demoEmail") || "Admin";
-      appendAdminActivityRecord({
-        id: `teacher-${application.email}-${application.email.length}-${nextStatus}`,
-        timestamp: new Date().toISOString(),
-        actor: manager,
-        action: nextStatus === "approved" ? "approved" : "rejected",
-        category: "teacher-applications",
-        entityType: "Teacher Application",
-        entityId: application.email,
-        targetId: application.email,
-        targetName: teacherName(application),
-        previousValue: application.status || "Not set",
-        newValue: nextStatus,
-        description: nextStatus === "approved"
-          ? "Teacher application approved"
-          : "Teacher application rejected",
-        result: "Success",
-      });
-      setApplications(getAdminTeachers(updatedUsers));
+      try {
+        appendAdminActivityRecord({
+          actor: manager,
+          actorRole: "Admin",
+          action: nextStatus === "approved" ? "Teacher Approved" : "Teacher Rejected",
+          category: "teacher-applications",
+          module: "Teacher Applications",
+          entityType: "Teacher Application",
+          entityId: application.id,
+          targetId: application.id,
+          targetName: teacherName(application),
+          previousValue: application.status || "pending",
+          newValue: nextStatus,
+          description: `Teacher application ${nextStatus} through MongoDB API.`,
+          result: "Success",
+        });
+      } catch {
+        // A failed local activity log must not undo a completed server action.
+      }
       setSelectedApplication(null);
-      setMessage(
-        nextStatus === "approved"
-          ? "Teacher application approved."
-          : "Teacher application rejected.",
-      );
+      await refreshApplications();
+      setMessage(nextStatus === "approved" ? "Teacher application approved." : "Teacher application rejected.");
     } catch (statusError) {
-      setError(
-        statusError instanceof Error
-          ? statusError.message
-          : "The teacher application could not be updated.",
-      );
+      setError(statusError.message || "The teacher application could not be updated.");
+    } finally {
+      setSavingTeacherId(null);
     }
   }
 
@@ -407,7 +420,7 @@ function AdminTeacherApplications() {
         <div>
           <span className="edc-admin-page-eyebrow">APPLICATIONS</span>
           <h2><UsersRound aria-hidden="true" />Teacher Applications</h2>
-          <p>Review saved teacher accounts and their application details.</p>
+          <p>Review teacher applications stored in MongoDB.</p>
         </div>
         <div className="edc-admin-teacher-applications-actions">
           <button type="button" className="edc-admin-action-button" onClick={() => selectStatusFilter("pending")} disabled={!pendingCount}>
@@ -483,11 +496,13 @@ function AdminTeacherApplications() {
             <span className="edc-admin-teacher-application-filter-label"><ListChecks size={15} />{filteredApplications.length.toLocaleString()} matching</span>
           </div>
 
-          {applications.length === 0 ? (
+          {loadingApplications ? (
+            <div className="edc-admin-applications-empty"><p>Loading teachers from MongoDB...</p></div>
+          ) : applications.length === 0 ? (
             <div className="edc-admin-applications-empty">
               <span className="edc-admin-applications-empty-icon" aria-hidden="true"><UsersRound size={23} /></span>
               <h3>No teacher applications</h3>
-              <p>Teacher accounts registered in this browser will appear here.</p>
+              <p>Teachers registered in MongoDB will appear here.</p>
             </div>
           ) : filteredApplications.length === 0 ? (
             <div className="edc-admin-applications-empty edc-admin-applications-empty-compact">
@@ -563,6 +578,7 @@ function AdminTeacherApplications() {
                                   type="button"
                                   aria-label={`Approve ${teacherName(application)}`}
                                   title="Approve"
+                                  disabled={savingTeacherId !== null}
                                   onClick={() => changeApplicationStatus(application, "approved")}
                                 ><Check size={17} aria-hidden="true" /></button>
                                 <button
@@ -570,6 +586,7 @@ function AdminTeacherApplications() {
                                   type="button"
                                   aria-label={`Reject ${teacherName(application)}`}
                                   title="Reject"
+                                  disabled={savingTeacherId !== null}
                                   onClick={() => changeApplicationStatus(application, "rejected")}
                                 ><X size={17} aria-hidden="true" /></button>
                               </>
@@ -585,13 +602,13 @@ function AdminTeacherApplications() {
           )}
 
           <div className="edc-admin-teacher-application-pagination">
-            <p aria-live="polite">Showing {pageStart}–{pageEnd} of {filteredApplications.length.toLocaleString()} applications</p>
+            <p aria-live="polite">Showing {pageStart}â€“{pageEnd} of {filteredApplications.length.toLocaleString()} applications</p>
             <div>
               <button type="button" aria-label="Previous page" disabled={currentPage <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))}><ArrowLeft size={16} /></button>
-              {startPage > 1 && <><button type="button" onClick={() => setPage(1)}>1</button>{startPage > 2 && <span>…</span>}</>}
+              {startPage > 1 && <><button type="button" onClick={() => setPage(1)}>1</button>{startPage > 2 && <span>â€¦</span>}</>}
               {pageNumbers.map((pageNumber) => <button key={pageNumber} type="button" aria-current={currentPage === pageNumber ? "page" : undefined} onClick={() => setPage(pageNumber)}>{pageNumber}</button>)}
-              {endPage < pageCount && <>{endPage < pageCount - 1 && <span>…</span>}<button type="button" onClick={() => setPage(pageCount)}>{pageCount}</button></>}
-              <button type="button" aria-label="Next page" disabled={currentPage >= pageCount} onClick={() => setPage((current) => Math.min(pageCount, current + 1))}><ArrowRight size={16} /></button>
+              {endPage < pageCount && <>{endPage < pageCount - 1 && <span>â€¦</span>}<button type="button" onClick={() => setPage(pageCount)}>{pageCount}</button></>}
+              <button type="button" aria-label="Next page" disabled={currentPage >= pageCount} onClick={() => setPage((current)=> Math.min(pageCount, current + 1))}><ArrowRight size={16} /></button>
             </div>
           </div>
         </section>
@@ -619,23 +636,14 @@ function AdminTeacherApplications() {
             <div className="edc-admin-teacher-quick-actions">
               <button type="button" onClick={() => selectStatusFilter("pending")} disabled={!pendingCount}><Clock3 size={16} />Review Pending</button>
               <button type="button" onClick={() => selectStatusFilter("approved")} disabled={!approvedCount}><BadgeCheck size={16} />View Approved</button>
-              <button type="button" onClick={() => selectStatusFilter("rejected")} disabled={!rejectedCount}><CircleX size={16} />View Rejected</button>
-              <button type="button" onClick={handleExport} disabled={!filteredApplications.length}><Download size={16} />Export List</button>
+              <button type="button" onClick={() => selectStatusFilter("rejected")} disabled={!rejectedCount}><CircleX size={16}/>View Rejected</button>
+              <button type="button" onClick={handleExport} disabled={!filteredApplications.length}><Download size={16} />ExportList</button>
             </div>
           </section>
 
           <section className="edc-admin-teacher-applications-card">
             <div className="edc-admin-teacher-applications-card-heading"><h3><GraduationCap size={20} />Application Settings</h3></div>
             {platformSettings.error && <p className="edc-admin-teacher-settings-error" role="alert">{platformSettings.error}</p>}
-            <label className="edc-admin-teacher-setting">
-              <span><strong>Teacher verification required</strong><small>Saved platform rule</small></span>
-              <input
-                type="checkbox"
-                checked={Boolean(platformSettings.rules.teacherVerificationRequired)}
-                disabled={Boolean(platformSettings.error)}
-                onChange={(event) => updateApplicationSetting("rules", "teacherVerificationRequired", event.target.checked)}
-              />
-            </label>
             <label className="edc-admin-teacher-setting">
               <span><strong>New application alerts</strong><small>Admin notification preference</small></span>
               <input
@@ -689,6 +697,7 @@ function AdminTeacherApplications() {
                 <button
                   className="edc-admin-action-button edc-admin-action-approve"
                   type="button"
+                  disabled={savingTeacherId !== null}
                   onClick={() =>
                     changeApplicationStatus(selectedApplication, "approved")
                   }
@@ -699,6 +708,7 @@ function AdminTeacherApplications() {
                 <button
                   className="edc-admin-action-button edc-admin-action-reject"
                   type="button"
+                  disabled={savingTeacherId !== null}
                   onClick={() =>
                     changeApplicationStatus(selectedApplication, "rejected")
                   }

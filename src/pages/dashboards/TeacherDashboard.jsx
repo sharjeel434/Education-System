@@ -1,7 +1,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { createPortal } from "react-dom";
 import { appendAdminActivityRecord } from "../../components/admin/adminData";
 import { getStudentAcademicContext, getStudentAcademicSubjects, getProgramGroupsForDegreeLevel, INTERMEDIATE_STREAMS, isAcademicProfileComplete, ONLINE_COURSES } from "../../utils/studentRecommendations";
 import {
@@ -41,7 +40,8 @@ import {
   Zap,
 } from "lucide-react";
 
-import { lessonVideoKey, saveLessonVideo, deleteLessonVideo } from "../../utils/lessonVideos";
+import { getManagedCourses, refreshContent, saveContent, submitContent, removeContent, uploadContentFile, CONTENT_CHANGED_EVENT } from "../../utils/contentApi";
+import { importBrowserContent } from "../../utils/importBrowserContent";
 import CourseReviews from "../../components/reviews/CourseReviews";
 import CourseDiscussions from "../../components/discussions/CourseDiscussions";
 import InstructorAnalytics from "../../components/analytics/InstructorAnalytics";
@@ -55,10 +55,12 @@ import { NOTIFICATIONS_EVENT } from "../../utils/demoNotifications";
 
 import TeacherOverview, { TeacherWorkspaceHeader } from "../../components/teacher/TeacherOverview";
 import TeacherLessons from "../../components/teacher/TeacherLessons";
+import VerifiedBadge from "../../components/verification/VerifiedBadge";
+import StudentProfileBadge from "../../components/verification/StudentProfileBadge";
+import TeacherCnicUpload from "../../components/teacher/TeacherCnicUpload";
 import TeacherStudents from "../../components/teacher/TeacherStudents";
 import TeacherEarnings from "../../components/teacher/TeacherEarnings";
 import { collectInstructorCourseAnalytics } from "../../utils/instructorAnalytics";
-import { getCourseCatalogForDisplay } from "../../utils/teacherCourses";
 import { REVIEW_EVENT } from "../../utils/courseReviews";
 import { ORDERS_EVENT } from "../../utils/studentCart";
 import { ASSIGNMENT_EVENT } from "../../components/assignments/assignmentStorage";
@@ -233,6 +235,14 @@ const navigation = [
   ["help-support", "Help & Support", LifeBuoy],
   ["appeals", "Moderation & Appeals", ShieldAlert],
 ];
+const teacherTabIds = new Set(navigation.map(([id]) => id));
+function teacherTabFromLocation(location) {
+  if (location.pathname.startsWith("/teacher/dashboard/students/")) return "students";
+  if (location.pathname.startsWith("/teacher/dashboard/earnings/")) return "earnings";
+  if (location.pathname.startsWith("/teacher/dashboard/courses/")) return "courses";
+  const requested = new URLSearchParams(location.search).get("tab");
+  return teacherTabIds.has(requested) ? requested : "overview";
+}
 
 function TeacherProfileOverview({
   profile,
@@ -247,9 +257,18 @@ function TeacherProfileOverview({
   profileSaved,
   onEdit,
   onNavigate,
+  cnicStatus = "not_submitted",
+  rejectionReason = "",
+  verificationOpenSignal = 0,
+  statusLoading = false,
+  statusError = "",
+  onVerificationSubmitted,
 }) {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [activeProfileSection, setActiveProfileSection] = useState("profile");
+  useEffect(() => {
+    if (verificationOpenSignal > 0) setActiveProfileSection("verification");
+  }, [verificationOpenSignal]);
   const publicCourses = courses.filter((course) => String(course.status || "").toLowerCase() === "published");
   const displayName = String(profile.name || "").trim();
   const availability = String(profile.availability || "").trim();
@@ -287,7 +306,7 @@ function TeacherProfileOverview({
               {profile.avatar ? <img src={profile.avatar} alt="" /> : <UserRound size={44} aria-hidden="true" />}
             </div>
             <div className="edc-pd-identity">
-              <h2>{displayName || "Name not added"}</h2>
+              <h2>{displayName || "Name not added"} {cnicStatus === "verified" && <VerifiedBadge />}</h2>
               <p>{profile.headline || "Professional headline not added"}</p>
               {skills.length > 0 && <div className="edc-pd-hero-tags">{skills.slice(0, 5).map((skill) => <span key={skill}>{skill}</span>)}</div>}
             </div>
@@ -307,6 +326,7 @@ function TeacherProfileOverview({
               ["teaching", "Teaching"],
               ["education", "Education"],
               ["experience", "Experience"],
+              ["verification", "Verification"],
             ].map(([section, label], index, sections) => (
               <button
                 key={section}
@@ -374,6 +394,44 @@ function TeacherProfileOverview({
                 {profile.teachingProgram && <p className="edc-pd-subtle">{profile.teachingProgram}</p>}
               </section>
             )}
+            {activeProfileSection === "verification" && (
+              <section className="edc-pd-card" aria-label="Teacher identity verification" style={{ padding: 24, border: "1px solid #ddd6fe", borderRadius: 16, background: "#fcfaff" }}>
+                <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                  <h2 style={{ display: "flex", alignItems: "center", gap: 8, margin: 0 }}><ShieldCheck size={21} color="#7c3aed" />Identity Verification</h2>
+                  <span style={{ borderRadius: 999, padding: "6px 12px", fontSize: 12, fontWeight: 700, background: cnicStatus === "verified" ? "#dcfce7" : "#fef3c7", color: cnicStatus === "verified" ? "#166534" : "#92400e" }}>
+                    {statusLoading ? "Checking status" : statusError ? "Status unavailable" : cnicStatus === "verified" ? "Verified" : "Verification Pending"}
+                  </span>
+                </header>
+                <p style={{ marginTop: 14, color: "#625477", lineHeight: 1.7 }}>
+                  Submit your CNIC for identity review. A Verified badge appears on your profile after your documents are approved.
+                </p>
+                {statusLoading && (
+                  <p role="status" style={{ padding: 12, borderRadius: 10, background: "#f3edff", color: "#5b21b6" }}>
+                    Loading verification status from EduConnect AI backend…
+                  </p>
+                )}
+                {statusError && (
+                  <p role="alert" style={{ padding: 12, borderRadius: 10, background: "#fef3c7", color: "#713f12" }}>
+                    Verification status could not be loaded: {statusError}.
+                  </p>
+                )}
+                <div style={{ display: "grid", gap: 12, marginTop: 18 }}>
+                  <div style={{ padding: 16, borderRadius: 12, border: "1px solid #ede9fe", background: "#fff", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                    <span style={{ fontWeight: 600 }}>Verification</span>
+                    <strong style={{ color: cnicStatus === "verified" ? "#15803d" : "#92400e" }}>
+                      {statusLoading ? "Checking…" : statusError ? "Unavailable" : cnicStatus === "verified" ? "Verified" : cnicStatus === "pending" ? "Under review" : cnicStatus === "rejected" ? "Rejected" : "Not submitted"}
+                    </strong>
+                  </div>
+                </div>
+                {!statusLoading && !statusError && (
+                  <TeacherCnicUpload cnicStatus={cnicStatus} onSubmitted={onVerificationSubmitted} rejectionReason={rejectionReason} />
+                )}
+                <div style={{ marginTop: 18, display: "flex", flexWrap: "wrap", gap: 10 }}>
+                  <button type="button" style={styles.lightButton} onClick={onEdit}><Edit3 size={16} /> Edit Profile</button>
+                  <button type="button" style={styles.lightButton} onClick={() => onNavigate("help-support")}><LifeBuoy size={16} /> Help & Support</button>
+                </div>
+              </section>
+            )}
           </div>
         </main>
 
@@ -413,7 +471,7 @@ function TeacherProfileOverview({
             <header><h2>Public Profile Preview</h2><button type="button" aria-label="Close preview" onClick={() => setPreviewOpen(false)}><X size={19} /></button></header>
             <div className="edc-pd-preview-identity">
               <div className="edc-pd-avatar">{profile.avatar ? <img src={profile.avatar} alt="" /> : <UserRound size={36} />}</div>
-              <div><h3>{displayName || "Name not added"}</h3><p>{profile.headline || "Professional headline not added"}</p></div>
+              <div><h3>{displayName || "Name not added"} {cnicStatus === "verified" && <VerifiedBadge />}</h3><p>{profile.headline || "Professional headline not added"}</p></div>
             </div>
             <p>{profile.bio || "No biography added yet."}</p>
             <dl>
@@ -431,9 +489,17 @@ function TeacherProfileOverview({
   );
 }
 
-function TeacherDashboard({ email = "teacher@example.com" }) {
+function TeacherDashboard({ email = "teacher@example.com", account, onVerificationSubmitted, onLogout: signOut }) {
   const location = useLocation();
   const navigate = useNavigate();
+
+  const cnicStatus = account?.cnicVerification?.status || "not_submitted";
+  const [verificationOpenSignal, setVerificationOpenSignal] = useState(0);
+  const openVerificationInProfile = () => {
+    setShowProfileEditor(false);
+    setVerificationOpenSignal((value) => value + 1);
+    navigateTo("profile");
+  };
   const courseEditMatch = location.pathname.match(
     /^\/teacher\/dashboard\/courses\/([^/]+)\/edit\/?$/
   );
@@ -449,40 +515,53 @@ function TeacherDashboard({ email = "teacher@example.com" }) {
   const profileKey = `educonnect.teacher.${email}.profile`;
   const teacherNotificationKey = `educonnect.teacher.${String(email || "").trim().toLowerCase()}.notifications`;
 
-  function signOut() {
-    window.sessionStorage.removeItem("educonnect.demoEmail");
-    window.sessionStorage.removeItem("educonnect.demoRole");
-    navigate("/login", { replace: true });
-  }
-
   const [courses, setCourses] = useState(() =>
-    readSaved(courseKey, [])
+    getManagedCourses(email)
   );
   const coursesRef = useRef(courses);
   const [courseStorageError, setCourseStorageError] = useState("");
+  const [courseSaving, setCourseSaving] = useState(false);
+  const courseDraftId = useRef(null);
 
+  const courseSaveQueue = useRef(Promise.resolve());
   function updateCourses(updater) {
-    const updatedCourses =
-      typeof updater === "function" ? updater(coursesRef.current) : updater;
-
-    try {
-      localStorage.setItem(courseKey, JSON.stringify(updatedCourses));
-    } catch (error) {
-      console.error("Could not save teacher courses", error);
-      setCourseStorageError(
-        error?.name === "QuotaExceededError"
-          ? "Browser storage is full. Remove an older course image or free storage, then try saving again."
-          : "Could not save your courses in browser storage. Please try again."
-      );
-      return false;
-    }
-
-    coursesRef.current = updatedCourses;
-    setCourses(updatedCourses);
-    setCourseStorageError("");
-    window.dispatchEvent(new Event("educonnect:teacher-courses-changed"));
-    return true;
+    const save = async () => {
+      try {
+        const current = coursesRef.current;
+        const next = typeof updater === "function" ? updater(current) : updater;
+        for (const old of current) {
+          if (!next.some((item) => String(item.id) === String(old.id))) await removeContent("courses", old);
+        }
+        for (const item of next) {
+          const old = current.find((entry) => String(entry.id) === String(item.id));
+          if (JSON.stringify(old) === JSON.stringify(item)) continue;
+          if (item.status === "Pending Approval") await submitContent("courses", old);
+          else if (item.status === "Published" && old?.status === "Approved") throw new Error("Admin publication is required.");
+          else await saveContent("courses", { ...teacherTeachingProfile, subjects: [...teacherFocusSubjects, ...teacherSkillTags], ...item });
+        }
+        coursesRef.current = getManagedCourses(email);
+        setCourses(coursesRef.current);
+        setCourseStorageError("");
+        return true;
+      } catch (error) {
+        setCourseStorageError(error.message || "Course could not be saved to the server.");
+        return false;
+      }
+    };
+    const result = courseSaveQueue.current.then(save);
+    courseSaveQueue.current = result.then(() => undefined);
+    return result;
   }
+  useEffect(() => {
+    const refresh = () => {
+      const records = getManagedCourses(email);
+      coursesRef.current = records;
+      setCourses(records);
+    };
+    window.addEventListener(CONTENT_CHANGED_EVENT, refresh);
+    refreshContent().then(refresh).catch((error) => setCourseStorageError(error.message));
+    return () => window.removeEventListener(CONTENT_CHANGED_EVENT, refresh);
+  }, [email]);
 
   const courseForEdit = requestedCourseId
     ? courses.find((item) => String(item.id) === requestedCourseId)
@@ -490,15 +569,13 @@ function TeacherDashboard({ email = "teacher@example.com" }) {
 
   const [profile, setProfile] = useState(() => readTeacherProfile(profileKey, email));
 
-  const [tab, setTab] = useState(() =>
-    location.pathname.startsWith("/teacher/dashboard/students/")
-      ? "students"
-      : location.pathname.startsWith("/teacher/dashboard/earnings/")
-        ? "earnings"
-        : location.pathname.startsWith("/teacher/dashboard/courses/")
-          ? "courses"
-        : "overview"
-  );
+  const dashboardPathname = location.pathname;
+  const dashboardSearch = location.search;
+  const [tab, setTab] = useState(() => teacherTabFromLocation(location));
+  useEffect(() => {
+    const timer = window.setTimeout(() => setTab(teacherTabFromLocation({ pathname: dashboardPathname, search: dashboardSearch })), 0);
+    return () => window.clearTimeout(timer);
+  }, [dashboardPathname, dashboardSearch]);
   
 const [notifications, setNotifications] = useState(() => readSaved(teacherNotificationKey, []));
 const unreadNotifications = notifications.filter((item) => !item.read).length;
@@ -527,13 +604,6 @@ function deleteNotification(id) { setNotifications((current) => current.filter((
 const [workspaceRevision, setWorkspaceRevision] = useState(0);
 useEffect(() => {
   const refresh = event => {
-    if (event.type === "storage" && event.key === courseKey) {
-      const saved = readSaved(courseKey, []);
-      if (Array.isArray(saved)) {
-        coursesRef.current = saved;
-        setCourses(saved);
-      }
-    }
     if (event.type === "storage" && event.key === profileKey) {
       const saved = readSaved(profileKey, null);
       if (saved && typeof saved === "object") setProfile(saved);
@@ -545,11 +615,6 @@ useEffect(() => {
   return () => events.forEach(event => window.removeEventListener(event, refresh));
 }, [courseKey, profileKey]);
 const courseAnalytics = useMemo(() => collectInstructorCourseAnalytics(email, courses), [email, courses, workspaceRevision]);
-const managedCourseIds = new Set(courses.map((course) => String(course.id)));
-const visibleCatalogCourses = getCourseCatalogForDisplay().filter((course) =>
-  !(String(course.teacherEmail || "").trim().toLowerCase() === String(email || "").trim().toLowerCase()
-    && managedCourseIds.has(String(course.id)))
-);
 const transactions = courseAnalytics.flatMap(course => course.salesRecords).map(record => ({ ...record, date: String(record.purchasedAt || "").slice(0, 10) }));
 const now = new Date();
 const currentMonthKey = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0");
@@ -595,6 +660,7 @@ const [selectedLessonCourse, setSelectedLessonCourse] = useState("");
 const [editingLessonId, setEditingLessonId] = useState(null);
 const [showLessonForm, setShowLessonForm] = useState(false);
 const [lessonVideoFile, setLessonVideoFile] = useState(null);
+const [lessonResourceFile, setLessonResourceFile] = useState(null);
 
 const [lessonForm, setLessonForm] = useState({
   title: "",
@@ -615,12 +681,6 @@ const [courseSearch, setCourseSearch] = useState("");
 const [categoryFilter, setCategoryFilter] = useState("All");
 const [statusFilter, setStatusFilter] = useState("All");
 const [openCourseMenu, setOpenCourseMenu] = useState("");
-const [courseMenuPosition, setCourseMenuPosition] = useState(null);
-
-function closeCourseMenu() {
-  setOpenCourseMenu("");
-  setCourseMenuPosition(null);
-}
 
 const filteredCourses = courses.filter((course) => {
   const matchesSearch = (course.title || "")
@@ -657,31 +717,23 @@ const courseStatusTabs = [
 useEffect(() => {
   if (!openCourseMenu) return undefined;
   const closeMenu = event => {
-    const target = event.target instanceof Element ? event.target : null;
-    if (!target?.closest(".edc-teacher-course-actions-menu, .edc-teacher-course-actions-popover")) {
-      closeCourseMenu();
+    if (!event.target.closest(".edc-teacher-course-actions-menu")) {
+      setOpenCourseMenu("");
     }
   };
-  const closeOnViewportChange = () => closeCourseMenu();
   document.addEventListener("pointerdown", closeMenu);
-  window.addEventListener("scroll", closeOnViewportChange, true);
-  window.addEventListener("resize", closeOnViewportChange);
-  return () => {
-    document.removeEventListener("pointerdown", closeMenu);
-    window.removeEventListener("scroll", closeOnViewportChange, true);
-    window.removeEventListener("resize", closeOnViewportChange);
-  };
+  return () => document.removeEventListener("pointerdown", closeMenu);
 }, [openCourseMenu]);
 
   function navigateTo(nextTab) {
     setTab(nextTab);
     setMobileMenuOpen(false);
-    if (location.pathname !== "/teacher/dashboard") {
-      navigate("/teacher/dashboard");
-    }
+    const target = `/teacher/dashboard?tab=${encodeURIComponent(nextTab)}`;
+    if (`${location.pathname}${location.search}` !== target) navigate(target);
   }
 
   function startCreate() {
+    courseDraftId.current = window.crypto.randomUUID();
     setEditingId(null);
     setCourseForm({ ...emptyCourse });
     setShowForm(true);
@@ -691,6 +743,7 @@ useEffect(() => {
   function startEdit(course) {
     setEditingId(course.id);
     setCourseForm({
+      ...course,
       title: course.title || "",
       category: course.category || "Development",
       level: course.level || "Beginner",
@@ -754,8 +807,9 @@ function removeThumbnail() {
   }));
 }
 
-  function saveCourse(event) {
+  async function saveCourse(event) {
     event.preventDefault();
+    if (courseSaving) return;
 
     const title = courseForm.title.trim();
     const description = courseForm.description.trim();
@@ -792,9 +846,7 @@ function removeThumbnail() {
             : course
       );
     } else {
-      const id =
-        window.crypto?.randomUUID?.() ||
-        `${Date.now()}-${Math.random()}`;
+      const id = courseDraftId.current || (courseDraftId.current = window.crypto.randomUUID());
 
       updatedCourses = [
         ...courses,
@@ -811,7 +863,10 @@ function removeThumbnail() {
       ];
     }
 
-    if (!updateCourses(updatedCourses)) return;
+    setCourseSaving(true);
+    const saved = await updateCourses(updatedCourses);
+    setCourseSaving(false);
+    if (!saved) return;
 
     setShowForm(false);
     setEditingId(null);
@@ -821,11 +876,6 @@ function removeThumbnail() {
 
   function deleteCourse(id) {
     if (!window.confirm("Delete this course?")) return;
-    const oldCourse = courses.find((item) => item.id === id);
-    (oldCourse?.lessons || []).forEach((lesson) => {
-      deleteLessonVideo(lessonVideoKey(email, id, lesson.id)).catch(console.error);
-    });
-
     updateCourses((previous) =>
       previous.filter((course) => course.id !== id)
     );
@@ -864,9 +914,9 @@ function removeThumbnail() {
     }));
   }
 
-  function removeLesson(courseId, lessonId, options) {
+  async function removeLesson(courseId, lessonId, options) {
     if (!options?.skipConfirm && !window.confirm("Remove this lesson?")) return false;
-    const saved = updateCourses((previous) =>
+    const saved = await updateCourses((previous) =>
       previous.map((course) =>
         String(course.id) === String(courseId)
           ? {
@@ -880,10 +930,6 @@ function removeThumbnail() {
       )
     );
     if (!saved) return false;
-    deleteLessonVideo(lessonVideoKey(email, courseId, lessonId)).catch((error) => {
-      console.error("Could not remove the lesson video", error);
-      setCourseStorageError("Lesson removed, but its video file could not be deleted.");
-    });
     return true;
   }
 
@@ -891,10 +937,13 @@ function openLessonForm(courseId, lesson = null) {
   setSelectedLessonCourse(courseId);
   setEditingLessonId(lesson?.id ?? null);
   setLessonVideoFile(null);
+  setLessonResourceFile(null);
 
   setLessonForm({
     title: lesson?.title || "",
     description: lesson?.description || "",
+    content: lesson?.content || "",
+    needsUpload: Boolean(lesson?.needsUpload),
     duration: lesson?.duration || "",
     isFreePreview: Boolean(lesson?.isFreePreview),
   });
@@ -906,6 +955,7 @@ function closeLessonForm() {
   setShowLessonForm(false);
   setEditingLessonId(null);
   setLessonVideoFile(null);
+  setLessonResourceFile(null);
 }
 
 async function saveLesson(event) {
@@ -921,16 +971,22 @@ async function saveLesson(event) {
   const newLessonId = editingLessonId !== null
     ? editingLessonId
     : (window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`);
+  let videoFileId;
+  let fileId;
+  if (lessonResourceFile) {
+    try { fileId = await uploadContentFile("pdf", lessonResourceFile); }
+    catch (error) { setCourseStorageError(error.message); return; }
+  }
   if (lessonVideoFile) {
     try {
-      await saveLessonVideo(lessonVideoKey(email, selectedLessonCourse, newLessonId), lessonVideoFile);
+      videoFileId = await uploadContentFile("video", lessonVideoFile);
     } catch (error) {
-      alert(`Video could not be saved: ${error.message}. Try a smaller file or free browser storage.`);
+      alert(`Video could not be uploaded: ${error.message}.`);
       return;
     }
   }
 
-  updateCourses((previous) =>
+  const saved = await updateCourses((previous) =>
     previous.map((course) => {
       if (course.id !== selectedLessonCourse) {
         return course;
@@ -941,9 +997,12 @@ async function saveLesson(event) {
       const updatedLesson = {
         title,
         description: lessonForm.description.trim(),
+        content: lessonForm.content || "",
+        needsUpload: Boolean(lessonForm.needsUpload && !videoFileId && !fileId && !lessonForm.content?.trim()),
+        ...(fileId ? { fileId } : {}),
         duration: lessonForm.duration,
         isFreePreview: lessonForm.isFreePreview,
-        ...(lessonVideoFile ? { hasLocalVideo: true } : {}),
+        ...(videoFileId ? { videoFileId } : {}),
       };
 
       if (editingLessonId !== null) {
@@ -970,7 +1029,7 @@ async function saveLesson(event) {
     })
   );
 
-  closeLessonForm();
+  if (saved) closeLessonForm();
 }
 
 function moveLesson(courseId, lessonId, direction) {
@@ -991,7 +1050,7 @@ function moveLesson(courseId, lessonId, direction) {
 
 const teacherProfileImage = profile.avatar || "";
 const teacherExpertise = profile.expertise || "";
-const teacherDisplayName = profile.name || "Name not added";
+const teacherDisplayName = profile.name || account?.fullName || "Name not added";
 const teacherTeachingProfile = {
   educationLevel: profile.teachingEducationLevel || "",
   classNumber: profile.teachingClassNumber || "",
@@ -1102,7 +1161,7 @@ async function handleTeacherProfileImage(event) {
   }
 }
 
-  function submitForApproval(courseId) {
+  async function submitForApproval(courseId) {
     const course = courses.find(
       (item) => item.id === courseId
     );
@@ -1115,7 +1174,7 @@ async function handleTeacherProfileImage(event) {
       return;
     }
 
-    if (!updateCourses((previous) =>
+    if (!await updateCourses((previous) =>
       previous.map((item) =>
         item.id === courseId
           ? {
@@ -1150,7 +1209,7 @@ async function handleTeacherProfileImage(event) {
     alert("Course submitted for approval.");
   }
 
-  function publishApprovedCourse(courseId) {
+  async function publishApprovedCourse(courseId) {
     const course = courses.find((item) => item.id === courseId);
     if (!course || course.status !== "Approved") return;
 
@@ -1160,7 +1219,7 @@ async function handleTeacherProfileImage(event) {
       return;
     }
 
-    if (!updateCourses((previous) =>
+    if (!await updateCourses((previous) =>
       previous.map((item) =>
         item.id === courseId
           ? { ...item, status: "Published", publishedAt: new Date().toISOString() }
@@ -1335,6 +1394,7 @@ async function handleTeacherProfileImage(event) {
                 editingId={editingId}
                 teacherFocusLabel={teacherFocusLabel}
                 onSave={saveCourse}
+                pending={courseSaving}
                 onCancel={closeCourseEditor}
                 onThumbnailUpload={handleThumbnailUpload}
                 onRemoveThumbnail={removeThumbnail}
@@ -1423,9 +1483,7 @@ async function handleTeacherProfileImage(event) {
             <button
               key={id}
               type="button"
-              className={`edc-teacher-nav-item ${
-                tab === id ? "active" : ""
-              }`}
+              className={`edc-teacher-nav-item ${tab === id ? "active" : ""}`}
               onClick={() => navigateTo(id)}
             >
               <Icon size={19} />
@@ -1448,6 +1506,7 @@ async function handleTeacherProfileImage(event) {
       <main className="edc-teacher-main">
         <TeacherWorkspaceHeader
           profile={{ ...profile, name: teacherDisplayName }}
+          identityVerified={cnicStatus === "verified"}
           courses={courses}
           students={uniqueStudents}
           navigation={navigation}
@@ -1461,6 +1520,8 @@ async function handleTeacherProfileImage(event) {
           onStudent={() => navigateTo("students")}
           onLogout={signOut}
           onOpenMenu={() => setMobileMenuOpen(true)}
+          verificationPending={cnicStatus !== "verified"}
+          onVerificationClick={openVerificationInProfile}
         />
         {tab !== "courses" && (
           <header className="edc-teacher-topbar">
@@ -1480,6 +1541,7 @@ async function handleTeacherProfileImage(event) {
             </button>
           </header>
         )}
+
 
         {courseStorageError && (
           <p className="edc-teacher-storage-error" role="alert">
@@ -1603,6 +1665,7 @@ async function handleTeacherProfileImage(event) {
 {tab === "quizzes" && <CourseQuizzes role="teacher" email={email} courses={courses.map(c => ({ ...c, teacherEmail: email }))} />}
 {tab === "course-assignments" && <CourseAssignments role="teacher" email={email} courses={courses.map(c => ({ ...c, teacherEmail: email }))} />}
 {tab === "curriculum" && <CurriculumBuilder role="teacher" email={email} courses={courses.map(c => ({ ...c, teacherEmail: email }))}
+  onSaveCurriculum={(courseId, curriculum) => updateCourses((previous) => previous.map((course) => String(course.id) === String(courseId) ? { ...course, curriculum, status: "Draft" } : course))}
   onAddLesson={(courseId, lesson) => updateCourses(prev => prev.map(c => String(c.id)===String(courseId) ? {...c,status:"Draft",lessons:[...(Array.isArray(c.lessons)?c.lessons:[]),lesson]} : c))}
   onReorderLessons={(courseId, orderedIds) => updateCourses(prev => prev.map(c => {
     if(String(c.id)!==String(courseId))return c;
@@ -1635,6 +1698,10 @@ async function handleTeacherProfileImage(event) {
         <Plus size={19} />
         Create New Course
       </button>
+      {readSaved(courseKey, []).length > 0 && <button type="button" className="edc-teacher-create-course"
+        onClick={() => importBrowserContent("courses", email).then((message) => window.alert(message)).catch((error) => setCourseStorageError(error.message))}>
+        Import browser courses
+      </button>}
     </header>
 
     <section className="edc-teacher-course-stats" aria-label="Course summary">
@@ -1706,6 +1773,7 @@ async function handleTeacherProfileImage(event) {
         editingId={editingId}
         teacherFocusLabel={teacherFocusLabel}
         onSave={saveCourse}
+                pending={courseSaving}
         onCancel={() => {
           setShowForm(false);
           setEditingId(null);
@@ -1819,60 +1887,34 @@ async function handleTeacherProfileImage(event) {
                           aria-label={`More actions for ${course.title || "course"}`}
                           aria-haspopup="menu"
                           aria-expanded={openCourseMenu === String(course.id)}
-                          aria-controls={`teacher-course-menu-${course.id}`}
-                          onClick={event => {
-                            if (openCourseMenu === String(course.id)) {
-                              closeCourseMenu();
-                              return;
-                            }
-                            const rect = event.currentTarget.getBoundingClientRect();
-                            const openAbove = window.innerHeight - rect.bottom < 190;
-                            setCourseMenuPosition({
-                              top: openAbove ? rect.top - 6 : rect.bottom + 6,
-                              right: Math.max(8, window.innerWidth - rect.right),
-                              openAbove,
-                            });
-                            setOpenCourseMenu(String(course.id));
-                          }}
+                          onClick={() => setOpenCourseMenu(openCourseMenu === String(course.id) ? "" : String(course.id))}
                         >
                           <MoreVertical size={18} />
                         </button>
-                      </div>
-                      {openCourseMenu === String(course.id) && courseMenuPosition && createPortal(
-                        <div
-                          id={`teacher-course-menu-${course.id}`}
-                          className="edc-teacher-course-actions-popover"
-                          role="menu"
-                          style={{
-                            position: "fixed",
-                            top: courseMenuPosition.top,
-                            right: courseMenuPosition.right,
-                            zIndex: 1100,
-                            transform: courseMenuPosition.openAbove ? "translateY(-100%)" : undefined,
-                          }}
-                        >
-                            <button type="button" role="menuitem" onClick={() => { closeCourseMenu(); navigateTo("lessons"); }}>
+                        {openCourseMenu === String(course.id) && (
+                          <div className="edc-teacher-course-actions-popover" role="menu">
+                            <button type="button" role="menuitem" onClick={() => { setOpenCourseMenu(""); navigateTo("lessons"); }}>
                               <BookOpen size={15} /> Manage Lessons
                             </button>
-                            <button type="button" role="menuitem" onClick={() => { closeCourseMenu(); setPreviewCourse(course); }}>
+                            <button type="button" role="menuitem" onClick={() => { setOpenCourseMenu(""); setPreviewCourse(course); }}>
                               <ArrowRight size={15} /> Preview Course
                             </button>
                             {status === "Approved" && (
-                              <button type="button" role="menuitem" onClick={() => { closeCourseMenu(); publishApprovedCourse(course.id); }}>
+                              <button type="button" role="menuitem" onClick={() => { setOpenCourseMenu(""); publishApprovedCourse(course.id); }}>
                                 <CheckCircle2 size={15} /> Publish Course
                               </button>
                             )}
                             {canSubmit && (
-                              <button type="button" role="menuitem" onClick={() => { closeCourseMenu(); submitForApproval(course.id); }}>
+                              <button type="button" role="menuitem" onClick={() => { setOpenCourseMenu(""); submitForApproval(course.id); }}>
                                 <Send size={15} /> Submit for Approval
                               </button>
                             )}
-                            <button type="button" role="menuitem" className="danger" onClick={() => { closeCourseMenu(); deleteCourse(course.id); }}>
+                            <button type="button" role="menuitem" className="danger" onClick={() => { setOpenCourseMenu(""); deleteCourse(course.id); }}>
                               <Trash2 size={15} /> Delete Course
                             </button>
-                        </div>,
-                        document.body
-                      )}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </td>
                 </tr>
@@ -1896,51 +1938,6 @@ async function handleTeacherProfileImage(event) {
             Create Course
           </button>
         )}
-      </section>
-    )}
-
-    {visibleCatalogCourses.length > 0 && (
-      <section className="edc-teacher-course-marketplace global-course-history-panel">
-        <header className="edc-teacher-courses-heading">
-          <div>
-            <BookOpen size={28} aria-hidden="true" />
-            <div>
-              <h2 className="global-dashboard-section-title">Published &amp; Enrolled Courses</h2>
-              <p>Other catalog courses and student learning-history records. This list is view-only.</p>
-            </div>
-          </div>
-        </header>
-        <div className="edc-teacher-course-table-wrap">
-          <table className="edc-teacher-course-table">
-            <thead>
-              <tr>
-                <th scope="col">Course</th>
-                <th scope="col">Instructor</th>
-                <th scope="col">Category</th>
-                <th scope="col">Lessons</th>
-              </tr>
-            </thead>
-            <tbody>
-              {visibleCatalogCourses.map(course => (
-                <tr key={`${course.teacherEmail}:${course.id}`}>
-                  <td>
-                    <div className="edc-teacher-course-table-item">
-                      {course.thumbnail || course.image ? (
-                        <img src={course.thumbnail || course.image} alt="" />
-                      ) : (
-                        <span className="edc-teacher-course-table-placeholder"><BookOpen size={22} /></span>
-                      )}
-                      <div><strong>{course.title}</strong></div>
-                    </div>
-                  </td>
-                  <td>{course.instructorName || course.teacherEmail}</td>
-                  <td>{course.category || "Uncategorized"}</td>
-                  <td>{Array.isArray(course.lessons) ? course.lessons.length : Math.max(0, Number(course.lessons) || 0)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
       </section>
     )}
   </div>
@@ -1981,7 +1978,7 @@ async function handleTeacherProfileImage(event) {
                   : "Add New Lesson"}
               </h3>
               <p>
-                Enter your lesson information below.
+                {lessonForm.needsUpload ? "Re-upload this imported lesson’s media before submitting the course." : "Enter your lesson information below."}
               </p>
             </div>
 
@@ -2041,6 +2038,16 @@ async function handleTeacherProfileImage(event) {
             </div>
 
             <div className="edc-lesson-field">
+              <label htmlFor="edc-lesson-content">Lesson content</label>
+              <textarea id="edc-lesson-content" rows={5} value={lessonForm.content || ""}
+                onChange={(event) => setLessonForm({ ...lessonForm, content: event.target.value })} />
+            </div>
+            <div className="edc-lesson-field">
+              <label htmlFor="edc-lesson-resource">Lesson PDF attachment</label>
+              <input id="edc-lesson-resource" type="file" accept="application/pdf" onChange={(event) => setLessonResourceFile(event.target.files?.[0] || null)} />
+              <small>PDF up to 20 MB.</small>
+            </div>
+            <div className="edc-lesson-field">
               <label>Duration (minutes)</label>
               <input
                 type="number"
@@ -2073,7 +2080,7 @@ async function handleTeacherProfileImage(event) {
               <small>
                 {lessonVideoFile
                   ? `Selected: ${lessonVideoFile.name}`
-                  : "MP4/WebM saved locally in this browser (IndexedDB)."}
+                  : "MP4 or WebM, up to 250 MB."}
               </small>
             </div>
 
@@ -2164,7 +2171,7 @@ async function handleTeacherProfileImage(event) {
               </div>
 
               <div>
-                <h3>{selectedStudent.name}</h3>
+                <h3>{selectedStudent.name} <StudentProfileBadge email={selectedStudent.email} /></h3>
                 <p>{selectedStudent.email}</p>
               </div>
             </div>
@@ -2473,7 +2480,7 @@ async function handleTeacherProfileImage(event) {
             </div>
             ) : (
               <TeacherProfileOverview
-                profile={profile}
+                profile={{ ...profile, name: teacherDisplayName }}
                 email={email}
                 courses={courses}
                 studentCount={uniqueStudents.length}
@@ -2485,6 +2492,10 @@ async function handleTeacherProfileImage(event) {
                 profileSaved={profileSaved}
                 onEdit={startProfileEdit}
                 onNavigate={navigateTo}
+                cnicStatus={cnicStatus}
+                rejectionReason={account?.cnicVerification?.rejectionReason}
+                verificationOpenSignal={verificationOpenSignal}
+                onVerificationSubmitted={onVerificationSubmitted}
               />
             )}
           </div>
@@ -2497,10 +2508,7 @@ async function handleTeacherProfileImage(event) {
             color: "#9387a2",
           }}
         >
-          Teacher Dashboard frontend demo. Course and
-          profile data are stored locally in this browser.
-          Real approvals, enrollments and payments require
-          backend integration.
+          Course and profile changes are saved in this browser.
         </p>
         
 {previewCourse && (

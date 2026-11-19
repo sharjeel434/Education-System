@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ArrowRight, Bell, ChevronDown, GraduationCap, LogOut, UserRound } from "lucide-react";
+import { ArrowRight, Bell, ChevronDown, GraduationCap, LogOut, ShieldCheck, UserRound } from "lucide-react";
 import { NOTIFICATIONS_EVENT } from "../../utils/demoNotifications";
 import "./StudentDashboardTheme.css";
 
@@ -14,7 +14,7 @@ function readAccount(email) {
   } catch { return { profile: {}, notifications: [], unread: 0 }; }
 }
 
-export default function StudentDashboardHeader({ email, onLogout }) {
+export default function StudentDashboardHeader({ email, onLogout, fullName, identityVerified = false }) {
   const navigate = useNavigate();
   const [account, setAccount] = useState(() => readAccount(email));
   const [menuOpen, setMenuOpen] = useState(false);
@@ -43,18 +43,27 @@ export default function StudentDashboardHeader({ email, onLogout }) {
       document.removeEventListener("keydown", escape);
     };
   }, [email]);
-  const name = account.profile.fullName?.trim() || "Student";
+  const name = account.profile.fullName?.trim() || fullName || "Student";
   const initials = name.split(/\s+/).slice(0, 2).map(part => part[0]).join("");
   const recentNotifications = account.notifications.slice(0, 5);
-  const openTab = tab => {
+  const openTab = (tab, profileSection) => {
     setMenuOpen(false);
     setNotificationsOpen(false);
-    navigate("/student/dashboard", { state: { studentTab: tab } });
+    navigate("/student/dashboard", { state: { studentTab: tab, profileSection } });
   };
 
   return <header className="auth-topbar edc-student-topbar">
     <Link className="auth-brand edc-student-brand" to="/" aria-label="EduConnect AI home"><GraduationCap size={32} strokeWidth={2.2}/><span>EduConnect <b>AI</b></span></Link>
     <div className="edc-student-topbar-actions">
+      <button
+        type="button"
+        className={`edc-student-verification${identityVerified ? " is-verified" : ""}`}
+        aria-label={`${identityVerified ? "Verified Profile" : "Verification pending"}. Open Verification in My Profile`}
+        onClick={() => openTab("profile", "verification")}
+      >
+        <ShieldCheck size={15} aria-hidden="true" />
+        {identityVerified ? "Verified Profile" : "Verification Pending"}
+      </button>
       <div className="edc-topbar-notifications" ref={notificationMenu}>
         <button type="button" className="edc-topbar-bell" aria-label={`Notifications, ${account.unread} unread`} aria-haspopup="dialog" aria-expanded={notificationsOpen} aria-controls="edc-topbar-notification-panel" onClick={() => { setMenuOpen(false); setNotificationsOpen(open => !open); }}><Bell size={21}/>{account.unread > 0 && <span/>}</button>
         {notificationsOpen && <section className="edc-topbar-notification-panel" id="edc-topbar-notification-panel" role="dialog" aria-label="Recent notifications">

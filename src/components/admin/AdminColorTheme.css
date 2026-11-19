@@ -1,4 +1,5 @@
 .edc-admin-layout {
+  --edc-dashboard-accent: #271944;
   --edc-admin-ink: #2b1048;
   --edc-admin-muted: #8b789d;
   --edc-admin-line: #e5d8f9;
