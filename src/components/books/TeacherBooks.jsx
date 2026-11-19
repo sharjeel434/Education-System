@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { refreshContent, saveContent, submitContent, removeContent, uploadContentFile } from "../../utils/contentApi";
+import { importBrowserContent } from "../../utils/importBrowserContent";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   BookOpen,
@@ -21,12 +23,9 @@ import {
   BOOKS_CHANGED_EVENT,
   BOOKS_MAX_FILE_SIZE,
   createBookSystemId,
-  deleteTeacherBook,
   getBookReviews,
   getTeacherBooks,
   loadBookFile,
-  saveBookFile,
-  saveBookRecord,
   validateBookUpload,
 } from "../../utils/books";
 import "./books.css";
@@ -135,9 +134,11 @@ export default function TeacherBooks({ email, profile }) {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const draftId = useRef(null);
 
   useEffect(() => {
     const refresh = () => setBooks(getTeacherBooks(email));
+    refreshContent().catch((error) => setError(error.message));
     window.addEventListener(BOOKS_CHANGED_EVENT, refresh);
     window.addEventListener("storage", refresh);
     return () => {
@@ -213,6 +214,7 @@ export default function TeacherBooks({ email, profile }) {
   }
 
   function openUploadForm() {
+    draftId.current = createBookSystemId("book");
     reset();
     setShowForm(true);
     setError("");
@@ -252,81 +254,49 @@ export default function TeacherBooks({ email, profile }) {
       return;
     }
 
-    const id = editing?.id || createBookSystemId("book");
-    const pdfFileId = pdf ? `book-pdf:${String(email).toLowerCase()}:${id}:${createBookSystemId("revision")}` : editing.pdfFileId;
-    const previewFileId = previewPdf ? `book-preview:${String(email).toLowerCase()}:${id}:${createBookSystemId("revision")}` : editing?.previewFileId || "";
-    const coverFileId = cover ? `book-cover:${String(email).toLowerCase()}:${id}:${createBookSystemId("revision")}` : editing?.coverFileId || "";
     setSaving(true);
     try {
-      if (pdf) await saveBookFile(pdfFileId, pdf);
-      if (previewPdf) await saveBookFile(previewFileId, previewPdf);
-      if (cover) await saveBookFile(coverFileId, cover);
-      saveBookRecord({
+      const pdfFileId = pdf ? await uploadContentFile("pdf", pdf) : editing?.pdfFileId;
+      const previewFileId = previewPdf ? await uploadContentFile("preview", previewPdf) : editing?.previewFileId || "";
+      const coverFileId = cover ? await uploadContentFile("image", cover) : editing?.coverFileId || "";
+      const saved = await saveContent("books", {
         ...(editing || {}),
-        id,
-        teacherEmail: String(email).trim().toLowerCase(),
-        teacherName: profile?.name || String(email).split("@")[0],
-        title: String(form.title).trim(),
-        fileName: pdf?.name || editing?.fileName || "book.pdf",
-        pdfFileIds: [...(editing?.pdfFileIds || (editing?.pdfFileId ? [editing.pdfFileId] : [])), ...(pdf && editing?.pdfFileId ? [editing.pdfFileId] : []), pdfFileId].filter(Boolean),
-        previewFileId,
-        previewFileIds: [...(editing?.previewFileIds || (editing?.previewFileId ? [editing.previewFileId] : [])), ...(previewPdf && editing?.previewFileId ? [editing.previewFileId] : []), previewFileId].filter(Boolean),
-        previewFileName: previewPdf?.name || editing?.previewFileName || "",
-        coverFileId,
-        coverFileIds: [...(editing?.coverFileIds || (editing?.coverFileId ? [editing.coverFileId] : [])), ...(cover && editing?.coverFileId ? [editing.coverFileId] : []), coverFileId].filter(Boolean),
-        description: String(form.description).trim(),
+        id: editing?.id || draftId.current || (draftId.current = createBookSystemId("book")),
+        ...form,
+        category: String(form.subject).trim(),
         author: String(form.author).trim() || profile?.name || "",
-        subject: String(form.subject).trim(),
-        educationLevel: form.educationLevel,
-        classOrProgram: String(form.classOrProgram).trim(),
-        semester: "",
-        pages: Math.max(0, Number(form.pages) || 0),
-        isFree: Boolean(form.isFree),
         price: form.isFree ? 0 : Number(form.price),
-        downloadAllowed: Boolean(form.downloadAllowed),
-        pdfFileId,
-        status: submit ? "Pending Approval" : "Draft",
-        rejectionReason: "",
-        updatedAt: new Date().toISOString(),
-        createdAt: editing?.createdAt || new Date().toISOString(),
+        pages: Math.max(0, Number(form.pages) || 0),
+        pdfFileId, previewFileId, coverFileId,
+        fileName: pdf?.name || editing?.fileName || "book.pdf",
+        previewFileName: previewPdf?.name || editing?.previewFileName || "",
       });
+      if (submit) await submitContent("books", saved);
       setMessage(submit ? "Submitted to Admin for approval." : "Draft saved.");
       reset();
     } catch (saveError) {
-      setError(saveError.message || "Book could not be saved in this browser.");
+      setError(saveError.message || "Book could not be saved to the server.");
     } finally {
       setSaving(false);
     }
   }
 
-  function submitForApproval(book) {
+  async function submitForApproval(book) {
     try {
-      saveBookRecord({
-        ...book,
-        status: "Pending Approval",
-        rejectionReason: "",
-        updatedAt: new Date().toISOString(),
-      });
+      await submitContent("books", book);
       setMessage("Submitted to Admin for approval.");
       setError("");
-    } catch (saveError) {
-      setError(saveError.message || "Book could not be submitted.");
-    }
+    } catch (error) { setError(error.message); }
   }
 
-  function removeBook(book) {
-    if (!window.confirm(`Delete “${book.title}”?`)) return;
+  async function removeBook(book) {
+    if (!window.confirm(`Delete "${book.title}"?`)) return;
     try {
-      if (deleteTeacherBook(email, book.id)) {
-        setMessage(isPublished(book)
-          ? "Removed from the public library. Existing buyer access is preserved in this browser."
-          : "Book deleted.");
-        setError("");
-        if (editing?.id === book.id) reset();
-      }
-    } catch (deleteError) {
-      setError(deleteError.message || "Book could not be deleted.");
-    }
+      await removeContent("books", book);
+      setMessage("Book removed from the library.");
+      setError("");
+      if (editing?.id === book.id) reset();
+    } catch (error) { setError(error.message); }
   }
 
   async function openPdf(book, download = false) {
@@ -368,6 +338,7 @@ export default function TeacherBooks({ email, profile }) {
           <div>
             <h1>My PDF/eBooks</h1>
             <p>Manage your PDF uploads, approval status, and published books.</p>
+            <button type="button" className="edc-tb-secondary" onClick={() => importBrowserContent("books", email).then(setMessage).catch((error) => setError(error.message))}>Import browser books</button>
           </div>
         </div>
         <div className="edc-tb-heading-actions">

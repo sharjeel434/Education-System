@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
@@ -13,67 +12,36 @@ import {
   UserRound,
   UsersRound,
 } from "lucide-react";
-import { sha256 } from "@noble/hashes/sha2.js";
-import {
-  bytesToHex,
-  utf8ToBytes,
-} from "@noble/hashes/utils.js";
 import { appendAdminActivityRecord } from "../components/admin/adminData";
+import { apiFetch } from "../utils/api";
 import "./SignupPage.css";
 
-const USERS_KEY = "educonnect.registeredUsers";
+async function registerAccount({ name, email, role, password }) {
+  let response;
+  try {
+    response = await apiFetch("/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fullName: name,
+        email,
+        password,
+        role: role.toLowerCase(),
+      }),
+    });
+  } catch {
+    throw new Error("Cannot connect to backend. Please check that it is running.");
+  }
 
-async function saveAccount({ name, email, role, password }) {
-  const saltBytes = new Uint8Array(16);
-
-  if (!window.crypto?.getRandomValues) {
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
     throw new Error(
-      "This browser cannot generate a secure salt."
+      response.status === 409
+        ? "This email is already registered. Please log in."
+        : data.message || "Registration failed. Please try again."
     );
   }
-
-  window.crypto.getRandomValues(saltBytes);
-
-  const salt = bytesToHex(saltBytes);
-
-  const passwordHash = bytesToHex(
-    sha256(utf8ToBytes(`${salt}:${password}`))
-  );
-
-  const users = JSON.parse(
-    window.localStorage.getItem(USERS_KEY) || "[]"
-  );
-
-  if (!Array.isArray(users)) {
-    throw new Error("Saved account data is invalid.");
-  }
-
-  if (
-    users.some(
-      (user) =>
-        user.email?.toLowerCase() === email
-    )
-  ) {
-    return false;
-  }
-
-  users.push({
-    name: name.trim(),
-    email,
-    role,
-    salt,
-    passwordHash,
-    status:
-      role === "Teacher" ? "pending" : "active",
-    createdAt: new Date().toISOString(),
-  });
-
-  window.localStorage.setItem(
-    USERS_KEY,
-    JSON.stringify(users)
-  );
-
-  return true;
+  return data;
 }
 
 function SignupPage() {
@@ -156,20 +124,7 @@ function SignupPage() {
     setLoading(true);
 
     try {
-      const registered = await saveAccount({
-        name,
-        email,
-        role,
-        password,
-      });
-
-      if (!registered) {
-        setMessageIsError(true);
-        setMessage(
-          "This email is already registered. Please log in."
-        );
-        return;
-      }
+      await registerAccount({ name, email, role, password });
 
       try {
         appendAdminActivityRecord({
@@ -594,9 +549,7 @@ function SignupPage() {
 
           <p className="signup-security-note">
             <LockKeyhole size={13} />
-            Frontend demo registration.
-            Secure accounts will be enabled
-            with the backend.
+            Your registration is securely processed by our backend.
           </p>
         </section>
       </div>

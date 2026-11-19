@@ -17,6 +17,7 @@ import {
   MessageCircle,
   Plus,
   Search,
+  ShieldCheck,
   Star,
   Upload,
   UserRound,
@@ -38,6 +39,7 @@ import {
   visibleCourseDiscussions,
 } from "../../utils/discussionHelpers";
 import "./TeacherOverview.css";
+import VerifiedBadge from "../verification/VerifiedBadge";
 
 const currency = (value) =>
   `PKR ${Number(value || 0).toLocaleString("en-PK", { maximumFractionDigits: 0 })}`;
@@ -76,6 +78,9 @@ export function TeacherWorkspaceHeader({
   onStudent,
   onLogout,
   onOpenMenu,
+  verificationPending = false,
+  identityVerified = false,
+  onVerificationClick,
 }) {
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
@@ -219,7 +224,40 @@ export function TeacherWorkspaceHeader({
           </div>
         )}
       </form>
-      <div className="edc-to-notification-menu">
+      {(verificationPending || identityVerified) && (
+        <button
+          type="button"
+          onClick={onVerificationClick}
+          aria-label={`${identityVerified ? "Verified" : "Verification pending"}. Open Verification in My Profile`}
+          title="Open My Profile → Verification"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "6px",
+            marginLeft: "auto",
+            marginRight: "8px",
+            padding: "8px 11px",
+            background: identityVerified ? "#ecf9f2" : "#EEC651",
+            color: identityVerified ? "#18764e" : "#111111",
+            border: `1px solid ${identityVerified ? "#bee7d5" : "#EEC651"}`,
+            borderRadius: "10px",
+            fontSize: "12px",
+            fontWeight: 700,
+            lineHeight: 1.2,
+            whiteSpace: "nowrap",
+            flexShrink: 0,
+            cursor: "pointer",
+          }}
+        >
+          <ShieldCheck size={15} aria-hidden="true" />
+          {identityVerified ? "Verified" : "Verification Pending"}
+        </button>
+      )}
+      <div
+        className="edc-to-notification-menu"
+        style={verificationPending || identityVerified ? { marginLeft: 0 } : undefined}
+      >
         <button
           ref={notificationButton}
           type="button"
@@ -298,7 +336,7 @@ export function TeacherWorkspaceHeader({
         </button>
         {accountOpen && (
           <div className="edc-to-account-menu">
-            <strong>{profile.name || "Teacher"}</strong>
+            <strong>{profile.name || "Teacher"} {identityVerified && <VerifiedBadge />}</strong>
             <button
               type="button"
               onClick={() => {

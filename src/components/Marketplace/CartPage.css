@@ -39,12 +39,12 @@
   height: 54px;
   border-radius: 16px;
   background: #f1eafe;
-  color: #6d28d9;
+  color: var(--edc-dashboard-accent, #6d28d9);
 }
 
 .edc-cart-header h1 { margin: 2px 0 4px; font-size: clamp(28px, 4vw, 36px); }
 .edc-cart-header p { margin: 0; color: #6b7280; }
-.edc-cart-header .edc-cart-eyebrow { color: #6d28d9; font-size: 11px; font-weight: 800; letter-spacing: 1.25px; }
+.edc-cart-header .edc-cart-eyebrow { color: var(--edc-dashboard-accent, #6d28d9); font-size: 11px; font-weight: 800; letter-spacing: 1.25px; }
 
 .edc-cart-layout {
   display: grid;
@@ -82,12 +82,12 @@
   overflow: hidden;
   border-radius: 11px;
   background: #f1eafe;
-  color: #6d28d9;
+  color: var(--edc-dashboard-accent, #6d28d9);
 }
 
 .edc-cart-course-image img { width: 100%; height: 100%; object-fit: cover; }
 .edc-cart-course-info { min-width: 0; flex: 1; }
-.edc-cart-course-category { color: #6d28d9; font-size: 11px; font-weight: 750; }
+.edc-cart-course-category { color: var(--edc-dashboard-accent, #6d28d9); font-size: 11px; font-weight: 750; }
 .edc-cart-course-info h3 { margin: 4px 0; font-size: 16px; line-height: 1.35; }
 .edc-cart-course-info p { margin: 0 0 7px; color: #6b7280; font-size: 13px; }
 .edc-cart-course-lessons { display: inline-flex; align-items: center; gap: 5px; color: #6b7280; font-size: 12px; }
@@ -125,9 +125,9 @@
   gap: 9px;
   min-height: 46px;
   padding: 12px 18px;
-  border: 1px solid #6d28d9;
+  border: 1px solid var(--edc-dashboard-accent, #6d28d9);
   border-radius: 10px;
-  background: #6d28d9;
+  background: var(--edc-dashboard-accent, #6d28d9);
   color: #fff;
   font: inherit;
   font-weight: 700;

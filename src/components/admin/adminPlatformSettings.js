@@ -14,7 +14,7 @@ export const DEFAULT_ADMIN_PLATFORM_SETTINGS = {
   },
   appearance: { theme: "light", sidebar: "expanded" },
   rules: {
-    teacherVerificationRequired: true,
+    teacherVerificationRequired: false,
     courseApprovalRequired: true,
     ebookApprovalRequired: true,
     contentPublishingRules: "Approved content only",
@@ -49,7 +49,7 @@ function mergeSettings(value) {
   return {
     general: { ...DEFAULT_ADMIN_PLATFORM_SETTINGS.general, ...value.general },
     appearance: { ...DEFAULT_ADMIN_PLATFORM_SETTINGS.appearance, ...value.appearance },
-    rules: { ...DEFAULT_ADMIN_PLATFORM_SETTINGS.rules, ...value.rules },
+    rules: { ...DEFAULT_ADMIN_PLATFORM_SETTINGS.rules, ...value.rules, teacherVerificationRequired: false },
     marketplace: { ...DEFAULT_ADMIN_PLATFORM_SETTINGS.marketplace, ...value.marketplace },
     system: { ...DEFAULT_ADMIN_PLATFORM_SETTINGS.system, ...value.system },
     notifications: { ...DEFAULT_ADMIN_PLATFORM_SETTINGS.notifications, ...value.notifications },

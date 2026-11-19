@@ -1,4 +1,4 @@
-import { getCourseCatalogForDisplay } from "../../utils/teacherCourses";
+import { getPublishedTeacherCourses } from "../../utils/teacherCourses";
 import { getBookReviews, getPublishedBooks } from "../../utils/books";
 import { courseReviewKey, getReviews, resolveReviewStudent } from "../../utils/courseReviews";
 import { isModerationVisible } from "../../utils/moderationVisibility";
@@ -9,8 +9,6 @@ const searchText = value => normalize(value).normalize("NFKD").replace(/[^\p{L}\
 const read = (key, fallback) => { try { return JSON.parse(localStorage.getItem(key) || "null") ?? fallback; } catch { return fallback; } };
 export const landingCourseUrl = course => course.kind === "program"
   ? `/courses?${new URLSearchParams({ program: course.id })}`
-  : course.isEnrollmentSnapshot
-    ? "/courses"
   : `/course/${encodeURIComponent(course.teacherEmail)}/${encodeURIComponent(String(course.id))}`;
 const courseUpdatedAt = course => {
   const timestamp = Date.parse(course.updatedAt || course.publishedAt || course.createdAt || "");
@@ -35,19 +33,17 @@ const average = rows => rows.length ? rows.reduce((sum, review) => sum + Number(
 
 export function buildLandingCatalog(courses = [], books = [], registered = [], profiles = {}, reviews = [], bookReviews = []) {
   const seen = new Set();
-  const visibleCourses = courses.filter(course => {
-    if (!course?.id || (!course.isEnrollmentSnapshot && (course.status !== "Published" || !course.teacherEmail)) || typeof course.title !== "string" || !course.title.trim()) return false;
+  const published = courses.filter(course => {
+    if (!course?.id || course.status !== "Published" || !course.teacherEmail || typeof course.title !== "string" || !course.title.trim()) return false;
     const key = courseReviewKey(course); if (seen.has(key)) return false; seen.add(key); return true;
   });
-  const courseMap = new Map(visibleCourses.map(course => [courseReviewKey(course), course]));
+  const courseMap = new Map(published.map(course => [courseReviewKey(course), course]));
   const publicBooks = books.filter(book => book?.id && typeof book.title === "string" && book.title.trim() && ["Approved", "Published"].includes(book.status));
   const visibleReviews = reviews.filter(review => review && !review.moderated && courseMap.has(String(review.courseKey)) && Number(review.rating) >= 1 && Number(review.rating) <= 5);
-  const listed = visibleCourses.map(course => {
+  const listed = published.map(course => {
     const ratings = visibleReviews.filter(review => review.courseKey === courseReviewKey(course));
-    const lessonCount = Array.isArray(course.lessons)
-      ? course.lessons.length
-      : Math.max(0, Number(course.lessons) || 0);
-    return { ...course, key: courseReviewKey(course), rating: average(ratings), reviewCount: ratings.length, lessonCount };
+    const lessons = Array.isArray(course.lessons) ? course.lessons : [];
+    return { ...course, key: courseReviewKey(course), rating: average(ratings), reviewCount: ratings.length, lessonCount: lessons.length };
   });
   const usersByEmail = new Map();
   registered.forEach(user => { const email = normalize(user?.email); if (email && !usersByEmail.has(email)) usersByEmail.set(email, user); });
@@ -61,7 +57,7 @@ export function buildLandingCatalog(courses = [], books = [], registered = [], p
   for (const email of teacherEmails) {
     const user = usersByEmail.get(email);
     if (user && (normalize(user.role) !== "teacher" || ["blocked", "suspended", "deleted"].includes(normalize(user.status)))) continue;
-    const ownCourses = listed.filter(course => normalize(course.teacherEmail) === email && !course.isEnrollmentSnapshot);
+    const ownCourses = listed.filter(course => normalize(course.teacherEmail) === email);
     const ownBooks = publicBooks.filter(book => normalize(book.teacherEmail) === email);
     const uploadedProfile = ownCourses.find(course => course.instructorProfile && typeof course.instructorProfile === "object")?.instructorProfile || {};
     const savedProfile = profiles[email] && typeof profiles[email] === "object" && !Array.isArray(profiles[email]) ? profiles[email] : {};
@@ -87,7 +83,7 @@ export function buildLandingCatalog(courses = [], books = [], registered = [], p
 export function readLandingCatalog() {
   const users = read("educonnect.registeredUsers", []), profiles = {};
   const registered = Array.isArray(users) ? users : [];
-  const courses = getCourseCatalogForDisplay(), books = getPublishedBooks();
+  const courses = getPublishedTeacherCourses(), books = getPublishedBooks();
   const teacherEmails = new Set([
     ...registered.filter(user => normalize(user?.role) === "teacher").map(user => normalize(user.email)),
     ...courses.map(course => normalize(course.teacherEmail)),

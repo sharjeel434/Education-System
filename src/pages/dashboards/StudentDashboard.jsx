@@ -1,3 +1,4 @@
+import { getContentState, enrollContent, unenrollContent, getMongoCourseEnrollments, contentFileUrl, CONTENT_CHANGED_EVENT } from "../../utils/contentApi";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -93,6 +94,8 @@ import { loadBookFile } from "../../utils/books";
 import ReportAction from "../../components/moderation/ReportAction";
 import UserModerationAppeals, { UserSupportCenter } from "../../components/moderation/UserModerationAppeals";
 import { isModerationVisible } from "../../utils/moderationVisibility";
+import TeacherCnicUpload from "../../components/teacher/TeacherCnicUpload";
+import VerifiedBadge from "../../components/verification/VerifiedBadge";
 import "../../components/books/books.css";
 import "../../components/SectionTypography.css";
 import "../../components/DashboardCardClarity.css";
@@ -235,7 +238,9 @@ function ProgressBar({ value, label = "Progress" }) {
   );
 }
 
-export default function StudentDashboard({ email = "student" }) {
+export default function StudentDashboard({ email = "student", account, onVerificationSubmitted }) {
+  const cnicStatus = account?.cnicVerification?.status || "not_submitted";
+  const identityVerified = cnicStatus === "verified";
   const baseKey = `educonnect.student.${email.trim().toLowerCase()}`;
   const location = useLocation();
   const navigate = useNavigate();
@@ -247,14 +252,21 @@ export default function StudentDashboard({ email = "student" }) {
 
   const [activeTab, setActiveTab] = useState(() => quizRouteId ? "quizzes" : "overview");
   const [mobileMenu, setMobileMenu] = useState(false);
-  const requestedTab = location.state?.studentTab;
+  const requestedTab = location.state?.studentTab === "verification" ? "profile" : location.state?.studentTab;
+  const showProfileVerification = location.state?.profileSection === "verification" || location.state?.studentTab === "verification";
+  const verificationFocusKey = useRef(null);
   useEffect(() => {
     if (requestedTab && MENU.some(item => item.id === requestedTab)) {
       setActiveTab(requestedTab);
       setMobileMenu(false);
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      if (!showProfileVerification) window.scrollTo({ top: 0, behavior: "smooth" });
     }
-  }, [requestedTab, location.key]);
+  }, [requestedTab, location.key, showProfileVerification]);
+  useEffect(() => {
+    if (activeTab !== "profile" || !showProfileVerification || verificationFocusKey.current === location.key) return;
+    verificationFocusKey.current = location.key;
+    document.getElementById("edc-student-identity-verification")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [activeTab, showProfileVerification, location.key]);
   const [search, setSearch] = useState("");
   const [learningSearch, setLearningSearch] = useState("");
   const [learningInitialFilter, setLearningInitialFilter] = useState("all");
@@ -353,7 +365,7 @@ export default function StudentDashboard({ email = "student" }) {
   const [editingProfile, setEditingProfile] = useState(false);
   const [profileNotice, setProfileNotice] = useState("");
   const [resourceNotice, setResourceNotice] = useState("");
-  const profileDisplayName = studentProfile.fullName?.trim() || registeredAccount?.name?.trim() || "Student";
+  const profileDisplayName = studentProfile.fullName?.trim() || account?.fullName || registeredAccount?.name?.trim() || "Student";
   const profileAvatar = studentProfile.avatar || registeredAccount?.avatar || registeredAccount?.profile?.avatar || "";
 
   useEffect(() => {
@@ -445,6 +457,22 @@ export default function StudentDashboard({ email = "student" }) {
   const [cartSummaryFilter, setCartSummaryFilter] = useState("all");
   const [orders, setOrders] = useState(() => readStorage(`${baseKey}.orders`, []));
   const [bookPurchases, setBookPurchases] = useState(() => readStorage(`${baseKey}.bookPurchases`, []));
+  useEffect(() => {
+    const sync = () => {
+      const state = getContentState();
+      if (state.role !== "student" || state.email?.toLowerCase() !== email.toLowerCase()) return;
+      const owned = (kind, items) => items.filter((item) => state.accesses.some((entry) => entry.kind === kind && String(entry.contentId) === String(item.id)));
+      const merge = (existing, records) => {
+        const missing = records.filter((record) => !existing.some((item) => String(item.id) === String(record.id)));
+        return missing.length ? [...existing, ...missing.map((record) => ({ ...record, completedLessons: 0, progress: 0 }))] : existing;
+      };
+      setEnrollments((existing) => merge(existing, owned("course", state.courses)));
+      setBookPurchases((existing) => merge(existing, owned("book", state.books)));
+    };
+    sync();
+    window.addEventListener(CONTENT_CHANGED_EVENT, sync);
+    return () => window.removeEventListener(CONTENT_CHANGED_EVENT, sync);
+  }, [email]);
   const [orderNotice, setOrderNotice] = useState("");
   const [notifications, setNotifications] = useState(() => readStorage(`${baseKey}.notifications`, []));
   useEffect(() => {
@@ -928,6 +956,7 @@ export default function StudentDashboard({ email = "student" }) {
   // Keep instructor lesson data alongside the student's enrollment record.
   // Demo courses still use their existing numbered sample lessons.
   function getLessonMedia(lesson) {
+    if (lesson?.videoFileId) return { type: "video", src: contentFileUrl(lesson.videoFileId) };
     const raw = String(lesson?.videoUrl || lesson?.video || lesson?.url || "").trim();
     if (!raw) return null;
     try {
@@ -975,9 +1004,31 @@ export default function StudentDashboard({ email = "student" }) {
     };
   }, []);
   const latestPublishedCourses = useMemo(() => getPublishedTeacherCourses(), [courseRevision]);
+  // MongoDB is authoritative for enrolled courses: the list is built from the
+  // student's ContentAccess records (returned by /content/state), joined with
+  // the approved published catalog. localStorage only carries demo/static
+  // courses and per-lesson progress until server-side progress lands.
   const enrolledCourses = useMemo(
-    () =>
-      enrollments
+    () => {
+      const localProgress = new Map(enrollments.map((item) => [String(item.id), item]));
+      const mongoCourses = getMongoCourseEnrollments().map((record) => {
+        const local = localProgress.get(String(record.id));
+        const lessonItems = Array.isArray(record.lessons) ? record.lessons : [];
+        const lessonCount = lessonItems.length;
+        const completed = Math.min(lessonCount, Math.max(0, Number(local?.completedLessons) || 0));
+        return {
+          ...record,
+          lessons: lessonCount,
+          lessonItems,
+          instructor: record.instructorName || record.instructor || "EduConnect Instructor",
+          teacherEmail: record.teacherEmail || "",
+          completedLessons: completed,
+          enrolledAt: record.enrolledAt || local?.enrolledAt || null,
+          progress: lessonCount ? Math.round((completed / lessonCount) * 100) : 0,
+        };
+      });
+      const demoCourses = enrollments
+        .filter((item) => !/^[a-f0-9]{24}$/i.test(String(item.id)))
         .map((item) => {
           const demoCourse = COURSES.find(
             (course) => String(course.id) === String(item.id)
@@ -1012,6 +1063,7 @@ export default function StudentDashboard({ email = "student" }) {
 
           return {
             ...course,
+            ...(latest || {}),
             lessons: lessonCount,
             lessonItems: latestLessons,
             teacherEmail: item.teacherEmail || latest?.teacherEmail || "",
@@ -1020,9 +1072,11 @@ export default function StudentDashboard({ email = "student" }) {
               ? Math.round((completed / lessonCount) * 100)
               : 0,
           };
-        })
-        .filter((course) => course && isModerationVisible("course", `${String(course.teacherEmail || course.instructorEmail || "demo").toLowerCase()}::${course.id}`)),
-    [enrollments, latestPublishedCourses]
+        });
+      return [...mongoCourses, ...demoCourses]
+        .filter((course) => course && isModerationVisible("course", `${String(course.teacherEmail || course.instructorEmail || "demo").toLowerCase()}::${course.id}`));
+    },
+    [enrollments, latestPublishedCourses, courseRevision]
   );
 
   const enrolledPlayerCourse = enrolledCourses.find(c => String(c.id) === String(playerCourseId));
@@ -1156,10 +1210,16 @@ export default function StudentDashboard({ email = "student" }) {
   const isCurrentCartItem = (item) => item.itemType === "book"
     ? getPublishedBooks().some((book) => String(book.id) === String(item.id) && String(book.teacherEmail || "").toLowerCase() === String(item.teacherEmail || "").toLowerCase())
     : Boolean(item.teacherEmail) && latestPublishedCourses.some((course) => String(course.id) === String(item.id) && String(course.teacherEmail || "").toLowerCase() === String(item.teacherEmail).toLowerCase());
-  const alreadyEnrolled = (c) => enrollments.some(e =>
-    String(e.id) === String(c.id) &&
-    String(e.teacherEmail || "").toLowerCase() === String(c.teacherEmail || "").toLowerCase()
-  );
+  const alreadyEnrolled = (c) => {
+    const id = String(c?.id ?? "");
+    if (/^[a-f0-9]{24}$/i.test(id) || c?.mongoContent) {
+      return getContentState().accesses.some((entry) => entry.kind === "course" && String(entry.contentId) === id);
+    }
+    return enrollments.some(e =>
+      String(e.id) === id &&
+      String(e.teacherEmail || "").toLowerCase() === String(c.teacherEmail || "").toLowerCase()
+    );
+  };
   function addCart(course) {
     if (course.itemType === "book") return addBookToCart(course);
     if (alreadyEnrolled(course)) { setCartNotice("Already enrolled. Open My Learning."); return; }
@@ -1211,11 +1271,13 @@ export default function StudentDashboard({ email = "student" }) {
     setCartSelection([]);
     setCartNotice("All items removed from your cart.");
   }
-  function checkoutCart() {
+  async function checkoutCart() {
     const available = cart.filter(c => isCurrentCartItem(c) && (c.itemType === "book" ? !isBookPurchased(email, c.id) && !bookPurchases.some((item) => String(item.id) === String(c.id)) : !alreadyEnrolled(c)));
     if (!available.length) { setCartNotice("Cart is empty or all items are already owned."); return; }
     const total = available.reduce((sum,c) => sum + Math.max(0, Number(c.price) || 0), 0);
     if (!window.confirm(`Demo checkout: ${available.length} item(s), total PKR ${total.toLocaleString()}. No real payment will be charged. Continue?`)) return;
+    try { await enrollContent(available); }
+    catch (error) { setCartNotice(error.message); return; }
     const purchasedAt = new Date().toISOString();
     const order = {
       id: `EDC-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
@@ -1257,8 +1319,8 @@ export default function StudentDashboard({ email = "student" }) {
       message: `${available.length} item(s) purchased â€” PKR ${total.toLocaleString()} (demo only).`, link: "orders" });
     const purchasedCourses = available.filter((c) => c.itemType !== "book");
     const purchasedBooksNow = available.filter((c) => c.itemType === "book");
-    if (purchasedCourses.length) setEnrollments(prev => [...prev, ...purchasedCourses.map(c => ({ ...c, completedLessons: 0, progress: 0, enrolledAt: purchasedAt }))]);
-    if (purchasedBooksNow.length) setBookPurchases((previous) => [...previous, ...purchasedBooksNow.map((book) => ({ ...book, purchasedAt }))]);
+    if (purchasedCourses.length) setEnrollments(prev => [...prev, ...purchasedCourses.filter((course) => !prev.some((item) => String(item.id) === String(course.id))).map(c => ({ ...c, completedLessons: 0, progress: 0, enrolledAt: purchasedAt }))]);
+    if (purchasedBooksNow.length) setBookPurchases((previous) => [...previous, ...purchasedBooksNow.filter((book) => !previous.some((item) => String(item.id) === String(book.id))).map((book) => ({ ...book, purchasedAt }))]);
     setCart([]);
     setCartSelection([]);
     setCartNotice("Demo checkout complete. Purchased books are in My eBooks.");
@@ -1279,15 +1341,17 @@ export default function StudentDashboard({ email = "student" }) {
     setActiveTab("learning");
   }
 
-  function enrollPublishedCourse(course) {
+  async function enrollPublishedCourse(course) {
     if (alreadyEnrolled(course)) { setActiveTab("learning"); return; }
     if (Number(course.price) > 0 && !hasCourseAccess(course)) {
       addCart(course);
       setActiveTab("cart");
       return;
     }
+    try { await enrollContent([course]); }
+    catch (error) { setResourceNotice(error.message); return; }
     const lessons = Array.isArray(course.lessons) ? course.lessons : [];
-    setEnrollments((previous) => [...previous, {
+    setEnrollments((previous) => previous.some((item) => String(item.id) === String(course.id)) ? previous : [...previous, {
       ...course,
       instructor: course.instructorName || course.instructor || "Instructor",
       teacherEmail: course.teacherEmail || "",
@@ -1307,33 +1371,38 @@ export default function StudentDashboard({ email = "student" }) {
     );
     if (!course || !course.lessons) return;
 
-    setEnrollments((previous) =>
-      previous.map((item) =>
-        String(item.id) === String(id)
-          ? {
-              ...item,
-              completedLessons: Math.min(
-                course.lessons,
-                Math.max(
-                  0,
-                  (Number(item.completedLessons) || 0) + amount
-                )
-              ),
-            }
-          : item
-      )
-    );
+    setEnrollments((previous) => {
+      const index = previous.findIndex((item) => String(item.id) === String(id));
+      const current = index >= 0 ? Number(previous[index].completedLessons) || 0 : 0;
+      const completed = Math.min(
+        course.lessons,
+        Math.max(0, current + amount)
+      );
+      if (index >= 0) {
+        return previous.map((item, position) =>
+          position === index ? { ...item, completedLessons: completed } : item
+        );
+      }
+      // Keep per-lesson progress for MongoDB-enrolled courses (access itself lives in MongoDB).
+      return [...previous, {
+        id: course.id,
+        teacherEmail: course.teacherEmail || "",
+        title: course.title,
+        completedLessons: completed,
+        enrolledAt: course.enrolledAt || new Date().toISOString(),
+      }];
+    });
   }
 
   function openCoursePlayer(courseId) {
-    const enrollment = enrollments.find(
+    const course = enrolledCourses.find(
       (item) => String(item.id) === String(courseId)
     );
-    if (!enrollment) return;
+    if (!course) return;
     setPreviewCourse(null);
     setPlayerCourseId(courseId);
-    const total = enrolledCourses.find((course) => String(course.id) === String(courseId))?.lessons || 0;
-    setPlayerLessonIndex(Math.max(0, Math.min(Math.max(0, total - 1), Number(enrollment.completedLessons) || 0)));
+    const total = course.lessons || 0;
+    setPlayerLessonIndex(Math.max(0, Math.min(Math.max(0, total - 1), Number(course.completedLessons) || 0)));
     setActiveTab("player");
     setMobileMenu(false);
   }
@@ -1365,6 +1434,9 @@ export default function StudentDashboard({ email = "student" }) {
   }
 
   function hasCourseAccess(course) {
+    if (course.mongoContent || /^[a-f0-9]{24}$/i.test(String(course.id))) {
+      return getContentState().accesses.some((entry) => entry.kind === "course" && String(entry.contentId) === String(course.id));
+    }
     const ownerEmail = String(course.teacherEmail || course.instructorEmail || "").trim().toLowerCase();
     const enrolled = enrollments.some((item) => String(item.id) === String(course.id) &&
       String(item.teacherEmail || "").trim().toLowerCase() === ownerEmail);
@@ -1416,6 +1488,7 @@ export default function StudentDashboard({ email = "student" }) {
     const readingTab = download ? null : window.open("about:blank", "_blank");
     if (readingTab) readingTab.opener = null;
     try {
+      if (book.mongoContent && book.isFree && !preview) await enrollContent([{ ...book, itemType: "book" }]);
       const file = await loadBookFile(preview ? book.previewFileId : book.pdfFileId);
       if (!file) throw new Error("This PDF is not available in this browser.");
       const url = URL.createObjectURL(file);
@@ -1431,11 +1504,8 @@ export default function StudentDashboard({ email = "student" }) {
     const course = enrolledCourses.find(
       (item) => String(item.id) === String(playerCourseId)
     );
-    const enrollment = enrollments.find(
-      (item) => String(item.id) === String(playerCourseId)
-    );
-    if (!course || !course.lessons || !enrollment) return;
-    const completed = Math.max(0, Number(enrollment.completedLessons) || 0);
+    if (!course || !course.lessons) return;
+    const completed = Math.max(0, Number(course.completedLessons) || 0);
     // Sequential demo completion keeps the existing count-based storage compatible.
     if (playerLessonIndex !== completed || completed >= course.lessons) return;
     updateLesson(playerCourseId, 1);
@@ -1444,11 +1514,21 @@ export default function StudentDashboard({ email = "student" }) {
     }
   }
 
-  function removeEnrollment(id) {
-    if (!window.confirm("Remove this demo enrollment?")) return;
+  async function removeEnrollment(id) {
+    const isMongo = /^[a-f0-9]{24}$/i.test(String(id));
+    if (!window.confirm(isMongo ? "Remove this enrollment? You will lose access to this course." : "Remove this demo enrollment?")) return;
 
+    if (isMongo) {
+      try {
+        await unenrollContent({ kind: "course", id });
+      } catch (error) {
+        setResourceNotice(error.message);
+        window.alert(error.message);
+        return;
+      }
+    }
     setEnrollments((previous) =>
-      previous.filter((item) => item.id !== id)
+      previous.filter((item) => String(item.id) !== String(id))
     );
     if (playerCourseId === id) {
       setPlayerCourseId(null);
@@ -1749,6 +1829,8 @@ export default function StudentDashboard({ email = "student" }) {
                 <div><span className="edc-player-eyebrow">CURRENT LESSON</span><h3>{lessonTitle}</h3></div>
                 <span className={`edc-player-state ${isCompleted ? "is-done" : ""}`}>{isCompleted ? "Completed" : "In progress"}</span>
               </div>
+              {lesson.content && <p>{lesson.content}</p>}
+              {lesson.fileId && <a href={contentFileUrl(lesson.fileId)} target="_blank" rel="noreferrer">Open lesson PDF</a>}
               <div className="edc-player-inline-note"><Video size={18} /><span>{!videoVisible ? "This lecture is temporarily unavailable while it is reviewed." : previewOnly ? "This is a free preview lecture. Enroll or purchase the course to continue the full curriculum." : media ? "Watch the lesson, then mark it complete to save your progress." : "No video has been attached to this lesson yet."}</span></div>
               <div className="edc-player-actions">
                 <ReportAction reporterEmail={email} reporterName={studentProfile.fullName || "Student"} target={{ reportType: "content", targetType: "video", targetId: videoReportTargetId, targetTitle: `${course.title}: ${lessonTitle}`, targetOwnerEmail: course.teacherEmail || course.instructorEmail || "", targetOwnerName: course.instructor || course.instructorName || "", targetRole: "Teacher" }} />
@@ -1790,6 +1872,21 @@ export default function StudentDashboard({ email = "student" }) {
           </aside>
         </div>
       </div>
+    );
+  }
+
+  function IdentityVerification() {
+    return (
+      <section id="edc-student-identity-verification" className="edc-identity-section" aria-label="Student identity verification">
+        <h2><CheckCircle2 size={21} />Verification {identityVerified && <VerifiedBadge label="Verified Profile" />}</h2>
+        <p>Submit both sides of your CNIC for review. Your profile receives a Verified badge after approval.</p>
+        <TeacherCnicUpload
+          role="student"
+          cnicStatus={cnicStatus}
+          rejectionReason={account?.cnicVerification?.rejectionReason}
+          onSubmitted={onVerificationSubmitted}
+        />
+      </section>
     );
   }
 
@@ -1842,7 +1939,7 @@ export default function StudentDashboard({ email = "student" }) {
           <aside className="edc-profile-aside">
             <section className="edc-profile-identity-card">
               <div className="edc-profile-avatar-wrap"><ProfileAvatar image={shown.avatar} /></div>
-              <h2>{shown.fullName?.trim() || "Student"}</h2>
+              <h2>{shown.fullName?.trim() || account?.fullName || "Student"} {identityVerified && <VerifiedBadge label="Verified Profile" />}</h2>
               <span className="edc-profile-role"><GraduationCap size={13} />Student</span>
               <div className="edc-profile-contact">
                 <p><Mail size={14} /><span>{email}</span></p>
@@ -1979,6 +2076,8 @@ export default function StudentDashboard({ email = "student" }) {
             )}
             {profileNotice && <p className="edc-student-profile-notice" role="status">{profileNotice}</p>}
             </section>
+
+            {IdentityVerification()}
 
             <section className="edc-profile-panel edc-profile-activity">
               <header className="edc-profile-panel-heading"><div><h2><ChartNoAxesCombined size={19} />Activity Summary</h2><p>Based on your enrolled courses and recorded learning activity.</p></div></header>
@@ -2834,6 +2933,7 @@ export default function StudentDashboard({ email = "student" }) {
           <div>
             <strong>{profileDisplayName}</strong>
             <span>Student</span>
+            {identityVerified && <VerifiedBadge label="Verified Profile" />}
           </div>
         </div>
 

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import StudentProfileBadge from "../verification/StudentProfileBadge";
 import {
   ArrowLeft,
   ArrowRight,
@@ -449,7 +450,7 @@ function AdminUserManagement() {
             <div className="edc-admin-details-header">
               <div>
                 <span className="edc-admin-page-eyebrow">USER PROFILE</span>
-                <h3 id="user-details-title">{displayValue(selectedUser.name)}</h3>
+                <h3 id="user-details-title">{displayValue(selectedUser.name)} {String(selectedUser.role).toLowerCase() === "student" && <StudentProfileBadge email={selectedUser.email} />}</h3>
               </div>
               <button
                 type="button"

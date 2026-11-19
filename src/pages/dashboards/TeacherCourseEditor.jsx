@@ -15,6 +15,7 @@ function TeacherCourseEditor({
   onCancel,
   onThumbnailUpload,
   onRemoveThumbnail,
+  pending = false,
 }) {
   return (
     <form onSubmit={onSave} className="edc-course-editor">
@@ -107,6 +108,18 @@ function TeacherCourseEditor({
             />
           </div>
 
+          <div className="edc-course-editor-field">
+            <label htmlFor="edc-course-requirements">Requirements</label>
+            <textarea id="edc-course-requirements" rows={3}
+              value={Array.isArray(courseForm.requirements) ? courseForm.requirements.join("\n") : courseForm.requirements || ""}
+              onChange={(event) => setCourseForm({ ...courseForm, requirements: event.target.value })} />
+          </div>
+          <div className="edc-course-editor-field">
+            <label htmlFor="edc-course-outcomes">Learning outcomes</label>
+            <textarea id="edc-course-outcomes" rows={3}
+              value={Array.isArray(courseForm.learningOutcomes) ? courseForm.learningOutcomes.join("\n") : courseForm.learningOutcomes || ""}
+              onChange={(event) => setCourseForm({ ...courseForm, learningOutcomes: event.target.value })} />
+          </div>
           <div className="edc-course-editor-field edc-course-audience">
             <span>Recommended student audience</span>
             <strong>{teacherFocusLabel}</strong>
@@ -171,7 +184,7 @@ function TeacherCourseEditor({
           )}
 
           <p className="edc-course-editor-image-help">
-            JPG, PNG or WebP · Maximum 1 MB · Optimized for browser storage
+            JPG, PNG or WebP · Maximum 1 MB
           </p>
 
           <div className="edc-course-editor-tip">
@@ -193,9 +206,9 @@ function TeacherCourseEditor({
           Cancel
         </button>
 
-        <button type="submit" className="edc-course-editor-save">
+        <button type="submit" className="edc-course-editor-save" disabled={pending}>
           <CheckCircle2 size={18} />
-          {editingId ? "Update Course" : "Save Course"}
+          {pending ? "Saving..." : editingId ? "Update Course" : "Save Course"}
         </button>
       </div>
     </form>

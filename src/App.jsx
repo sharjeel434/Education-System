@@ -1,5 +1,6 @@
 import DemoAdminSetup from "./components/admin/AdminDemoSetup";
 import { useEffect, useMemo, useRef, useState } from "react";
+import useContentSync from "./utils/useContentSync";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   Search,
@@ -44,6 +45,8 @@ import ExploreCourses from "./pages/ExploreCourses";
 import PublishedCourses from "./components/Marketplace/PublishedCourses";
 import SignupPage from "./pages/SignupPage";
 import LoginPage from "./pages/LoginPage";
+import ForgotPasswordPage from "./pages/ForgotPasswordPage";
+import ResetPasswordPage from "./pages/ResetPasswordPage";
 import DashboardPage from "./pages/DashboardPage";
 import CartPage from "./components/Marketplace/CartPage";
 import ResilientImage from "./components/ResilientImage";
@@ -297,6 +300,7 @@ const testimonials = [
 ];
 
 function App() {
+  useContentSync();
   const location = useLocation();
   const navigate = useNavigate();
   const currentPage = location.pathname === "/" ? "home" : "courses";
@@ -570,6 +574,8 @@ if (
   if (location.pathname === "/signup") {
     return <SignupPage />;
   }
+  if (location.pathname === "/forgot-password") return <ForgotPasswordPage />;
+  if (location.pathname === "/reset-password") return <ResetPasswordPage />;
   if (location.pathname === "/login") {
     return <LoginPage />;
   }

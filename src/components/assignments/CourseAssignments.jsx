@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { isMongoId, teacherAssignments, studentAssignments, saveAssignment, publishAssignment, deleteAssignment, submitAssignment, gradeAssignment, uploadAssignmentFile, downloadAssignmentFile } from "../../utils/mongoAssignmentApi";
 import {
   BarChart3,
   BookOpen,
@@ -731,6 +732,60 @@ function Teacher({ email, courses }) {
 
 export default function CourseAssignments({ role, email, courses = [], ...props }) {
   return role === "teacher"
-    ? <Teacher email={email} courses={courses} />
-    : <StudentCourseAssignments key={email} email={email} courses={courses} {...props} />;
+    ? courses.some(course => isMongoId(course.id || course._id))
+      ? <MongoTeacher key={email} email={email} courses={courses} />
+      : <Teacher key={email} email={email} courses={courses} />
+    : courses.some(course => isMongoId(course.id || course._id))
+      ? <MongoStudent key={email} courses={courses} {...props} />
+      : <StudentCourseAssignments key={email} email={email} courses={courses} {...props} />;
+}
+
+function MongoTeacher({email,courses}) {
+  const validCourses=useMemo(()=>courses.filter(course=>isMongoId(course.id||course._id)),[courses]);
+  const [courseId,setCourseId]=useState(''),[records,setRecords]=useState([]),[editing,setEditing]=useState(null),[attachment,setAttachment]=useState(null),[selected,setSelected]=useState(null),[grade,setGrade]=useState({marks:'',feedback:''}),[message,setMessage]=useState(''),[busy,setBusy]=useState(false);
+  const current=validCourses.find(course=>String(course.id||course._id)===courseId)||validCourses[0];
+  const refresh=useCallback(async()=>{
+    const results=await Promise.allSettled(validCourses.map(async course=>{
+      const id=String(course.id||course._id);let data=await teacherAssignments(id);
+      for(const legacy of new Set([id,course.legacyId].filter(Boolean).map(String))){
+        const key=assignmentKey(email,legacy),original=read(key);
+        for(const row of original){
+          if(!row.id||row.mongoAssignmentId)continue;
+          try{
+            const found=data.assignments.find(item=>item.legacyId===String(row.id));
+            const saved=found||((await saveAssignment(id,{...row,id:undefined,legacyId:String(row.id),attachmentIds:[]})).assignment);
+            row.mongoAssignmentId=String(saved.id||saved._id);save(key,original);
+            if(row.published&&!found)await publishAssignment(id,row.mongoAssignmentId,true);
+          }catch(error){setMessage(`${row.title}: ${error.message}`);}
+        }
+      }
+      data=await teacherAssignments(id);return {course, ...data};
+    }));
+    setRecords(results.flatMap((result,index)=>result.status==='fulfilled'?[result.value]:(setMessage(`${validCourses[index].title}: ${result.reason.message}`),[])));
+  },[validCourses,email]);
+  useEffect(()=>{const timer=setTimeout(()=>{void refresh();},0);return()=>clearTimeout(timer);},[refresh]);
+  const rows=records.flatMap(({course,assignments,submissions})=>assignments.map(item=>({...item,id:String(item.id||item._id),courseId:String(course.id||course._id),courseTitle:course.title,submissions:submissions.filter(s=>String(s.assignmentId)===String(item._id))})));
+  const act=async fn=>{setBusy(true);setMessage('');try{await fn();await refresh();}catch(error){setMessage(error.message);}finally{setBusy(false);}};
+  const saveWork=()=>act(async()=>{
+    const id=String(current.id||current._id),attachmentIds=[...(editing.attachmentIds||[])];
+    if(attachment)attachmentIds.push((await uploadAssignmentFile(id,attachment)).id);
+    const result=await saveAssignment(id,{...editing,attachmentIds});
+    if(editing.published)await publishAssignment(id,result.assignment.id||result.assignment._id,true);
+    setEditing(null);setAttachment(null);setMessage('Assignment saved.');
+  });
+  return <main className="edca-root edca-teacher-dashboard"><header className="edca-t-header"><div><span>TEACHER WORKSPACE</span><h1><ClipboardList size={26}/> Course Assignments</h1><p>Create, manage, and grade assignments.</p></div><button className="edca-t-create" disabled={!current||busy} onClick={()=>setEditing({title:'',description:'',instructions:'',maxMarks:100,dueAt:'',published:false,attachmentIds:[]})}><Plus size={18}/> Create New Assignment</button></header>
+    {message&&<p className="edca-message" role="status">{message}</p>}
+    {editing&&<section className="edca-panel edca-t-editor"><header><h2>{editing.id?'Edit Assignment':'New Assignment'}</h2><button onClick={()=>setEditing(null)} aria-label="Close editor"><X size={18}/></button></header><label className="edca-label">Course<select value={String(current.id||current._id)} onChange={event=>{setCourseId(event.target.value);setEditing(null);}}>{validCourses.map(c=><option key={String(c.id||c._id)} value={String(c.id||c._id)}>{c.title}</option>)}</select></label><label className="edca-label">Title<input value={editing.title} maxLength={140} onChange={event=>setEditing({...editing,title:event.target.value})}/></label><label className="edca-label">Description<textarea value={editing.description||''} onChange={event=>setEditing({...editing,description:event.target.value})}/></label><label className="edca-label">Instructions<textarea rows={5} value={editing.instructions} onChange={event=>setEditing({...editing,instructions:event.target.value})}/></label><div className="edca-grid"><label className="edca-label">Due date<input type="datetime-local" value={editing.dueAt?String(editing.dueAt).slice(0,16):''} onChange={event=>setEditing({...editing,dueAt:event.target.value})}/></label><label className="edca-label">Maximum marks<input type="number" min="1" max="10000" value={editing.maxMarks} onChange={event=>setEditing({...editing,maxMarks:Number(event.target.value)})}/></label></div><label className="edca-label">Attachment<input type="file" accept=".pdf,.txt,.png,.jpg,.docx" onChange={event=>setAttachment(event.target.files?.[0]||null)}/></label><label className="edca-check"><input type="checkbox" checked={editing.published} onChange={event=>setEditing({...editing,published:event.target.checked})}/> Publish after saving</label><button className="edca-t-create" disabled={busy} onClick={saveWork}>{busy?'Saving...':'Save Assignment'}</button></section>}
+    <section className="edca-panel"><h2>Assignment List</h2><div className="edca-t-table-wrap"><table className="edca-t-table"><thead><tr><th>Title</th><th>Course</th><th>Due</th><th>Submissions</th><th>Status</th><th>Actions</th></tr></thead><tbody>{rows.map(row=><tr key={row.id}><td>{row.title}</td><td>{row.courseTitle}</td><td>{formatDate(row.dueAt)}</td><td>{row.submissions.length}</td><td>{row.published?'Published':'Draft'}</td><td><div className="edca-t-row-actions"><button type="button" title="View assignment" aria-label={`View ${row.title}`} disabled={busy} onClick={()=>setSelected(row)}><Eye size={14}/></button><button type="button" title="Edit assignment" aria-label={`Edit ${row.title}`} disabled={busy} onClick={()=>{setCourseId(row.courseId);setEditing(row);}}><Edit3 size={14}/></button><button type="button" title={row.published?'Unpublish assignment':'Publish assignment'} aria-label={`${row.published?'Unpublish':'Publish'} ${row.title}`} disabled={busy} onClick={()=>act(()=>publishAssignment(row.courseId,row.id,!row.published))}><CheckCircle2 size={14}/></button><button type="button" title="Delete assignment" aria-label={`Delete ${row.title}`} disabled={busy} onClick={()=>{if(window.confirm(`Delete ${row.title}?`))void act(()=>deleteAssignment(row.courseId,row.id));}}><Trash2 size={14}/></button></div></td></tr>)}</tbody></table></div>{!rows.length&&<p>No assignments saved yet.</p>}</section>
+    {selected&&<section className="edca-panel"><header><h2>{selected.title} submissions</h2><button onClick={()=>setSelected(null)}>Close</button></header><p>{selected.instructions}</p>{selected.attachmentIds?.map(fileId=><button key={fileId} onClick={()=>downloadAssignmentFile(selected.courseId,fileId)}>Download attachment</button>)}{(rows.find(row=>row.id===selected.id)?.submissions||[]).map(submission=><article key={submission.id}><h3>{submission.studentName} ({submission.studentEmail})</h3><p>{submission.answer}</p><small>{formatDate(submission.submittedAt,true)} ? {submission.status}</small>{submission.fileIds?.map(fileId=><button key={fileId} onClick={()=>downloadAssignmentFile(selected.courseId,fileId)}>Download submission</button>)}<label className="edca-label">Marks<input type="number" min="0" max={selected.maxMarks} value={grade.marks} onChange={event=>setGrade({...grade,marks:event.target.value})}/></label><label className="edca-label">Feedback<textarea value={grade.feedback} onChange={event=>setGrade({...grade,feedback:event.target.value})}/></label><button disabled={busy} onClick={()=>act(()=>gradeAssignment(selected.courseId,selected.id,submission.id,Number(grade.marks),grade.feedback))}>Save grade</button></article>)}{!selected.submissions.length&&<p>No submissions yet.</p>}</section>}
+  </main>;
+}
+
+function MongoStudent({courses,dashboardLayout=false}) {
+  const validCourses=useMemo(()=>courses.filter(course=>isMongoId(course.id||course._id)),[courses]);
+  const [rows,setRows]=useState([]),[selected,setSelected]=useState(null),[answer,setAnswer]=useState(''),[file,setFile]=useState(null),[message,setMessage]=useState(''),[busy,setBusy]=useState(false),[now,setNow]=useState(()=>Date.now());
+  const refresh=useCallback(async()=>{const results=await Promise.allSettled(validCourses.map(async course=>({course,...await studentAssignments(course.id||course._id)})));setRows(results.flatMap(result=>result.status==='fulfilled'?result.value.assignments.map(assignment=>({assignment:{...assignment,id:String(assignment.id||assignment._id)},course:result.value.course,submission:result.value.submissions.find(s=>String(s.assignmentId)===String(assignment._id))})):[]));},[validCourses]);
+  useEffect(()=>{const timer=setTimeout(()=>{void refresh();},0);const clock=setInterval(()=>setNow(Date.now()),30000);return()=>{clearTimeout(timer);clearInterval(clock);};},[refresh]);
+  const submit=async()=>{if(!selected)return;setBusy(true);setMessage('');try{const courseId=String(selected.course.id||selected.course._id);const fileIds=file?[(await uploadAssignmentFile(courseId,file)).id]:[];await submitAssignment(courseId,selected.assignment.id,answer,fileIds);await refresh();setSelected(null);setAnswer('');setFile(null);setMessage('Assignment submitted.');}catch(error){setMessage(error.message);}finally{setBusy(false);}};
+  return <section className={`edc-student-assignments${dashboardLayout?' edc-sa-dashboard':''}`}><header className="edc-sa-heading"><h2>{dashboardLayout?'Assignments & Grades':'Course Assignments'}</h2><p>View assignments, submit work, and check grades.</p></header>{message&&<p className="edc-sa-notice" role="status">{message}</p>}<div className="edc-sa-cards">{rows.map(row=><article className="edc-sa-card" key={row.assignment.id}><div className="edc-sa-card-copy"><h3>{row.assignment.title}</h3><p>{row.course.title}</p><p>{row.assignment.description}</p></div><div className="edc-sa-card-meta"><span>Due: {formatDate(row.assignment.dueAt,true)}</span><span>{row.assignment.maxMarks} marks</span><span>{row.submission?.status||'Pending'}</span></div><button className="edc-sa-primary" onClick={()=>{setSelected(row);setAnswer(row.submission?.answer||'');}}>View assignment</button></article>)}</div>{!rows.length&&<p>No published assignments for your enrolled courses yet.</p>}{selected&&<section className="edc-sa-card"><button onClick={()=>setSelected(null)}>Close</button><h3>{selected.assignment.title}</h3><p>{selected.assignment.instructions}</p>{selected.assignment.attachmentIds?.map(id=><button key={id} onClick={()=>downloadAssignmentFile(selected.course.id||selected.course._id,id)}>Download attachment</button>)}{selected.submission&&<div><h4>Your submitted work</h4><p>{selected.submission.answer}</p>{selected.submission.fileIds?.map(id=><button key={id} onClick={()=>downloadAssignmentFile(selected.course.id||selected.course._id,id)}>Download your file</button>)}<p>{selected.submission.status==='graded'?`${selected.submission.marks} / ${selected.assignment.maxMarks} marks ? ${selected.submission.feedback}`:'Awaiting review'}</p></div>}{selected.submission?.status!=='graded'&&(!selected.assignment.dueAt||now<new Date(selected.assignment.dueAt).getTime())&&<div><label>Your answer<textarea value={answer} maxLength={20000} onChange={event=>setAnswer(event.target.value)}/></label><label>Attachment<input type="file" accept=".pdf,.txt,.png,.jpg,.docx" onChange={event=>setFile(event.target.files?.[0]||null)}/></label><button className="edc-sa-primary" disabled={busy} onClick={submit}>{busy?'Submitting...':selected.submission?'Resubmit':'Submit Assignment'}</button></div>}</section>}</section>;
 }

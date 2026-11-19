@@ -1,8 +1,10 @@
+import { loadContentFile } from "../../utils/contentApi";
 import { isModerationVisible } from "../../utils/moderationVisibility.js";
 import { studentQuizLibrary } from "../../utils/studentQuizzes.js";
 import { studentAssignmentLibrary } from "../assignments/studentAssignmentHelpers.js";
 
 const norm = value => String(value ?? "").trim().toLowerCase();
+const matchesReference = (record, id) => [record?.id, record?._id, record?.legacyId].some(value => value !== undefined && String(value) === String(id));
 export const curriculumCourseKey = course => `${norm(course.teacherEmail || course.instructorEmail || "demo")}::${course.id}`;
 export const curriculumStorageKey = course => `educonnect.curriculum.v1.${encodeURIComponent(norm(course.teacherEmail || course.instructorEmail))}.${encodeURIComponent(String(course.id))}`;
 export const curriculumBookmarksKey = email => `educonnect.student.${norm(email)}.learningBookmarks`;
@@ -51,8 +53,8 @@ export function studentCurriculumCourses(courses, publishedCourses = []) {
   });
 }
 
-export function buildStudentCurriculum(email, course) {
-  const stored = read(curriculumStorageKey(course), {});
+export function buildStudentCurriculum(email, course, remoteAssessments) {
+  const stored = course.mongoContent ? course.curriculum || {} : read(curriculumStorageKey(course), {});
   const saved = stored && typeof stored === "object" && !Array.isArray(stored) ? stored : {};
   const source = Array.isArray(course.lessonItems) ? course.lessonItems : [];
   const completedCount = Math.min(source.length, Math.max(0, Math.floor(Number(course.completedLessons) || 0)));
@@ -66,14 +68,19 @@ export function buildStudentCurriculum(email, course) {
     return [{ key, lesson, index, duration: lessonDurationSeconds(lesson.duration), completed: index < completedCount, locked: index > completedCount, visible }];
   });
   const byId = new Map(lessons.map(entry => [entry.key, entry]));
-  const quizzes = studentQuizLibrary(email, [course]), assignments = studentAssignmentLibrary(email, [course]);
+  const quizzes = remoteAssessments ? (remoteAssessments.quizzes || []).map(quiz => ({ quiz, attempts: quiz.attempts || [] })) : studentQuizLibrary(email, [course]);
+  const assignments = remoteAssessments ? (remoteAssessments.assignments || []).map(assignment => {
+    const submissions = (remoteAssessments.submissions || []).filter(item => String(item.assignmentId) === String(assignment.id || assignment._id));
+    const latest = submissions.sort((left, right) => new Date(right.submittedAt || 0) - new Date(left.submittedAt || 0))[0];
+    return { assignment, latest };
+  }) : studentAssignmentLibrary(email, [course]);
   const used = new Set(), moduleIds = new Set();
   const sections = (Array.isArray(saved.sections) ? saved.sections : []).flatMap(section => {
     if (!section || section.id === undefined || typeof section.title !== "string" || !section.title.trim() || moduleIds.has(String(section.id))) return [];
     const key = String(section.id); moduleIds.add(key);
     const items = (Array.isArray(section.lessonIds) ? section.lessonIds : []).flatMap(id => { const item = byId.get(String(id)); if (!item || used.has(item.key)) return []; used.add(item.key); return [item]; });
     const assessments = (Array.isArray(saved.links) ? saved.links : []).filter(link => String(link?.sectionId) === key).flatMap(link => {
-      const entry = (link.type === "quiz" ? quizzes : link.type === "assignment" ? assignments : []).find(item => String(link.type === "quiz" ? item.quiz.id : item.assignment.id) === String(link.id));
+      const entry = (link.type === "quiz" ? quizzes : link.type === "assignment" ? assignments : []).find(item => matchesReference(link.type === "quiz" ? item.quiz : item.assignment, link.id));
       if (!entry) return [];
       return [{ type: link.type, record: link.type === "quiz" ? entry.quiz : entry.assignment, done: link.type === "quiz" ? entry.attempts.some(attempt => attempt.passed) : !!entry.latest?.gradedAt }];
     }).filter((item, index, rows) => rows.findIndex(other => other.type === item.type && String(other.record.id) === String(item.record.id)) === index);
@@ -108,6 +115,7 @@ export function toggleCurriculumBookmark(email, course) {
 }
 
 export async function loadStudentCurriculumFile(resourceId) {
+  if (String(resourceId).startsWith("remote:")) return loadContentFile(resourceId);
   if (!globalThis.indexedDB) throw new Error("File storage is unavailable in this browser.");
   const db = await new Promise((resolve, reject) => {
     const request = indexedDB.open("educonnect-curriculum-resources", 1);

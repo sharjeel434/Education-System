@@ -3,6 +3,8 @@ import { Bookmark, BookmarkCheck, BookOpen, ChartNoAxesCombined, Check, CheckCir
 import { readCourseNotes, saveCourseNotes, saveNoteRecord } from "../../utils/courseNotes";
 import { downloadFile } from "../assignments/assignmentStorage";
 import { buildStudentCurriculum, curriculumCourseKey, curriculumDurationLabel, loadStudentCurriculumFile, readCurriculumBookmarks, studentCurriculumCourses, subscribeStudentCurriculum, toggleCurriculumBookmark } from "./studentCurriculumHelpers";
+import { isMongoId, studentQuizzes as loadStudentQuizzes } from "../../utils/mongoQuizApi";
+import { studentAssignments as loadStudentAssignments } from "../../utils/mongoAssignmentApi";
 import "./StudentCourseCurriculum.css";
 
 function CurriculumDialog({ title, onClose, children }) {
@@ -68,9 +70,33 @@ function CirclePlayIcon() { return <span className="edc-cc-circle-play"><Play si
 
 export default function StudentCourseCurriculum({ email, courses = [], publishedCourses = [], onOpenLesson, onOpenQuiz, onNavigate }) {
   const [version, setVersion] = useState(0), [selectedKey, setSelectedKey] = useState("");
+  const [remoteAssessments, setRemoteAssessments] = useState({});
   useEffect(() => subscribeStudentCurriculum(() => setVersion(value => value + 1)), []);
   const owned = useMemo(() => { void version; return studentCurriculumCourses(courses, publishedCourses); }, [courses, publishedCourses, version]);
+  const mongoCourseIds = owned.filter(item => isMongoId(item.id || item._id)).map(item => String(item.id || item._id)).join(",");
+  useEffect(() => {
+    void version;
+    const mongoCourses = owned.filter(item => isMongoId(item.id || item._id));
+    if (!mongoCourses.length) return;
+    let active = true;
+    Promise.allSettled(mongoCourses.map(async item => {
+      const id = String(item.id || item._id);
+      const [quizData, assignmentData] = await Promise.all([loadStudentQuizzes(id), loadStudentAssignments(id)]);
+      return [item.key, {
+        quizzes: (quizData.quizzes || []).map(quiz => ({ ...quiz, courseId: id, teacherEmail: item.teacherEmail || item.instructorEmail })),
+        assignments: (assignmentData.assignments || []).map(assignment => ({ ...assignment, courseId: id, teacherEmail: item.teacherEmail || item.instructorEmail })),
+        submissions: assignmentData.submissions || [],
+      }];
+    })).then(results => {
+      if (!active) return;
+      setRemoteAssessments(Object.fromEntries(results.flatMap(result => result.status === "fulfilled" ? [result.value] : [])));
+    });
+    return () => { active = false; };
+  // `mongoCourseIds` is the stable identity list; owned objects can be recreated by dashboard refreshes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mongoCourseIds, version]);
   const course = owned.find(item => item.key === selectedKey) || owned[0];
-  const data = useMemo(() => { void version; return course ? buildStudentCurriculum(email, course) : null; }, [email, course, version]);
+  const data = useMemo(() => { void version; return course ? buildStudentCurriculum(email, course,
+    remoteAssessments[course.key] || (course.mongoContent ? { quizzes: [], assignments: [], submissions: [] } : undefined)) : null; }, [email, course, remoteAssessments, version]);
   return <section className="edc-student-curriculum"><header className="edc-cc-heading"><div><nav aria-label="Breadcrumb"><button type="button" aria-label="Overview" onClick={() => onNavigate?.("overview")}><Home size={14} /></button><span>/</span><button type="button" onClick={() => onNavigate?.("learning")}>My Learning</button><span>/</span><strong>Course Curriculum</strong></nav><h2>Course Curriculum</h2><p>Explore the complete course content, lessons, and your progress.</p></div>{owned.length > 0 && <label>Course<select aria-label="Select curriculum course" value={course.key} onChange={event => setSelectedKey(event.target.value)}>{owned.map(item => <option key={item.key} value={item.key}>{item.title}</option>)}</select></label>}</header>{data ? <CourseCurriculumView key={`${email}-${course.key}`} email={email} data={data} onOpenLesson={onOpenLesson} onOpenQuiz={onOpenQuiz} onNavigate={onNavigate} /> : <section className="edc-cc-enroll-empty"><GraduationCap size={34} /><h3>No enrolled courses yet</h3><p>Your course curriculum will appear here after you enroll.</p>{onNavigate && <button type="button" className="edc-cc-secondary" onClick={() => onNavigate("learning")}><BookOpen size={15} />My Learning</button>}</section>}</section>;
 }

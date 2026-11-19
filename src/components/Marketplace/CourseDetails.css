@@ -14,7 +14,7 @@
   border: 1px solid #ddd6fe;
   border-radius: 9px;
   background: #fff;
-  color: #6d28d9;
+  color: var(--edc-dashboard-accent, #6d28d9);
   cursor: pointer;
   font-weight: 700;
   margin-bottom: 28px;
@@ -29,7 +29,7 @@
 
 .edc-details-category {
   display: inline-block;
-  color: #6d28d9;
+  color: var(--edc-dashboard-accent, #6d28d9);
   background: #f3edff;
   padding: 7px 12px;
   border-radius: 7px;
@@ -98,7 +98,7 @@
 }
 
 .edc-details-lesson-icon {
-  color: #6d28d9;
+  color: var(--edc-dashboard-accent, #6d28d9);
 }
 
 .edc-details-lesson-info {
@@ -160,7 +160,7 @@
   align-items: center;
   justify-content: center;
   background: #ede9fe;
-  color: #6d28d9;
+  color: var(--edc-dashboard-accent, #6d28d9);
 }
 
 .edc-details-instructor h3 {
@@ -245,7 +245,7 @@
   border-radius: 50%;
   object-fit: cover;
   background: #e9ddff;
-  color: #6d28d9;
+  color: var(--edc-dashboard-accent, #6d28d9);
   box-shadow: 0 0 0 2px #d9ccff, 0 6px 15px rgba(91, 33, 182, .13);
 }
 
@@ -375,7 +375,7 @@
   margin-top: 16px;
   padding: 14px 22px;
   border-top: 1px solid #eee8fa;
-  color: #6d28d9;
+  color: var(--edc-dashboard-accent, #6d28d9);
   font-size: 12px;
   font-weight: 700;
   text-decoration: none;
@@ -433,7 +433,7 @@
   justify-content: center;
   align-items: center;
   background: #ede9fe;
-  color: #6d28d9;
+  color: var(--edc-dashboard-accent, #6d28d9);
 }
 
 .edc-details-thumbnail img {
@@ -468,7 +468,7 @@
   padding: 13px 16px;
   border: 1px solid transparent;
   border-radius: 10px;
-  background: #6d28d9;
+  background: var(--edc-dashboard-accent, #6d28d9);
   color: #fff;
   font-weight: 700;
   font-size: 16px;
@@ -484,9 +484,9 @@
 
 .edc-details-enroll-secondary {
   margin-top: 10px;
-  border-color: #6d28d9;
+  border-color: var(--edc-dashboard-accent, #6d28d9);
   background: #fff;
-  color: #6d28d9;
+  color: var(--edc-dashboard-accent, #6d28d9);
 }
 
 .edc-details-enroll-secondary:hover {
@@ -523,7 +523,7 @@
 }
 
 .edc-details-sidebar-note[data-state="info"] {
-  color: #6d28d9;
+  color: var(--edc-dashboard-accent, #6d28d9);
   font-weight: 600;
 }
 

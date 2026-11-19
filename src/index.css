@@ -2993,29 +2993,3 @@ main {
 .results-summary {
   margin-bottom: 25px;
 }
-
-/* Shared course history styles used across landing and dashboards. */
-.global-course-title {
-  color: var(--text);
-}
-
-.global-course-history-note {
-  margin-left: auto;
-  color: var(--purple-dark);
-  font-size: 10px;
-  font-weight: 650;
-}
-
-.global-course-history-panel {
-  display: grid;
-  gap: 16px;
-  margin-top: 8px;
-}
-
-.global-dashboard-section-title {
-  margin: 0;
-  color: var(--text);
-  font-size: 26px;
-  font-weight: 850;
-  letter-spacing: -.5px;
-}
