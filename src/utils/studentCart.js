@@ -1,10 +1,8 @@
-import { appendAdminActivityRecord } from "../components/admin/adminData";
-import { enrollContent, getContentState } from "./contentApi";
+import { fetchCart, addToCartApi, removeFromCartApi, clearCartApi, checkoutApi, demoCheckoutApi, fetchOrders, cancelOrderApi, ORDERS_EVENT } from "./marketplaceApi";
+import { getContentState } from "./contentApi";
 
-const cartKey = (email) => `educonnect.student.${email}.cart`;
 const enrollmentKey = (email) => `educonnect.student.${email}.enrollments`;
-const orderKey = (email) => `educonnect.student.${email}.orders`;
-export const ORDERS_EVENT = "educonnect:orders-changed";
+export { ORDERS_EVENT };
 
 function readList(key) {
   try {
@@ -15,21 +13,75 @@ function readList(key) {
   }
 }
 
-function notifyChange() {
-  window.dispatchEvent(new Event("educonnect:student-data-changed"));
-}
-
 export function getStudentEmail() {
   const role = sessionStorage.getItem("educonnect.demoRole");
   const email = sessionStorage.getItem("educonnect.demoEmail");
   return role === "Student" && email ? email.toLowerCase() : null;
 }
 
-export function getCart(email) {
-  return email ? readList(cartKey(email)) : [];
+// MongoDB is the source of truth for cart items. Legacy localStorage cart records
+// are intentionally kept untouched as historical data but are no longer read.
+export async function getCart() {
+  try {
+    const data = await fetchCart();
+    return (data.items || []).filter((item) => item.available !== false);
+  } catch {
+    return [];
+  }
 }
 
-export function getEnrollments(email) {
+export async function getCartState() {
+  try {
+    return await fetchCart();
+  } catch {
+    return { items: [], total: 0, currency: "PKR", unavailable: 0 };
+  }
+}
+
+const kindOf = (item) => (item?.itemType === "book" ? "book" : "course");
+const idOf = (item) => String(item?.contentId || item?.id || "");
+
+// Returns true when the item was added (or was already present), false when unavailable.
+export async function addToCart(_email, item) {
+  try {
+    await addToCartApi([{ kind: kindOf(item), contentId: idOf(item) }]);
+    return true;
+  } catch (error) {
+    if (error.status === 409 && Array.isArray(error.unavailable)) return false;
+    throw error;
+  }
+}
+
+// Accepts an item object or a bare content ID (courses only).
+export async function removeFromCart(_email, item) {
+  const kind = typeof item === "object" && item !== null ? kindOf(item) : "course";
+  const id = typeof item === "object" && item !== null ? idOf(item) : String(item);
+  await removeFromCartApi(kind, id);
+}
+
+export async function clearCart() {
+  await clearCartApi();
+}
+
+// Adds cart items to an order. Free carts fulfill immediately; paid carts require payment.
+// idempotencyKey makes repeated checkout clicks safe.
+export async function checkout(idempotencyKey) {
+  const created = await checkoutApi(idempotencyKey);
+  return created.order;
+}
+
+// Dev/test sandbox only: marks a pending sandbox order paid. In production this
+// always fails with 403 until a real payment provider is configured server-side.
+export async function demoCheckout(_email, idempotencyKey) {
+  const created = await checkoutApi(idempotencyKey);
+  const order = created.order;
+  if (order.status !== "pending") return order;
+  return demoCheckoutApi(order.orderNumber);
+}
+
+export const cancelOrder = (_email, orderNumber) => cancelOrderApi(orderNumber);
+
+export async function getEnrollments(email) {
   if (!email) return [];
   const saved = readList(enrollmentKey(email));
   const state = getContentState();
@@ -41,100 +93,11 @@ export function getEnrollments(email) {
   })];
 }
 
-export function getStudentOrders(email) {
-  return email ? readList(orderKey(email)) : [];
-}
-
-export function addToCart(email, course) {
-  if (!email || !course?.id) return false;
-
-  const cart = getCart(email);
-  const id = String(course.id);
-  if (cart.some((item) => String(item.id) === id)) return false;
-
-  if (getEnrollments(email).some((item) => String(item.id) === id)) {
-    return false;
-  }
-
-  cart.push({
-    id: course.id,
-    title: course.title,
-    category: course.category || "Development",
-    instructor: course.instructorName || course.instructor || "Instructor",
-    price: Math.max(0, Number(course.price) || 0),
-    thumbnail: course.thumbnail || "",
-    lessons: Array.isArray(course.lessons) ? course.lessons : Number(course.lessons) || 0,
-    teacherEmail: course.teacherEmail || ""
-  });
-
-  localStorage.setItem(cartKey(email), JSON.stringify(cart));
-  notifyChange();
-  return true;
-}
-
-export function removeFromCart(email, id) {
-  if (!email) return;
-  const updated = getCart(email).filter((item) => String(item.id) !== String(id));
-  localStorage.setItem(cartKey(email), JSON.stringify(updated));
-  notifyChange();
-}
-
-export async function demoCheckout(email) {
-  if (!email) throw new Error("Student login required.");
-
-  const cart = getCart(email);
-  if (!cart.length) throw new Error("Your cart is empty.");
-  const enrolled = getEnrollments(email);
-  await enrollContent(cart);
-  const newCourses = cart
-    .filter((item) => !enrolled.some((course) => String(course.id) === String(item.id)))
-    .map((item) => ({
-      ...item,
-      completedLessons: 0,
-      progress: 0,
-      enrolledAt: new Date().toISOString()
-    }));
-
-  const purchasedAt = new Date().toISOString();
-  const order = {
-    id: window.crypto?.randomUUID?.() || `demo-order-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-    status: "Completed",
-    purchasedAt,
-    studentEmail: email.toLowerCase(),
-    items: newCourses.map(({ completedLessons, progress, enrolledAt, ...item }) => item)
-  };
-
-  localStorage.setItem(
-    enrollmentKey(email),
-    JSON.stringify([...enrolled, ...newCourses])
-  );
-  localStorage.setItem(
-    orderKey(email),
-    JSON.stringify([...getStudentOrders(email), order])
-  );
-  localStorage.setItem(cartKey(email), JSON.stringify([]));
+// Real orders from MongoDB (newest first), mapped to the shape the UI expects.
+export async function getStudentOrders() {
   try {
-    appendAdminActivityRecord({
-      actor: email.toLowerCase(),
-      actorRole: "Student",
-      action: "Demo Checkout Completed",
-      category: "financial-management",
-      module: "Financial Management",
-      entityType: "Demo Order",
-      entityId: String(order.id),
-      targetId: String(order.id),
-      targetName: `Course order (${newCourses.length} item${newCourses.length === 1 ? "" : "s"})`,
-      previousValue: "Cart",
-      newValue: "Completed",
-      description: "Student completed a demo course checkout. No real payment was processed and no payment credentials were stored.",
-      result: "Success",
-      status: "Completed",
-    });
+    return await fetchOrders();
   } catch {
-    // Keep checkout successful when local audit storage is unavailable.
+    return [];
   }
-  notifyChange();
-  window.dispatchEvent(new Event(ORDERS_EVENT));
-
-  return newCourses;
 }

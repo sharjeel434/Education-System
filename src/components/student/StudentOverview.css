@@ -77,22 +77,28 @@
 .edc-ov-task-list small.has-due-date { color: #df5363; }
 .edc-ov-task-list > button > svg { flex: none; color: #77568f; }
 .edc-ov-bottom-grid { display: grid; grid-template-columns: minmax(0, 2.05fr) minmax(0, .95fr); gap: 13px; align-items: stretch; }
-.edc-ov-recommendation-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 9px; margin-top: 12px; }
-.edc-ov-recommendation { display: flex; flex-direction: column; min-width: 0; padding: 7px; border: 1px solid #e4d8fb; border-radius: 10px; background: #fff; box-shadow: 0 2px 5px #4e20800a; }
-.edc-ov-recommendation-art { position: relative; margin: -2px -2px 5px; }
+.edc-ov-recommendations { padding: 12px; border-color: #e9dcf8; border-radius: 8px; background: #fff; box-shadow: 0 2px 8px #5d27800a; }
+.edc-ov-recommendations .edc-ov-panel-heading { min-height: 18px; }
+.edc-ov-recommendations .edc-ov-panel-heading > button { color: #8a3ec2; }
+.edc-ov-recommendation-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
+.edc-ov-recommendation { display: flex; flex-direction: column; min-width: 0; min-height: 146px; padding: 6px; border: 1px solid #dfd3ea; border-radius: 6px; background: #fff; box-shadow: none; }
+.edc-ov-recommendation-art { position: relative; margin: 0 0 4px; }
+.edc-ov-recommendation .edc-ov-course-art { height: 38px; }
+.edc-ov-recommendation .edc-ov-course-art .edc-ov-course-logo { max-width: 34px; max-height: 32px; }
 .edc-ov-course-label { position: absolute; top: 0; left: 0; padding: 2px 5px; border-radius: 5px; font-size: 8px; line-height: 1.2; font-weight: 650; }
 .edc-ov-course-label.demo { background: #efe6ff; color: #7a29c8; }
 .edc-ov-course-label.free { background: #82bf5b; color: #fff; }
 .edc-ov-course-label.premium { background: #8c1bf0; color: #fff; }
-.edc-ov-wishlist { position: absolute; top: 0; right: 0; display: grid; width: 22px; height: 22px; place-items: center; padding: 0; border: 0; border-radius: 6px; background: #ffffffd9; color: #644088; cursor: pointer; }
+.edc-ov-wishlist { position: absolute; top: 0; right: 0; display: grid; width: 20px; height: 20px; place-items: center; padding: 0; border: 0; border-radius: 5px; background: transparent; color: #765486; cursor: pointer; }
 .edc-ov-wishlist.is-saved { color: #a42ed6; }
-.edc-ov-recommendation h4 { display: -webkit-box; overflow: hidden; min-height: 29px; margin: 0 0 5px; color: #2a1643; font-size: 11px; line-height: 1.3; font-weight: 750; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-.edc-ov-instructor { display: flex; align-items: center; gap: 4px; overflow: hidden; margin: 0 0 5px; color: #796782; font-size: 8px; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
+.edc-ov-recommendation h4 { display: -webkit-box; overflow: hidden; min-height: 24px; margin: 0 0 4px; color: #231138; font-size: 9px; line-height: 1.3; font-weight: 750; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.edc-ov-instructor { display: flex; align-items: center; gap: 3px; overflow: hidden; margin: 0 0 3px; color: #786783; font-size: 8px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
 .edc-ov-instructor svg { flex: none; color: #9457ba; }
-.edc-ov-course-rating { display: flex; align-items: center; gap: 3px; min-height: 13px; margin: 0 0 5px; color: #dfa21a; font-size: 9px; }
+.edc-ov-course-rating { display: flex; align-items: center; gap: 3px; min-height: 12px; margin: 0 0 2px; color: #dfa21a; font-size: 9px; }
 .edc-ov-course-rating span { color: #9a8ba4; font-size: 8px; }
-.edc-ov-price { margin-bottom: 8px; color: #2f1946; font-size: 10px; font-weight: 750; }
-.edc-overview .edc-ov-enroll { align-self: flex-end; min-height: 24px; margin-top: auto; padding: 5px 8px; border-radius: 6px; font-size: 9px; }
+.edc-ov-price { margin-bottom: 3px; color: #2f1946; font-size: 9px; font-weight: 750; }
+.edc-overview .edc-ov-enroll { align-self: flex-end; min-height: 20px; margin-top: auto; padding: 3px 7px; border: 1px solid #d7ae35; border-radius: 4px; background: linear-gradient(#f8df76, #e6bc39); box-shadow: 0 1px 2px #7e5f1740; color: #3d2b08; font-size: 8px; font-weight: 750; }
+.edc-overview .edc-ov-enroll:hover { filter: brightness(1.04); }
 .edc-ov-achievement-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; margin-top: 25px; }
 .edc-ov-achievement { display: grid; justify-items: center; align-content: start; gap: 8px; min-width: 0; padding: 0; border: 0; background: transparent; text-align: center; cursor: pointer; }
 .edc-ov-medal { display: grid; width: 66px; height: 66px; place-items: center; border-radius: 50%; background: #f0e9fa; }
@@ -156,6 +162,7 @@
   .edc-ov-task-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
   .edc-ov-task-list > button { border-bottom: 0; }
   .edc-ov-bottom-grid { grid-template-columns: 1fr; }
+  .edc-ov-recommendation-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .edc-ov-achievement-grid { margin: 18px auto 8px; max-width: 450px; }
 }
 @media (max-width: 560px) {

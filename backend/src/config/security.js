@@ -15,6 +15,7 @@ export function trustedProxies(value = process.env.TRUST_PROXY) {
   return entries;
 }
 
+// Development accepts a comma-separated list of exact browser origins, including an explicit LAN URL.
 export function clientOrigins(env = process.env) {
   const values = (env.CLIENT_ORIGIN || "http://localhost:5173").split(",").map((value) => value.trim());
   const origins = new Set();

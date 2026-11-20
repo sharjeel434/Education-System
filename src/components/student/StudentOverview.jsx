@@ -56,10 +56,10 @@ export default function StudentOverview({ email, profile, courses, publishedCour
   const nextCourse = courses.find(course => course.progress > 0 && course.progress < 100) || courses.find(course => course.progress < 100) || courses[0];
   const featuredCourse = nextCourse && { ...publishedCourses.find(course => courseKey(course) === courseKey(nextCourse)), ...nextCourse };
   const recommendations = useMemo(() => {
-    if (!publishedCourses.length) return demoCourses.slice(0, 4);
+    if (!publishedCourses.length) return demoCourses.slice(0, 3);
     const available = isAcademicProfileComplete(profile) ? getRelatedPublishedCourses(publishedCourses, profile) : publishedCourses;
     const unenrolled = available.filter(course => !courses.some(enrolled => courseKey(enrolled) === courseKey(course)));
-    return (unenrolled.length ? unenrolled : available).slice(0, 4);
+    return (unenrolled.length ? unenrolled : available).slice(0, 3);
   }, [publishedCourses, profile, courses, demoCourses]);
   const reviewSummaries = getCourseReviewSummaries(recommendations, getReviews());
   const hours = (Math.max(0, Number(activity.totalSeconds) || 0) / 3600).toLocaleString(undefined, { maximumFractionDigits: 1 });

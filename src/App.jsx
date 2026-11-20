@@ -49,6 +49,7 @@ import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 import DashboardPage from "./pages/DashboardPage";
 import CartPage from "./components/Marketplace/CartPage";
+import PaymentReturnPage from "./components/Marketplace/PaymentReturnPage";
 import ResilientImage from "./components/ResilientImage";
 import { ADMIN_DATA_CHANGED_EVENT, getAdminHelpFaqs } from "./components/admin/adminData";
 import { getCart, getStudentEmail } from "./utils/studentCart";
@@ -311,6 +312,7 @@ function App() {
         id: decodeURIComponent(routeParts.slice(2).join("/")),
       }
     : null;
+  const paymentReturn = routeParts[0] === "payment" && routeParts[1] === "return";
   const exploreRouteState = getExploreRouteState(location.pathname, location.search);
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
@@ -327,25 +329,27 @@ function App() {
   const [canScrollFieldsForward, setCanScrollFieldsForward] = useState(true);
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [showGlobalCart, setShowGlobalCart] = useState(false);
-  const [cartCount, setCartCount] = useState(() => {
-    const email = getStudentEmail();
-    return email ? getCart(email).length : 0;
-  });
+  const [cartCount, setCartCount] = useState(0);
   const [helpFaqs, setHelpFaqs] = useState(() => getAdminHelpFaqs({ publishedOnly: true }));
 
   useEffect(() => {
+    let cancelled = false;
     const refreshCart = () => {
       const email = getStudentEmail();
-      setCartCount(email ? getCart(email).length : 0);
+      if (!email) { setCartCount(0); return; }
+      getCart().then((items) => { if (!cancelled) setCartCount(items.length); }).catch(() => {});
     };
 
     refreshCart();
     window.addEventListener("storage", refreshCart);
     window.addEventListener("focus", refreshCart);
+    window.addEventListener("educonnect:cart-changed", refreshCart);
     window.addEventListener("educonnect:student-data-changed", refreshCart);
     return () => {
+      cancelled = true;
       window.removeEventListener("storage", refreshCart);
       window.removeEventListener("focus", refreshCart);
+      window.removeEventListener("educonnect:cart-changed", refreshCart);
       window.removeEventListener("educonnect:student-data-changed", refreshCart);
     };
   }, [location.pathname]);
@@ -819,7 +823,9 @@ if (
       {/* MAIN CONTENT */}
       <main>
 
-        {showGlobalCart ? (
+        {paymentReturn ? (
+          <PaymentReturnPage />
+        ) : showGlobalCart ? (
           <CartPage
             email={getStudentEmail()}
             onBack={() => setShowGlobalCart(false)}

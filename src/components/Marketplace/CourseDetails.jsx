@@ -84,7 +84,7 @@ export default function CourseDetails({
     instructor.teachingProgram || instructor.program,
   ].filter(Boolean);
 
-  function handleAddToCart() {
+  async function handleAddToCart() {
     const email = getStudentEmail();
 
     if (!email) {
@@ -94,7 +94,8 @@ export default function CourseDetails({
 
     if (!course) return;
 
-    const alreadyEnrolled = getEnrollments(email).some(
+    const enrolledCourses = await getEnrollments(email);
+    const alreadyEnrolled = enrolledCourses.some(
       (item) => String(item.id) === String(course.id)
     );
 
@@ -105,13 +106,17 @@ export default function CourseDetails({
       return;
     }
 
-    const added = addToCart(email, course);
+    try {
+      const added = await addToCart(email, course);
 
-    setCartMessage(
-      added
-        ? "Course added to cart successfully!"
-        : "This course is already in your cart."
-    );
+      setCartMessage(
+        added
+          ? "Course added to cart successfully!"
+          : "This course is no longer available."
+      );
+    } catch (failure) {
+      setCartMessage(failure.message || "Could not add this course to your cart.");
+    }
   }
 
  
@@ -416,8 +421,8 @@ function handleViewCart() {
 
             <p className="edc-details-sidebar-note">
               Add this course to your cart and complete
-              demo checkout to enroll. No real payment
-              will be collected.
+              secure checkout to enroll. Payment is verified
+              by the server before access is granted.
             </p>
 
             <div className="edc-details-includes">

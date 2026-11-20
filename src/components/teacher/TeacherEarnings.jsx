@@ -11,7 +11,7 @@ import {
   WalletCards,
   X,
 } from "lucide-react";
-import { collectInstructorCourseAnalytics } from "../../utils/instructorAnalytics";
+import { fetchMyEarnings } from "../../utils/marketplaceApi";
 import { ORDERS_EVENT } from "../../utils/studentCart";
 import "./TeacherEarnings.css";
 
@@ -52,15 +52,17 @@ function dateLabel(value) {
     : "Date not recorded";
 }
 
-function exportReport(courses) {
+function exportReport(courses, summary) {
   const rows = [
-    ["Course", "Enrolled students", "Recorded demo sales", "Gross recorded sales (PKR)"],
+    ["Course", "Enrolled students", "Verified sales", "Gross sales (PKR)", "Your share (PKR)"],
     ...courses.map((course) => [
       course.title || "Untitled course",
       course.students,
       course.sales,
       Number(course.revenue || 0).toFixed(2),
+      Number(course.net || 0).toFixed(2),
     ]),
+    ["TOTAL", "", "", Number(summary?.grossSales || 0).toFixed(2), Number(summary?.netEarnings || 0).toFixed(2)],
   ];
   const csv = `\uFEFF${rows.map((row) => row.map(csvEscape).join(",")).join("\r\n")}`;
   const url = URL.createObjectURL(
@@ -68,7 +70,7 @@ function exportReport(courses) {
   );
   const link = document.createElement("a");
   link.href = url;
-  link.download = "teacher-recorded-demo-sales.csv";
+  link.download = "teacher-earnings-report.csv";
   link.click();
   URL.revokeObjectURL(url);
 }
@@ -130,110 +132,100 @@ export default function TeacherEarnings({ email, courses = [] }) {
   const [period, setPeriod] = useState(6);
   const [selectedCourse, setSelectedCourse] = useState(null);
   const [selectedSummary, setSelectedSummary] = useState("");
+  const [earnings, setEarnings] = useState(null);
+  const [earningsError, setEarningsError] = useState("");
 
   useEffect(() => {
-    const refresh = () => setRevision((value) => value + 1);
-    window.addEventListener("storage", refresh);
+    let cancelled = false;
+    const refresh = () => {
+      setRevision((value) => value + 1);
+      fetchMyEarnings()
+        .then((data) => { if (!cancelled) { setEarnings(data); setEarningsError(""); } })
+        .catch((error) => { if (!cancelled) setEarningsError(error.message || "Your earnings could not be loaded."); });
+    };
+    refresh();
     window.addEventListener("focus", refresh);
     window.addEventListener(ORDERS_EVENT, refresh);
     return () => {
-      window.removeEventListener("storage", refresh);
+      cancelled = true;
       window.removeEventListener("focus", refresh);
       window.removeEventListener(ORDERS_EVENT, refresh);
     };
   }, []);
 
-  const courseData = collectInstructorCourseAnalytics(email, courses);
-  const sales = courseData
-    .flatMap((course) =>
-      (course.salesRecords || []).map((record) => ({
-        ...record,
-        courseId: String(course.id),
-        course: record.course || course.title || "Untitled course",
-      })),
-    )
-    .sort(
-      (left, right) =>
-        (Date.parse(right.purchasedAt || "") || 0) -
-        (Date.parse(left.purchasedAt || "") || 0),
-    );
+  const courseData = earnings?.byCourse || [];
+  const sales = (earnings?.sales || [])
+    .slice()
+    .sort((left, right) => (Date.parse(right.purchasedAt || right.date || "") || 0) - (Date.parse(left.purchasedAt || left.date || "") || 0));
+  const summary = earnings?.summary || { grossSales: 0, commission: 0, netEarnings: 0, salesCount: 0, refundedSales: 0, refundedGross: 0 };
+  const commissionRateLabel = Math.round((Number(earnings?.commissionRate) || 0.2) * 100);
   const months = useMemo(() => getMonths(period), [period]);
   const currentMonth = monthKey(new Date());
   const monthRecords = sales.filter(
-    (sale) => String(sale.purchasedAt || "").slice(0, 7) === currentMonth,
+    (sale) => String(sale.purchasedAt || sale.date || "").slice(0, 7) === currentMonth && sale.status === "earned",
   );
   const monthSales = monthRecords
     .reduce((total, sale) => total + (Number(sale.amount) || 0), 0);
-  const grossSales = sales.reduce(
-    (total, sale) => total + (Number(sale.amount) || 0),
-    0,
-  );
-  const enrolledStudents = new Set(
-    courseData.flatMap((course) => course.studentEmails || []),
-  ).size;
-  const totalCourseEnrollments = courseData.reduce(
-    (total, course) => total + course.students,
-    0,
-  );
+  const grossSales = Number(summary.grossSales) || 0;
+  const enrolledStudents = Number(earnings?.enrolledStudents) || 0;
+  const totalCourseEnrollments = Number(earnings?.totalCourseEnrollments) || 0;
   const monthlySales = months.map(({ key }) =>
     sales
-      .filter((sale) => String(sale.purchasedAt || "").slice(0, 7) === key)
+      .filter((sale) => String(sale.purchasedAt || sale.date || "").slice(0, 7) === key && sale.status === "earned")
       .reduce((total, sale) => total + (Number(sale.amount) || 0), 0),
   );
   const rankedCourses = [...courseData].sort(
     (left, right) => right.revenue - left.revenue || right.students - left.students,
   );
-  const studentEnrollments = courseData.flatMap((course) =>
-    (course.enrollmentRecords || []).map((student) => ({
-      id: `${course.id}:${student.email}`,
-      title: student.name || student.email,
-      detail: `${course.title || "Untitled course"} · Enrolled ${dateLabel(student.enrolledAt)}`,
-    })),
-  );
+  const studentEnrollments = courseData.map((course) => ({
+    id: String(course.courseId),
+    title: course.title || "Untitled course",
+    detail: `${course.students} ${course.students === 1 ? "enrollment" : "enrollments"}`,
+  }));
   const summaryDetails = {
     gross: {
-      title: "Gross Recorded Sales",
-      description: "Saved demo sales summarized by your courses.",
+      title: "Gross Sales",
+      description: `Verified sales across your courses (platform commission ${commissionRateLabel}%).`,
       emptyMessage: "No course records are available yet.",
       items: rankedCourses.map((course) => ({
-        id: String(course.id),
+        id: String(course.courseId),
         title: course.title || "Untitled course",
-        detail: `${course.sales} recorded sales · ${course.students} enrollments`,
+        detail: `${course.sales} verified sales - ${course.students} enrollments - your share ${money(course.net)}`,
         amount: money(course.revenue),
       })),
     },
     month: {
       title: "This Month",
-      description: "Saved course sales dated in the current month.",
+      description: "Verified course sales dated in the current month.",
       emptyMessage: "No course sales are recorded for this month.",
       items: monthRecords.map((sale) => ({
-        id: sale.id,
+        id: sale.id || sale.orderNumber,
         title: sale.course,
-        detail: `${dateLabel(sale.purchasedAt)} · ${sale.status || "Recorded demo sale"}`,
+        detail: `${dateLabel(sale.purchasedAt || sale.date)} - ${sale.status === "refunded" ? "Refunded" : "Verified sale"}`,
         amount: money(sale.amount),
       })),
     },
     sales: {
-      title: "Recorded Sales",
-      description: "Saved course checkout records from this browser.",
+      title: "Verified Sales",
+      description: "Every verified sale across your courses.",
       emptyMessage: "No course sales have been recorded yet.",
       items: sales.map((sale) => ({
-        id: sale.id,
+        id: sale.id || sale.orderNumber,
         title: sale.course,
-        detail: `${dateLabel(sale.purchasedAt)} · ${sale.status || "Recorded demo sale"}`,
+        detail: `${dateLabel(sale.purchasedAt || sale.date)} - ${sale.status === "refunded" ? "Refunded" : "Verified sale"}`,
         amount: money(sale.amount),
       })),
     },
     students: {
       title: "Enrolled Students",
-      description: "Saved student enrollments by course. Students enrolled in multiple courses appear once per course.",
+      description: "MongoDB enrollments by course. Students enrolled in multiple courses appear once per course.",
       emptyMessage: "No student enrollments are recorded yet.",
       items: studentEnrollments,
     },
   };
   const summaryDetail = summaryDetails[selectedSummary];
   const selectedCourseSales = selectedCourse
-    ? sales.filter((sale) => sale.courseId === String(selectedCourse.id))
+    ? sales.filter((sale) => sale.courseId === String(selectedCourse.courseId))
     : [];
 
   return (
@@ -247,7 +239,7 @@ export default function TeacherEarnings({ email, courses = [] }) {
         <button
           type="button"
           className="edc-teacher-earnings-download"
-          onClick={() => exportReport(courseData)}
+          onClick={() => exportReport(courseData, summary)}
         >
           <Download size={17} /> Download Earnings Report
         </button>
@@ -256,20 +248,21 @@ export default function TeacherEarnings({ email, courses = [] }) {
       <p className="edc-teacher-earnings-notice" role="note">
         <CircleAlert size={17} />
         <span>
-          These figures come from demo checkout records saved in this browser. No real
-          payments, balances, or payouts are processed.
+          These figures come from verified MongoDB orders. Your share is net of the
+          platform commission. No payouts or balances are processed yet.
         </span>
       </p>
+      {earningsError && <p className="edc-teacher-earnings-notice" role="alert"><CircleAlert size={17} /><span>{earningsError}</span></p>}
 
       <section className="edc-teacher-earnings-stats" aria-label="Earnings summary">
         <button
           type="button"
           className="edc-teacher-earnings-stat purple"
-          aria-label={`Gross recorded sales: ${money(grossSales)}. View course breakdown.`}
+          aria-label={`Gross sales: ${money(grossSales)}. View course breakdown.`}
           onClick={() => setSelectedSummary("gross")}
         >
           <span><WalletCards size={22} /></span>
-          <div><small>Gross Recorded Sales</small><strong>{money(grossSales)}</strong></div>
+          <div><small>Gross Sales</small><strong>{money(grossSales)}</strong></div>
         </button>
         <button
           type="button"
@@ -283,11 +276,11 @@ export default function TeacherEarnings({ email, courses = [] }) {
         <button
           type="button"
           className="edc-teacher-earnings-stat purple"
-          aria-label={`Recorded sales: ${sales.length}. View sale records.`}
+          aria-label={`Verified sales: ${Number(summary.salesCount || 0)}. View sale records.`}
           onClick={() => setSelectedSummary("sales")}
         >
           <span><BookOpen size={22} /></span>
-          <div><small>Recorded Sales</small><strong>{sales.length.toLocaleString()}</strong></div>
+          <div><small>Verified Sales</small><strong>{Number(summary.salesCount || 0).toLocaleString()}</strong></div>
         </button>
         <button
           type="button"
@@ -304,7 +297,7 @@ export default function TeacherEarnings({ email, courses = [] }) {
         <div className="edc-teacher-earnings-primary">
           <section className="edc-teacher-earnings-panel">
             <header className="edc-teacher-earnings-panel-heading">
-              <div><h2>Earnings Overview</h2><p>Gross recorded demo sales · PKR</p></div>
+              <div><h2>Earnings Overview</h2><p>Verified sales, PKR. Your share after {commissionRateLabel}% commission: {money(summary.netEarnings)}</p></div>
               <label>
                 <CalendarDays size={15} />
                 <select
@@ -329,7 +322,7 @@ export default function TeacherEarnings({ email, courses = [] }) {
                 <thead><tr><th>#</th><th>Course</th><th>Students</th><th>Sales</th><th>Gross Sales</th><th>Details</th></tr></thead>
                 <tbody>
                   {rankedCourses.length ? rankedCourses.map((course, index) => (
-                    <tr key={String(course.id)}>
+                    <tr key={String(course.courseId)}>
                       <td>{index + 1}</td>
                       <td className="edc-teacher-earnings-course-title">{course.title || "Untitled course"}</td>
                       <td>{course.students}</td>
@@ -350,7 +343,7 @@ export default function TeacherEarnings({ email, courses = [] }) {
                     <tr><td colSpan={6} className="edc-teacher-earnings-empty-cell">No courses are saved for this teacher yet.</td></tr>
                   )}
                 </tbody>
-                <tfoot><tr><th colSpan={2}>Total</th><th>{totalCourseEnrollments}</th><th>{sales.length}</th><th>{money(grossSales)}</th><th /></tr></tfoot>
+                <tfoot><tr><th colSpan={2}>Total</th><th>{totalCourseEnrollments}</th><th>{Number(summary.salesCount || 0)}</th><th>{money(grossSales)}</th><th /></tr></tfoot>
               </table>
             </div>
           </section>
@@ -372,15 +365,15 @@ export default function TeacherEarnings({ email, courses = [] }) {
 
           <section className="edc-teacher-earnings-panel edc-teacher-recent-panel">
             <header className="edc-teacher-earnings-panel-heading">
-              <div><h2><Receipt size={18} /> Recent Transactions</h2><p>Saved demo course sales</p></div>
+              <div><h2><Receipt size={18} /> Recent Transactions</h2><p>Verified course sales</p></div>
               <span>{sales.length}</span>
             </header>
             {sales.length ? (
               <ul>
                 {sales.slice(0, 6).map((sale) => (
-                  <li key={sale.id}>
+                  <li key={sale.id || sale.orderNumber}>
                     <span className="edc-teacher-earnings-transaction-icon"><ArrowDown size={17} /></span>
-                    <div><strong>Course Sale — {sale.course}</strong><small>{dateLabel(sale.purchasedAt)} · Demo record</small></div>
+                    <div><strong>Course Sale — {sale.course}</strong><small>{dateLabel(sale.purchasedAt || sale.date)} · {sale.status === "refunded" ? "Refunded" : "Verified"}</small></div>
                     <b>{money(sale.amount)}</b>
                   </li>
                 ))}
@@ -431,9 +424,9 @@ export default function TeacherEarnings({ email, courses = [] }) {
             </header>
             {selectedCourse ? (
               <>
-                <p>{selectedCourse.students} saved enrollments · {selectedCourse.sales} recorded sales · {money(selectedCourse.revenue)} gross</p>
+                <p>{selectedCourse.students} verified enrollments · {selectedCourse.sales} verified sales · {money(selectedCourse.revenue)} gross</p>
                 {selectedCourseSales.length ? (
-                  <ul>{selectedCourseSales.map((sale) => <li key={sale.id}><span>{dateLabel(sale.purchasedAt)} · {sale.status || "Recorded"}</span><strong>{money(sale.amount)}</strong></li>)}</ul>
+                  <ul>{selectedCourseSales.map((sale) => <li key={sale.id || sale.orderNumber}><span>{dateLabel(sale.purchasedAt || sale.date)} · {sale.status === "refunded" ? "Refunded" : "Verified"}</span><strong>{money(sale.amount)}</strong></li>)}</ul>
                 ) : (
                   <div className="edc-teacher-earnings-modal-empty">No saved sales for this course.</div>
                 )}

@@ -1,9 +1,13 @@
 import { getContentState, enrollContent, unenrollContent, getMongoCourseEnrollments, contentFileUrl, CONTENT_CHANGED_EVENT } from "../../utils/contentApi";
 import { fetchProgress, setLessonCompleted, fetchMyCertificates, issueCertificate, LEARNING_UPDATED_EVENT } from "../../utils/mongoLearningApi";
+import { fetchPaymentProviders, fetchPaymentsConfig } from "../../utils/marketplaceApi";
+import { beginProviderCheckout } from "../../utils/paymentFlow";
+import PaymentProviderPicker from "../../components/Marketplace/PaymentProviderPicker";
+import { getCartState, getStudentOrders, addToCart, removeFromCart, clearCart, demoCheckout, ORDERS_EVENT } from "../../utils/studentCart";
+import { CART_CHANGED_EVENT } from "../../utils/marketplaceApi";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { appendAdminActivityRecord } from "../../components/admin/adminData";
 import {
   LayoutDashboard,
   BookOpen,
@@ -253,6 +257,8 @@ export default function StudentDashboard({ email = "student", account, onVerific
 
   const [activeTab, setActiveTab] = useState(() => quizRouteId ? "quizzes" : "overview");
   const requestedTab = location.state?.studentTab;
+  const showProfileVerification = location.state?.profileSection === "verification";
+  const verificationFocusKey = useRef(null);
   useEffect(() => {
     if (requestedTab && MENU.some(item => item.id === requestedTab)) {
       // Router state can request a destination tab without changing the route.
@@ -260,7 +266,7 @@ export default function StudentDashboard({ email = "student", account, onVerific
       setActiveTab(requestedTab);
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
-  }, [requestedTab, location.key, showProfileVerification]);
+  }, [requestedTab, location.key]);
   useEffect(() => {
     if (activeTab !== "profile" || !showProfileVerification || verificationFocusKey.current === location.key) return;
     verificationFocusKey.current = location.key;
@@ -454,11 +460,16 @@ export default function StudentDashboard({ email = "student", account, onVerific
     readStorage(`${baseKey}.bookWishlist`, [])
   );
 
-  const [cart, setCart] = useState(() => readStorage(`${baseKey}.cart`, []));
+  // MongoDB is the source of truth for the shopping cart and orders.
+  const [cart, setCart] = useState([]);
   const [cartNotice, setCartNotice] = useState("");
+  const [payProviders, setPayProviders] = useState([]);
+  const [payProvidersMode, setPayProvidersMode] = useState("sandbox");
+  const [selectedPayProvider, setSelectedPayProvider] = useState("");
+  const [payDemoEnabled, setPayDemoEnabled] = useState(false);
   const [cartSelection, setCartSelection] = useState([]);
   const [cartSummaryFilter, setCartSummaryFilter] = useState("all");
-  const [orders, setOrders] = useState(() => readStorage(`${baseKey}.orders`, []));
+  const [orders, setOrders] = useState([]);
   const [bookPurchases, setBookPurchases] = useState(() => readStorage(`${baseKey}.bookPurchases`, []));
   useEffect(() => {
     const sync = () => {
@@ -967,20 +978,49 @@ export default function StudentDashboard({ email = "student", account, onVerific
     catch (error) { console.error("Could not save notifications", error); }
   }, [baseKey, notifications]);
 
+  const refreshCart = async () => {
+    try { const data = await getCartState(); setCart(data.items || []); } catch (error) { console.error("Could not load cart", error); }
+  };
+  const refreshOrders = async () => {
+    try { setOrders(await getStudentOrders()); } catch (error) { console.error("Could not load orders", error); }
+  };
   useEffect(() => {
-    localStorage.setItem(`${baseKey}.orders`, JSON.stringify(orders));
-    window.dispatchEvent(new Event("educonnect:student-data-changed"));
-  }, [baseKey, orders]);
+    let cancelled = false;
+    fetchPaymentProviders()
+      .then((data) => {
+        if (cancelled) return;
+        setPayProvidersMode(data.mode || "sandbox");
+        const list = Array.isArray(data.providers) ? data.providers : [];
+        setPayProviders(list);
+        setSelectedPayProvider((current) => current || list.find((entry) => entry.enabled)?.name || "");
+      })
+      .catch(() => { /* provider list unavailable; picker will show disabled state */ });
+    fetchPaymentsConfig()
+      .then((data) => { if (!cancelled) setPayDemoEnabled(Boolean(data?.demoEnabled)); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+  useEffect(() => {
+    refreshCart();
+    refreshOrders();
+    const onCartChange = () => refreshCart();
+    const onOrdersChange = () => refreshOrders();
+    window.addEventListener(CART_CHANGED_EVENT, onCartChange);
+    window.addEventListener(ORDERS_EVENT, onOrdersChange);
+    window.addEventListener("focus", onCartChange);
+    window.addEventListener("focus", onOrdersChange);
+    return () => {
+      window.removeEventListener(CART_CHANGED_EVENT, onCartChange);
+      window.removeEventListener(ORDERS_EVENT, onOrdersChange);
+      window.removeEventListener("focus", onCartChange);
+      window.removeEventListener("focus", onOrdersChange);
+    };
+  }, [email]);
 
   useEffect(() => {
     localStorage.setItem(`${baseKey}.bookPurchases`, JSON.stringify(bookPurchases));
     window.dispatchEvent(new Event("educonnect:student-data-changed"));
   }, [baseKey, bookPurchases]);
-
-  useEffect(() => {
-    localStorage.setItem(`${baseKey}.cart`, JSON.stringify(cart));
-    window.dispatchEvent(new Event("educonnect:student-data-changed"));
-  }, [baseKey, cart]);
 
   useEffect(() => {
     localStorage.setItem(
@@ -1012,6 +1052,7 @@ export default function StudentDashboard({ email = "student", account, onVerific
     return null;
   }
 
+  const checkoutKeyRef = useRef(null);
   const [mongoProgress, setMongoProgress] = useState({});
   const [mongoCertificates, setMongoCertificates] = useState([]);
   const certificateIssueAttempts = useRef(new Set());
@@ -1309,9 +1350,14 @@ export default function StudentDashboard({ email = "student", account, onVerific
     })),
   ];
   const shopKey = (c) => `${c.itemType === "book" ? "book" : "course"}::${String(c.teacherEmail || "demo").toLowerCase()}::${String(c.id)}`;
-  const isCurrentCartItem = (item) => item.itemType === "book"
-    ? getPublishedBooks().some((book) => String(book.id) === String(item.id) && String(book.teacherEmail || "").toLowerCase() === String(item.teacherEmail || "").toLowerCase())
-    : Boolean(item.teacherEmail) && latestPublishedCourses.some((course) => String(course.id) === String(item.id) && String(course.teacherEmail || "").toLowerCase() === String(item.teacherEmail).toLowerCase());
+  const isMongoId = (value) => /^[a-f0-9]{24}$/i.test(String(value || ""));
+  const isCurrentCartItem = (item) => {
+    if (item?.available === false) return false;
+    if (isMongoId(item?.id)) return true; // MongoDB cart items are validated server-side.
+    return item.itemType === "book"
+      ? getPublishedBooks().some((book) => String(book.id) === String(item.id) && String(book.teacherEmail || "").toLowerCase() === String(item.teacherEmail || "").toLowerCase())
+      : Boolean(item.teacherEmail) && latestPublishedCourses.some((course) => String(course.id) === String(item.id) && String(course.teacherEmail || "").toLowerCase() === String(item.teacherEmail).toLowerCase());
+  };
   const alreadyEnrolled = (c) => {
     const id = String(c?.id ?? "");
     if (/^[a-f0-9]{24}$/i.test(id) || c?.mongoContent) {
@@ -1322,27 +1368,23 @@ export default function StudentDashboard({ email = "student", account, onVerific
       String(e.teacherEmail || "").toLowerCase() === String(c.teacherEmail || "").toLowerCase()
     );
   };
-  function addCart(course) {
+  async function addCart(course) {
     if (course.itemType === "book") return addBookToCart(course);
     if (alreadyEnrolled(course)) { setCartNotice("Already enrolled. Open My Learning."); return; }
     if (cart.some(c => shopKey(c) === shopKey(course))) { setCartNotice("Course already in cart."); return; }
-    setCart(prev => [...prev, {
-      id: course.id, teacherEmail: course.teacherEmail || "",
-      title: course.title, instructor: course.instructorName || course.instructor || "Instructor",
-      category: course.category || "General", price: Math.max(0, Number(course.price) || 0),
-      thumbnail: course.thumbnail || course.image || "",
-      lessons: Array.isArray(course.lessons) ? course.lessons.length : Number(course.lessons) || 0,
-    }]);
-    setCartNotice("Added to shopping cart.");
+    try { await addToCart(email, { itemType: "course", id: course.id }); await refreshCart(); setCartNotice("Added to shopping cart."); }
+    catch (error) { setCartNotice(error.message || "Could not add this course to your cart."); }
   }
-  function addBookToCart(book) {
+  async function addBookToCart(book) {
     if (isBookPurchased(email, book.id) || bookPurchases.some((item) => String(item.id) === String(book.id))) { setCartNotice("This eBook is already in My eBooks."); return; }
     if (cart.some((item) => item.itemType === "book" && shopKey(item) === shopKey(book))) { setCartNotice("This eBook is already in your cart."); return; }
-    setCart((previous) => [...previous, { itemType: "book", id: String(book.id), teacherEmail: String(book.teacherEmail || "").toLowerCase(), title: book.title, instructor: book.teacherName || book.author || "Teacher", category: book.subject || "PDF eBook", price: Math.max(0, Number(book.price) || 0), pdfFileId: book.pdfFileId, previewFileId: book.previewFileId, fileName: book.fileName, downloadAllowed: Boolean(book.downloadAllowed), coverFileId: book.coverFileId, educationLevel: book.educationLevel, classOrProgram: book.classOrProgram, semester: book.semester }]);
-    setCartNotice("eBook added to cart.");
+    try { await addToCart(email, { itemType: "book", id: book.id }); await refreshCart(); setCartNotice("eBook added to cart."); }
+    catch (error) { setCartNotice(error.message || "Could not add this eBook to your cart."); }
   }
-  function removeCart(course) {
-    setCart(prev => prev.filter(c => shopKey(c) !== shopKey(course)));
+  async function removeCart(course) {
+    try { await removeFromCart(email, course); }
+    catch (error) { setCartNotice(error.message || "Could not remove the item."); }
+    await refreshCart();
     setCartSelection((previous) => previous.filter((key) => key !== shopKey(course)));
     setCartNotice("Removed from cart.");
   }
@@ -1350,26 +1392,31 @@ export default function StudentDashboard({ email = "student", account, onVerific
     const key = shopKey(course);
     setCartSelection((previous) => previous.includes(key) ? previous.filter((item) => item !== key) : [...previous, key]);
   }
-  function removeSelectedCart(items) {
-    const selectedKeys = new Set(items.filter((item) => cartSelection.includes(shopKey(item))).map(shopKey));
-    setCart((previous) => previous.filter((item) => !selectedKeys.has(shopKey(item))));
+  async function removeSelectedCart(items) {
+    const selectedItems = items.filter((item) => cartSelection.includes(shopKey(item)));
+    if (!selectedItems.length) return;
+    try { await Promise.all(selectedItems.map((item) => removeFromCart(email, item))); }
+    catch (error) { setCartNotice(error.message || "Could not remove the selected items."); }
+    await refreshCart();
     setCartSelection([]);
     setCartNotice("Selected items removed from your cart.");
   }
-  function moveSelectedToWishlist(items) {
+  async function moveSelectedToWishlist(items) {
     const selectedItems = items.filter((item) => cartSelection.includes(shopKey(item)));
     if (!selectedItems.length) return;
     const courseIds = selectedItems.filter((item) => item.itemType !== "book").map((item) => item.id);
     const bookIds = selectedItems.filter((item) => item.itemType === "book").map((item) => String(item.id));
     setWishlist((previous) => courseIds.reduce((next, id) => next.some((value) => String(value) === String(id)) ? next : [...next, id], [...previous]));
     setSavedBookIds((previous) => bookIds.reduce((next, id) => next.includes(id) ? next : [...next, id], [...previous]));
-    const selectedKeys = new Set(selectedItems.map(shopKey));
-    setCart((previous) => previous.filter((item) => !selectedKeys.has(shopKey(item))));
+    try { await Promise.all(selectedItems.map((item) => removeFromCart(email, item))); }
+    catch (error) { setCartNotice(error.message || "Could not move the selected items."); }
+    await refreshCart();
     setCartSelection([]);
     setCartNotice("Selected items moved to your Wishlist.");
   }
-  function removeAllCartItems() {
-    setCart([]);
+  async function removeAllCartItems() {
+    try { await clearCart(); } catch (error) { setCartNotice(error.message || "Could not clear the cart."); }
+    await refreshCart();
     setCartSelection([]);
     setCartNotice("All items removed from your cart.");
   }
@@ -1377,56 +1424,34 @@ export default function StudentDashboard({ email = "student", account, onVerific
     const available = cart.filter(c => isCurrentCartItem(c) && (c.itemType === "book" ? !isBookPurchased(email, c.id) && !bookPurchases.some((item) => String(item.id) === String(c.id)) : !alreadyEnrolled(c)));
     if (!available.length) { setCartNotice("Cart is empty or all items are already owned."); return; }
     const total = available.reduce((sum,c) => sum + Math.max(0, Number(c.price) || 0), 0);
-    if (!window.confirm(`Demo checkout: ${available.length} item(s), total PKR ${total.toLocaleString()}. No real payment will be charged. Continue?`)) return;
-    try { await enrollContent(available); }
-    catch (error) { setCartNotice(error.message); return; }
-    const purchasedAt = new Date().toISOString();
-    const order = {
-      id: `EDC-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
-      purchasedAt,
-      status: "Demo completed",
-      paymentMethod: "Demo checkout â€” no real payment",
-      currency: "PKR",
-      items: available.map(c => ({
-        itemType: c.itemType || "course", id: String(c.id), teacherEmail: String(c.teacherEmail || ""),
-        title: String(c.title || "Untitled Course"),
-        instructor: String(c.instructor || "Instructor"),
-        price: Math.max(0, Number(c.price) || 0),
-      })),
-      total,
-    };
-    // Snapshot the order at checkout so later course edits don't change receipts.
-    setOrders(prev => [order, ...prev]);
+    const allFree = total === 0;
+    // Demo fallback only when the backend explicitly enables it (development/testing).
+    const useDemo = !allFree && !selectedPayProvider && payDemoEnabled;
+    if (!allFree && !selectedPayProvider && !useDemo) { setCartNotice(payProviders.some((entry) => entry.enabled) ? "Please choose a payment method below to continue." : "No payment provider is configured on the server (see backend/.env.example), so paid checkout is unavailable. Free items can still be checked out."); return; }
+    if (!window.confirm(`Checkout: ${available.length} item(s), total PKR ${total.toLocaleString()}.${allFree ? "" : useDemo ? " Sandbox demo checkout — no real payment." : " You will be redirected to the provider's secure page."} Continue?`)) return;
     try {
-      appendAdminActivityRecord({
-        actor: email,
-        actorRole: "Student",
-        action: "Demo Checkout Completed",
-        category: "financial-management",
-        module: "Financial Management",
-        entityType: "Demo Order",
-        entityId: String(order.id),
-        targetId: String(order.id),
-        targetName: `Demo order (${available.length} item${available.length === 1 ? "" : "s"})`,
-        previousValue: "Cart",
-        newValue: "Demo completed",
-        description: "Student completed a demo course/book checkout. No real payment was processed and no payment credentials were stored.",
-        result: "Success",
-        status: "Completed",
-      });
-    } catch {
-      // Keep checkout successful when local audit storage is unavailable.
+      if (!checkoutKeyRef.current) checkoutKeyRef.current = globalThis.crypto?.randomUUID?.() || `checkout-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      if (allFree || useDemo) {
+        const order = await demoCheckout(email, checkoutKeyRef.current);
+        checkoutKeyRef.current = null;
+        notify({ id: `purchase:${order.orderNumber || order.id}`, type: "purchase", title: "Purchase complete",
+          message: `${(order.items || []).length} item(s) purchased - PKR ${Number(order.total || 0).toLocaleString()}.`, link: "orders" });
+        setCart([]);
+        setCartSelection([]);
+        await Promise.all([refreshCart(), refreshOrders()]);
+        setCartNotice("Purchase complete. Your items are in My Learning and My eBooks.");
+        setActiveTab((order.items || []).some((item) => item.itemType !== "book") ? "learning" : "ebooks");
+        return;
+      }
+      // Paid order: hand off to the provider's hosted checkout. Redirect happens inside;
+      // the /payment/return page confirms with the backend before unlocking anything.
+      await beginProviderCheckout(selectedPayProvider, checkoutKeyRef.current);
+      checkoutKeyRef.current = null;
+      setCartNotice("Taking you to the secure payment page…");
+    } catch (error) {
+      checkoutKeyRef.current = null; // Server-side idempotency still applies.
+      setCartNotice(error.message || "Payment is not available right now.");
     }
-    notify({ id: `purchase:${order.id}`, type: "purchase", title: "Demo purchase completed",
-      message: `${available.length} item(s) purchased â€” PKR ${total.toLocaleString()} (demo only).`, link: "orders" });
-    const purchasedCourses = available.filter((c) => c.itemType !== "book");
-    const purchasedBooksNow = available.filter((c) => c.itemType === "book");
-    if (purchasedCourses.length) setEnrollments(prev => [...prev, ...purchasedCourses.filter((course) => !prev.some((item) => String(item.id) === String(course.id))).map(c => ({ ...c, completedLessons: 0, progress: 0, enrolledAt: purchasedAt }))]);
-    if (purchasedBooksNow.length) setBookPurchases((previous) => [...previous, ...purchasedBooksNow.filter((book) => !previous.some((item) => String(item.id) === String(book.id))).map((book) => ({ ...book, purchasedAt }))]);
-    setCart([]);
-    setCartSelection([]);
-    setCartNotice("Demo checkout complete. Purchased books are in My eBooks.");
-    setActiveTab(purchasedCourses.length ? "learning" : "ebooks");
   }
 
   function enrollCourse(id) {
@@ -1529,7 +1554,7 @@ export default function StudentDashboard({ email = "student", account, onVerific
     const ownerEmail = String(course.teacherEmail || course.instructorEmail || "").trim().toLowerCase();
     const enrolled = enrollments.some((item) => String(item.id) === String(course.id) &&
       String(item.teacherEmail || "").trim().toLowerCase() === ownerEmail);
-    const purchased = orders.some((order) => ["completed", "demo completed"].includes(String(order.status || "").toLowerCase()) &&
+    const purchased = orders.some((order) => ["completed", "demo completed", "paid"].includes(String(order.status || "").toLowerCase()) &&
       (order.items || []).some((item) => item.itemType !== "book" && String(item.id) === String(course.id) &&
         String(item.teacherEmail || "").trim().toLowerCase() === ownerEmail));
     return enrolled || purchased;
@@ -2217,12 +2242,14 @@ export default function StudentDashboard({ email = "student", account, onVerific
     if (!win) { setOrderNotice("Please allow pop-ups to print the demo invoice."); return; }
     const rows = (order.items || []).map(item => `<tr><td>${escapeHtml(item.title)}</td><td>${escapeHtml(item.instructor)}</td><td style="text-align:right">${money(item.price)}</td></tr>`).join("");
     win.document.open();
-    win.document.write(`<!doctype html><html><head><meta charset="utf-8"/><title>EduConnect Demo Invoice ${escapeHtml(order.id)}</title>
+    const verified = String(order.status || "").toLowerCase() === "paid";
+    const receiptTitle = verified ? "Purchase Receipt" : "Demo Purchase Receipt";
+    win.document.write(`<!doctype html><html><head><meta charset="utf-8"/><title>EduConnect ${verified ? "Receipt" : "Demo Invoice"} ${escapeHtml(order.id)}</title>
       <style>body{font-family:Arial,sans-serif;max-width:780px;margin:42px auto;color:#17223b;padding:0 20px}h1{margin-bottom:4px}p{line-height:1.6}table{border-collapse:collapse;width:100%;margin:25px 0}th,td{border-bottom:1px solid #ddd;padding:12px;text-align:left}th{background:#f5f7fa}.total{text-align:right;font-size:20px;font-weight:bold}.note{padding:15px;background:#fff6df;border-radius:8px}@media print{button{display:none}}</style>
-      </head><body><h1>EduConnect AI</h1><p>Demo Purchase Receipt</p>
+      </head><body><h1>EduConnect AI</h1><p>${escapeHtml(receiptTitle)}</p>
       <p><b>Order:</b> ${escapeHtml(order.id)}<br/><b>Date:</b> ${escapeHtml(new Date(order.purchasedAt).toLocaleString())}<br/><b>Status:</b> ${escapeHtml(order.status)}<br/><b>Payment:</b> ${escapeHtml(order.paymentMethod)}</p>
       <table><thead><tr><th>Item</th><th>Instructor</th><th style="text-align:right">Price (PKR)</th></tr></thead><tbody>${rows}</tbody></table>
-      <p class="total">Total: ${money(order.total)}</p><p class="note">DEMO ONLY â€” No payment was collected. This is not a tax invoice or proof of a real purchase.</p>
+      <p class="total">Total: ${money(order.total)}</p><p class="note">${verified ? "This receipt reflects a verified order recorded by EduConnect AI." : "Not a completed purchase. Payment for this order has not been verified."}</p>
       <button onclick="window.print()">Print / Save as PDF</button></body></html>`);
     win.document.close();
     win.focus();
@@ -2301,7 +2328,7 @@ export default function StudentDashboard({ email = "student", account, onVerific
         <div>
           <span className="edc-cart-eyebrow">YOUR SELECTED LEARNING</span>
           <h1><ShoppingCart size={29} /> Shopping Cart</h1>
-          <p>Review published courses and approved eBooks before demo checkout.</p>
+          <p>Review published courses and approved eBooks before secure checkout.</p>
         </div>
         <div className="edc-cart-hero-art" aria-hidden="true">
           <BookOpen size={54} />
@@ -2379,8 +2406,16 @@ export default function StudentDashboard({ email = "student", account, onVerific
           <h2><BookOpen size={20} /> Order Summary</h2>
           <div className="edc-cart-summary-row"><span>Subtotal ({availableItems.length} {availableItems.length === 1 ? "item" : "items"})</span><strong>PKR {total.toLocaleString()}</strong></div>
           <div className="edc-cart-summary-total"><span>Total</span><strong>PKR {total.toLocaleString()}</strong></div>
-          <p className="edc-cart-demo-note">Demo checkout only. No payment will be collected.</p>
-          <button type="button" className="edc-cart-checkout" onClick={checkoutCart} disabled={!availableItems.length}><ShoppingCart size={17} /> Proceed to Demo Checkout <ArrowRight size={17} /></button>
+          {availableItems.length > 0 && (availableItems.reduce((sum, c) => sum + Math.max(0, Number(c.price) || 0), 0) > 0) && (
+            <PaymentProviderPicker
+              providers={payProviders}
+              mode={payProvidersMode}
+              selected={selectedPayProvider}
+              onSelect={setSelectedPayProvider}
+            />
+          )}
+          <p className="edc-cart-demo-note">{payDemoEnabled && !selectedPayProvider ? "No provider configured — sandbox demo checkout will be used." : "Payments are verified server-side before access is granted."}</p>
+          <button type="button" className="edc-cart-checkout" onClick={checkoutCart} disabled={!availableItems.length}><ShoppingCart size={17} /> {payDemoEnabled && !selectedPayProvider ? "Proceed to Sandbox Checkout" : "Proceed to Secure Checkout"} <ArrowRight size={17} /></button>
         </aside>
       </div>
 

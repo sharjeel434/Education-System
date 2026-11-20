@@ -1,5 +1,5 @@
 
-import { useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Link,
   Navigate,
@@ -151,6 +151,10 @@ function DashboardPage() {
     );
   }
 
+  if (role === "Admin") {
+    return <AdminLayout email={email} onLogout={signOut} />;
+  }
+
   const welcomeTitle =
     role === "Teacher"
       ? "Welcome to your teaching space."
@@ -163,7 +167,14 @@ function DashboardPage() {
 
   const dashboardContent = (
     <>
-      {role === "Student" ? <StudentDashboardHeader email={email} onLogout={signOut} /> : <header className="auth-topbar">
+      {role === "Student" ? (
+        <StudentDashboardHeader
+          email={email}
+          fullName={account?.fullName}
+          identityVerified={account?.cnicVerification?.status === "verified"}
+          onLogout={signOut}
+        />
+      ) : <header className="auth-topbar">
         <Link
           className="auth-brand"
           to="/"

@@ -58,6 +58,9 @@ import TeacherLessons from "../../components/teacher/TeacherLessons";
 import WorkspaceSidebar from "../../components/workspace/WorkspaceSidebar";
 import TeacherStudents from "../../components/teacher/TeacherStudents";
 import TeacherEarnings from "../../components/teacher/TeacherEarnings";
+import TeacherCnicUpload from "../../components/teacher/TeacherCnicUpload";
+import VerifiedBadge from "../../components/verification/VerifiedBadge";
+import StudentProfileBadge from "../../components/verification/StudentProfileBadge";
 import { collectInstructorCourseAnalytics } from "../../utils/instructorAnalytics";
 import { getCourseCatalogForDisplay } from "../../utils/teacherCourses";
 import { REVIEW_EVENT } from "../../utils/courseReviews";
@@ -420,8 +423,8 @@ function TeacherProfileOverview({
                   <TeacherCnicUpload cnicStatus={cnicStatus} onSubmitted={onVerificationSubmitted} rejectionReason={rejectionReason} />
                 )}
                 <div style={{ marginTop: 18, display: "flex", flexWrap: "wrap", gap: 10 }}>
-                  <button type="button" style={styles.lightButton} onClick={onEdit}><Edit3 size={16} /> Edit Profile</button>
-                  <button type="button" style={styles.lightButton} onClick={() => onNavigate("help-support")}><LifeBuoy size={16} /> Help & Support</button>
+                  <button type="button" className="edc-pd-secondary" onClick={onEdit}><Edit3 size={16} /> Edit Profile</button>
+                  <button type="button" className="edc-pd-secondary" onClick={() => onNavigate("help-support")}><LifeBuoy size={16} /> Help & Support</button>
                 </div>
               </section>
             )}
@@ -892,7 +895,7 @@ function removeThumbnail() {
     );
   }
 
-  function removeLesson(courseId, lessonId, options) {
+  async function removeLesson(courseId, lessonId, options) {
     if (!options?.skipConfirm && !window.confirm("Remove this lesson?")) return false;
     const saved = await updateCourses((previous) =>
       previous.map((course) =>
