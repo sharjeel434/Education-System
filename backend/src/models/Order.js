@@ -10,12 +10,12 @@ const itemSchema = new mongoose.Schema({
 }, { _id: false });
 
 const schema = new mongoose.Schema({
-  studentId: { type: mongoose.Schema.Types.ObjectId, required: true, immutable: true, index: true },
+  studentId: { type: mongoose.Schema.Types.ObjectId, required: true, immutable: true },
   orderNumber: { type: String, required: true, unique: true, immutable: true, maxlength: 40 },
   items: { type: [itemSchema], required: true, validate: [(value) => value.length > 0 && value.length <= 100, "Order must contain 1-100 items."] },
   total: { type: Number, required: true, min: 0 },
   currency: { type: String, required: true, maxlength: 8, default: "PKR" },
-  status: { type: String, enum: ["initiated", "pending", "paid", "failed", "cancelled", "refunded", "expired"], default: "pending", index: true },
+  status: { type: String, enum: ["initiated", "pending", "paid", "failed", "cancelled", "refunded", "expired"], default: "pending" },
   amountMinor: { type: Number, min: 0, default: 0 },
   environment: { type: String, enum: ["sandbox", "live"], default: "sandbox" },
   providerOrderId: { type: String, maxlength: 120, default: null },
@@ -36,6 +36,7 @@ const schema = new mongoose.Schema({
 schema.index({ studentId: 1, fingerprint: 1 }, { unique: true, partialFilterExpression: { status: "pending" } });
 schema.index({ studentId: 1, idempotencyKey: 1 }, { unique: true, partialFilterExpression: { idempotencyKey: { $type: "string" } } });
 schema.index({ status: 1, createdAt: -1 });
+schema.index({ studentId: 1, createdAt: -1 });
 // One provider transaction can settle exactly one order, ever.
 schema.index({ provider: 1, providerTransactionId: 1 }, { unique: true, partialFilterExpression: { providerTransactionId: { $type: "string" } } });
 export default mongoose.model("Order", schema);

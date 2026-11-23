@@ -17,6 +17,11 @@ import marketplaceRoutes from "./routes/marketplaceRoutes.js";
 import paymentWebhookRoutes from "./routes/paymentWebhookRoutes.js";
 import paymentCallbackRoutes from "./routes/paymentCallbackRoutes.js";
 import paymentGatewayRoutes from "./routes/paymentGatewayRoutes.js";
+import supportTicketRoutes from "./routes/supportTicketRoutes.js";
+import recommendationRoutes from "./routes/recommendationRoutes.js";
+import researchRoutes from "./routes/researchRoutes.js";
+import notificationRoutes from "./routes/notificationRoutes.js";
+import analyticsRoutes from "./routes/analyticsRoutes.js";
 import { clientOrigins as configuredClientOrigins, trustedProxies } from "./config/security.js";
 import { rateLimitStore } from "./middleware/rateLimitStore.js";
 const app = express();
@@ -62,6 +67,13 @@ app.use("/api/marketplace", marketplaceRoutes);
 app.use("/api/payments", paymentGatewayRoutes);
 app.use("/api/learning", learningRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/support", supportTicketRoutes);
+// Phase 7: personalized recommendations, research workspace, notifications
+// and role-scoped learning analytics (each router applies protect + authorize).
+app.use("/api/recommendations", recommendationRoutes);
+app.use("/api/research", researchRoutes);
+app.use("/api/notifications", notificationRoutes);
+app.use("/api/analytics", analyticsRoutes);
 app.use("/api/teacher/verification", teacherVerificationRoutes);
 app.use("/api/student/verification", studentVerificationRoutes);
 app.use(notFound);

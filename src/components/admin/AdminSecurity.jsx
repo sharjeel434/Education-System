@@ -934,7 +934,7 @@ function SecurityOverview({
                     <td><span className="edc-admin-security-role-pill">{user.role}</span></td>
                     <td>{user.email}</td>
                     <td>{lastLogin ? new Date(lastLogin).toLocaleString() : "Not recorded"}</td>
-                    <td><span className="edc-admin-security-unavailable-pill">Not configured</span></td>
+                    <td><span className="edc-admin-security-unavailable-pill">Not set up</span></td>
                     <td><span className={`edc-admin-security-account-status ${statusTone(status)}`}>{status}</span></td>
                     <td><Link className="edc-admin-security-view" to={`/admin/users?q=${encodeURIComponent(user.email)}`} aria-label={`View ${name} in User Management`} title="View account"><Eye size={15} aria-hidden="true" /></Link></td>
                   </tr>
@@ -989,7 +989,7 @@ function SecurityOverview({
   const metricCards = [
     { label: "Total Admins", value: usersState.error ? "—" : adminAccounts.length.toLocaleString(), icon: Users, color: "purple", tab: "roles" },
     { label: "Current Session", value: hasActiveSession ? "Active" : "Inactive", icon: UserCheck, color: "orange", tab: "sessions" },
-    { label: "2FA", value: "Not available", icon: KeyRound, color: "green", tab: "mfa" },
+    { label: "2FA", value: "Not enabled", icon: KeyRound, color: "green", tab: "mfa" },
     { label: "Failed Admin Logins", value: securityActivityState.error ? "—" : failedAttempts.toLocaleString(), icon: AlertTriangle, color: "red", tab: "login" },
     { label: "Recorded Login Attempts", value: securityActivityState.error ? "—" : loginAttempts.toLocaleString(), icon: LogOut, color: "violet", tab: "login" },
     { label: "Guarded Admin Routes", value: ADMIN_SECTIONS.length.toLocaleString(), icon: Layers, color: "purple", tab: "access" },
@@ -1157,7 +1157,7 @@ function SecurityOverview({
       {tab === "mfa" && (
         <section className="edc-admin-security-unavailable">
           <span><KeyRound size={24} aria-hidden="true" /></span>
-          <p className="edc-admin-page-eyebrow">NOT CONFIGURED</p>
+          <p className="edc-admin-page-eyebrow">NOT SET UP</p>
           <h3>Two-factor authentication is not available</h3>
           <p>This frontend has no MFA enrollment, verification, or recovery workflow. No enabled accounts or security codes are assumed.</p>
         </section>

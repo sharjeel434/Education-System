@@ -157,23 +157,31 @@ export default function TeacherEarnings({ email, courses = [] }) {
   const sales = (earnings?.sales || [])
     .slice()
     .sort((left, right) => (Date.parse(right.purchasedAt || right.date || "") || 0) - (Date.parse(left.purchasedAt || left.date || "") || 0));
+  const isDemoSale = (sale) => sale?.source === "demo";
+  const saleStatusText = (sale) => sale.status === "refunded" ? "Refunded" : isDemoSale(sale) ? "Demo sale" : "Verified sale";
   const summary = earnings?.summary || { grossSales: 0, commission: 0, netEarnings: 0, salesCount: 0, refundedSales: 0, refundedGross: 0 };
   const commissionRateLabel = Math.round((Number(earnings?.commissionRate) || 0.2) * 100);
   const months = useMemo(() => getMonths(period), [period]);
   const currentMonth = monthKey(new Date());
+  const isRealEarned = (sale) => sale?.status === "earned" && sale?.source !== "demo";
   const monthRecords = sales.filter(
-    (sale) => String(sale.purchasedAt || sale.date || "").slice(0, 7) === currentMonth && sale.status === "earned",
+    (sale) => String(sale.purchasedAt || sale.date || "").slice(0, 7) === currentMonth && isRealEarned(sale),
   );
-  const monthSales = monthRecords
-    .reduce((total, sale) => total + (Number(sale.amount) || 0), 0);
+  const monthSales = monthRecords.reduce((total, sale) => total + (Number(sale.amount) || 0), 0);
   const grossSales = Number(summary.grossSales) || 0;
+  const netEarnings = Number(summary.netEarnings) || 0;
+  const refundedGross = Number(summary.refundedGross) || 0;
+  const pendingEarnings = Number(summary.pendingEarnings) || 0;
+  const paidEarnings = Number(summary.paidEarnings) || 0;
   const enrolledStudents = Number(earnings?.enrolledStudents) || 0;
   const totalCourseEnrollments = Number(earnings?.totalCourseEnrollments) || 0;
-  const monthlySales = months.map(({ key }) =>
-    sales
-      .filter((sale) => String(sale.purchasedAt || sale.date || "").slice(0, 7) === key && sale.status === "earned")
-      .reduce((total, sale) => total + (Number(sale.amount) || 0), 0),
-  );
+  const serverTrend = Array.isArray(earnings?.monthlyTrend) ? earnings.monthlyTrend : [];
+  const monthlySales = months.map(({ key }) => {
+    const serverMonth = serverTrend.find((entry) => entry.month === key);
+    if (serverMonth) return Number(serverMonth.gross || 0);
+    return sales.filter((sale) => String(sale.purchasedAt || sale.date || "").slice(0, 7) === key && isRealEarned(sale))
+      .reduce((total, sale) => total + (Number(sale.amount) || 0), 0);
+  });
   const rankedCourses = [...courseData].sort(
     (left, right) => right.revenue - left.revenue || right.students - left.students,
   );
@@ -201,7 +209,7 @@ export default function TeacherEarnings({ email, courses = [] }) {
       items: monthRecords.map((sale) => ({
         id: sale.id || sale.orderNumber,
         title: sale.course,
-        detail: `${dateLabel(sale.purchasedAt || sale.date)} - ${sale.status === "refunded" ? "Refunded" : "Verified sale"}`,
+        detail: `${dateLabel(sale.purchasedAt || sale.date)} - ${saleStatusText(sale)}${isDemoSale(sale) ? " (demo)" : ""}`,
         amount: money(sale.amount),
       })),
     },
@@ -212,7 +220,7 @@ export default function TeacherEarnings({ email, courses = [] }) {
       items: sales.map((sale) => ({
         id: sale.id || sale.orderNumber,
         title: sale.course,
-        detail: `${dateLabel(sale.purchasedAt || sale.date)} - ${sale.status === "refunded" ? "Refunded" : "Verified sale"}`,
+        detail: `${dateLabel(sale.purchasedAt || sale.date)} - ${saleStatusText(sale)}${isDemoSale(sale) ? " (demo)" : ""}`,
         amount: money(sale.amount),
       })),
     },
@@ -248,8 +256,9 @@ export default function TeacherEarnings({ email, courses = [] }) {
       <p className="edc-teacher-earnings-notice" role="note">
         <CircleAlert size={17} />
         <span>
-          These figures come from verified MongoDB orders. Your share is net of the
-          platform commission. No payouts or balances are processed yet.
+          Verified real-money sales only. Demo/sandbox transactions are excluded from revenue and earnings totals.
+          Your share is net of the platform commission. No payouts or balances are processed yet.
+          {!summary.hasVerifiedRealPayments && " No verified live payments have been recorded yet."}
         </span>
       </p>
       {earningsError && <p className="edc-teacher-earnings-notice" role="alert"><CircleAlert size={17} /><span>{earningsError}</span></p>}
@@ -291,6 +300,18 @@ export default function TeacherEarnings({ email, courses = [] }) {
           <span><UsersRound size={22} /></span>
           <div><small>Enrolled Students</small><strong>{enrolledStudents.toLocaleString()}</strong></div>
         </button>
+      </section>
+
+      <section className="edc-teacher-earnings-panel" aria-label="Verified earnings breakdown" style={{ marginBottom: 16 }}>
+        <header className="edc-teacher-earnings-panel-heading">
+          <div><h2>Verified Real Earnings</h2><p>Demo/sandbox transactions excluded. No payouts processed by platform.</p></div>
+        </header>
+        <div className="edc-teacher-earnings-stats" style={{ margin: 0 }}>
+          <div className="edc-teacher-earnings-stat purple"><span><WalletCards size={22} /></span><div><small>Gross Verified Sales</small><strong>{money(grossSales)}</strong></div></div>
+          <div className="edc-teacher-earnings-stat gold"><span><Receipt size={22} /></span><div><small>Refunds (Real)</small><strong>{money(refundedGross)}</strong></div></div>
+          <div className="edc-teacher-earnings-stat purple"><span><WalletCards size={22} /></span><div><small>Teacher Net Earnings</small><strong>{money(netEarnings)}</strong></div></div>
+          <div className="edc-teacher-earnings-stat gold"><span><CalendarDays size={22} /></span><div><small>Pending / Paid</small><strong>{money(pendingEarnings)} / {money(paidEarnings)}</strong></div></div>
+        </div>
       </section>
 
       <div className="edc-teacher-earnings-layout">
@@ -365,7 +386,7 @@ export default function TeacherEarnings({ email, courses = [] }) {
 
           <section className="edc-teacher-earnings-panel edc-teacher-recent-panel">
             <header className="edc-teacher-earnings-panel-heading">
-              <div><h2><Receipt size={18} /> Recent Transactions</h2><p>Verified course sales</p></div>
+              <div><h2><Receipt size={18} /> Recent Transactions</h2><p>Verified and demo sales (labeled). Demo excluded from totals.</p></div>
               <span>{sales.length}</span>
             </header>
             {sales.length ? (
@@ -373,7 +394,7 @@ export default function TeacherEarnings({ email, courses = [] }) {
                 {sales.slice(0, 6).map((sale) => (
                   <li key={sale.id || sale.orderNumber}>
                     <span className="edc-teacher-earnings-transaction-icon"><ArrowDown size={17} /></span>
-                    <div><strong>Course Sale — {sale.course}</strong><small>{dateLabel(sale.purchasedAt || sale.date)} · {sale.status === "refunded" ? "Refunded" : "Verified"}</small></div>
+                    <div><strong>Course Sale — {sale.course}</strong><small>{dateLabel(sale.purchasedAt || sale.date)} · {saleStatusText(sale)}{isDemoSale(sale) ? " · development only" : ""}</small></div>
                     <b>{money(sale.amount)}</b>
                   </li>
                 ))}
@@ -426,7 +447,7 @@ export default function TeacherEarnings({ email, courses = [] }) {
               <>
                 <p>{selectedCourse.students} verified enrollments · {selectedCourse.sales} verified sales · {money(selectedCourse.revenue)} gross</p>
                 {selectedCourseSales.length ? (
-                  <ul>{selectedCourseSales.map((sale) => <li key={sale.id || sale.orderNumber}><span>{dateLabel(sale.purchasedAt || sale.date)} · {sale.status === "refunded" ? "Refunded" : "Verified"}</span><strong>{money(sale.amount)}</strong></li>)}</ul>
+                  <ul>{selectedCourseSales.map((sale) => <li key={sale.id || sale.orderNumber}><span>{dateLabel(sale.purchasedAt || sale.date)} · {saleStatusText(sale)}{isDemoSale(sale) ? " (demo)" : ""}</span><strong>{money(sale.amount)}</strong></li>)}</ul>
                 ) : (
                   <div className="edc-teacher-earnings-modal-empty">No saved sales for this course.</div>
                 )}

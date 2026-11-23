@@ -104,7 +104,10 @@ function AdminFinancialManagement() {
   }, []);
 
   const records = orderState.records;
-  const paidRecords = records.filter((record) => ["paid", "refunded"].includes(String(record.status || "").toLowerCase()));
+  // Demo sandbox transactions remain visible in the record list but are excluded
+  // from the real-money cash revenue totals displayed on this dashboard.
+  const realRecords = records.filter((record) => record.provider !== "demo");
+  const paidRecords = realRecords.filter((record) => ["paid", "refunded"].includes(String(record.status || "").toLowerCase()));
   const knownAmounts = paidRecords.filter((record) => Number.isFinite(record.amount));
   const orderIds = new Set(records.map((record) => record.orderId || record.id));
   const totalOrderValue = knownAmounts.reduce((total, record) => total + record.amount, 0);
@@ -248,8 +251,8 @@ function AdminFinancialManagement() {
           { label: "Verified Orders", value: hasRecordErrors ? "—" : orderIds.size.toLocaleString(), section: "transactions", icon: Receipt, color: "purple" },
           { label: "Paid Order Value", value: hasRecordErrors || !knownAmounts.length ? "—" : money(totalOrderValue), section: "transactions", icon: WalletCards, color: "orange" },
           { label: "This Month", value: hasRecordErrors || !currentMonthRecords.length ? "—" : money(thisMonthValue), section: "transactions", icon: CalendarDays, color: "green" },
-          { label: "Payouts", value: "Not tracked", section: "payouts", icon: ShieldAlert, color: "red" },
-          { label: "Refunds / Chargebacks", value: financeSummary ? (Number(financeSummary.refundedSales) ? `${financeSummary.refundedSales} order(s) · PKR ${Number(financeSummary.refundedGross||0).toLocaleString()}` : "None") : "Unavailable", section: "refunds", icon: ShieldAlert, color: "violet" },
+          { label: "Payouts", value: "No data", section: "payouts", icon: ShieldAlert, color: "red" },
+          { label: "Refunds / Chargebacks", value: financeSummary ? (Number(financeSummary.refundedSales) ? `${financeSummary.refundedSales} order(s) · PKR ${Number(financeSummary.refundedGross||0).toLocaleString()}` : "None") : "No data", section: "refunds", icon: ShieldAlert, color: "violet" },
         ].map(({ label, value, icon: Icon, color, section: targetSection }) => (
           <button
             className={`edc-admin-finance-stat edc-admin-finance-stat-${color} edc-admin-metric-card edc-admin-metric-${color}${section === targetSection ? " is-active" : ""}`}
@@ -330,12 +333,12 @@ function AdminFinancialManagement() {
               <header><h3><WalletCards size={17} aria-hidden="true" />Finance Records</h3></header>
               <dl className="edc-admin-finance-record-list">
                 <div><dt>Order item records</dt><dd>{hasRecordErrors ? "Unavailable" : records.length.toLocaleString()}</dd></div>
-                <div><dt>Payouts</dt><dd>Not tracked</dd></div>
+                <div><dt>Payouts</dt><dd>Unavailable</dd></div>
                 <div><dt>Platform commission (verified)</dt><dd>{financeSummary ? money(financeSummary.commission) : "Unavailable"}</dd></div>
                 <div><dt>Teacher earnings (verified)</dt><dd>{financeSummary ? money(financeSummary.teacherEarnings) : "Unavailable"}</dd></div>
                 <div><dt>Refunds / chargebacks</dt><dd>{financeSummary ? (Number(financeSummary.refundedSales) ? `${financeSummary.refundedSales} order(s) · ${money(financeSummary.refundedGross)}` : "None") : "Unavailable"}</dd></div>
-                <div><dt>Subscriptions / licenses</dt><dd>Not tracked</dd></div>
-                <div><dt>Invoices</dt><dd>Not tracked</dd></div>
+                <div><dt>Subscriptions / licenses</dt><dd>Unavailable</dd></div>
+                <div><dt>Invoices</dt><dd>Unavailable</dd></div>
               </dl>
               <p className="edc-admin-finance-side-note">No sample finance records are added when these data sources are empty.</p>
             </section>
@@ -428,7 +431,8 @@ function AdminFinancialManagement() {
                 Student: selected.studentEmail,
                 Item: selected.description,
                 Instructor: selected.instructor,
-                Provider: selected.provider ? `${selected.provider}${selected.environment === "live" ? " (live)" : " (sandbox)"}` : "Not recorded",
+                Provider: selected.provider ? selected.provider : "Not recorded",
+                Environment: selected.provider === "demo" ? "demo" : (selected.environment || "sandbox"),
                 "Provider transaction": selected.providerTransactionId || "Not recorded",
                 Amount: money(selected.amount),
                 Status: selected.status,

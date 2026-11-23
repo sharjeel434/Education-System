@@ -69,6 +69,16 @@ import "../../components/notifications/NotificationsCenter.css";
 import CourseReviews from "../../components/reviews/CourseReviews";
 import NotificationsCenter from "../../components/notifications/NotificationsCenter";
 import { NOTIFICATIONS_EVENT } from "../../utils/demoNotifications";
+import {
+  fetchStudentRecommendations, fetchInterestProfile, saveInterestProfile,
+  fetchResearchRecords, createResearchRecord as apiCreateResearchRecord,
+  updateResearchRecord as apiUpdateResearchRecord, deleteResearchRecord as apiDeleteResearchRecord,
+  archiveResearchRecord as apiArchiveResearchRecord, importResearchRecords as apiImportResearchRecords,
+  RESEARCH_SECTION_TYPES, RESEARCH_TYPE_SECTIONS,
+  fetchNotifications as apiFetchNotifications, markServerNotificationRead, markAllServerNotificationsRead, deleteServerNotification,
+  subscribeToNotificationStream,
+  fetchStudentAnalytics,
+} from "../../utils/phase7Api";
 import CourseDiscussions from "../../components/discussions/CourseDiscussions";
 import CourseNotes from "../../components/notes/CourseNotes";
 import LearningAnalytics from "../../components/analytics/LearningAnalytics";
@@ -99,6 +109,9 @@ import "../../components/books/books.css";
 import "../../components/SectionTypography.css";
 import "../../components/DashboardCardClarity.css";
 import WorkspaceSidebar from "../../components/workspace/WorkspaceSidebar";
+import reactCourseThumbnail from "../../assets/course-thumbnails/react-frontend.png";
+import pythonCourseThumbnail from "../../assets/course-thumbnails/python-basics.png";
+import designCourseThumbnail from "../../assets/course-thumbnails/ui-ux-design.png";
 
 const COURSES = [
   {
@@ -107,6 +120,7 @@ const COURSES = [
     category: "Development",
     instructor: "EduConnect Demo",
     lessons: 10,
+    image: reactCourseThumbnail,
     icon: "âš›ï¸",
     color: "purple",
   },
@@ -116,6 +130,7 @@ const COURSES = [
     category: "Programming",
     instructor: "EduConnect Demo",
     lessons: 12,
+    image: pythonCourseThumbnail,
     icon: "ðŸ",
     color: "blue",
   },
@@ -125,6 +140,7 @@ const COURSES = [
     category: "Design",
     instructor: "EduConnect Demo",
     lessons: 8,
+    image: designCourseThumbnail,
     icon: "ðŸŽ¨",
     color: "pink",
   },
@@ -199,10 +215,11 @@ function readStorage(key, fallback) {
   }
 }
 
-function createResearchRecord(fields, existingId) {
+function makeLocalResearchRecord(fields, existingId) {
   const id = existingId || `research-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   return { ...fields, id, updatedAt: new Date().toISOString() };
 }
+const isServerNotificationId = (id) => /^[a-f0-9]{24}$/i.test(String(id || ""));
 
 function SectionHeading({ eyebrow, title, description, action }) {
   return (
@@ -372,6 +389,9 @@ export default function StudentDashboard({ email = "student", account, onVerific
   const [editingProfile, setEditingProfile] = useState(false);
   const [profileNotice, setProfileNotice] = useState("");
   const [resourceNotice, setResourceNotice] = useState("");
+  const [serverRecommendations, setServerRecommendations] = useState(null);
+  const [interestProfile, setInterestProfile] = useState({ interests: [], learningGoals: [] });
+  const [serverStudentAnalytics, setServerStudentAnalytics] = useState(null);
   const profileDisplayName = studentProfile.fullName?.trim() || account?.fullName || registeredAccount?.name?.trim() || "Student";
   const profileAvatar = studentProfile.avatar || registeredAccount?.avatar || registeredAccount?.profile?.avatar || "";
 
@@ -386,13 +406,41 @@ export default function StudentDashboard({ email = "student", account, onVerific
     }
   }, [baseKey, studentProfile]);
 
+  // Phase 7: load personalized recommendations, interest profile, and analytics from MongoDB.
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const [recs, profile, analytics] = await Promise.allSettled([
+          fetchStudentRecommendations(),
+          fetchInterestProfile(),
+          fetchStudentAnalytics(),
+        ]);
+        if (cancelled) return;
+        if (recs.status === "fulfilled") setServerRecommendations(recs.value);
+        if (profile.status === "fulfilled") setInterestProfile({ interests: profile.value?.interests || [], learningGoals: profile.value?.learningGoals || [] });
+        if (analytics.status === "fulfilled") setServerStudentAnalytics(analytics.value);
+      } catch {
+        // Local/demo recommendation logic remains available.
+      }
+    };
+    load();
+    const onFocus = () => load();
+    window.addEventListener("focus", onFocus);
+    return () => { cancelled = true; window.removeEventListener("focus", onFocus); };
+  }, [baseKey]);
+
   function beginProfileEdit() {
-    setProfileDraft({ ...studentProfile });
+    setProfileDraft({
+      ...studentProfile,
+      interestsText: (interestProfile.interests || []).join(", "),
+      learningGoalsText: (interestProfile.learningGoals || []).join(", "),
+    });
     setEditingProfile(true);
     setProfileNotice("");
   }
 
-  function saveStudentProfile(event) {
+  async function saveStudentProfile(event) {
     event.preventDefault();
     const fullName = profileDraft.fullName.trim();
     if (fullName.length < 2) {
@@ -413,8 +461,19 @@ export default function StudentDashboard({ email = "student", account, onVerific
       programChoice: ["university", "online"].includes(profileDraft.educationLevel) ? profileDraft.programChoice : "",
       program: ["university", "online"].includes(profileDraft.educationLevel) ? profileDraft.program.trim().slice(0, 100) : "",
     });
+    const interests = String(profileDraft.interestsText || "").split(",").map((v) => v.trim()).filter(Boolean);
+    const learningGoals = String(profileDraft.learningGoalsText || "").split(",").map((v) => v.trim()).filter(Boolean);
+    try {
+      const saved = await saveInterestProfile({ interests, learningGoals });
+      setInterestProfile({ interests: saved.interests || interests, learningGoals: saved.learningGoals || learningGoals });
+      // Refresh recommendations after profile changes.
+      fetchStudentRecommendations().then(setServerRecommendations).catch(() => {});
+      setProfileNotice("Profile and learning interests saved.");
+    } catch {
+      setInterestProfile({ interests, learningGoals });
+      setProfileNotice("Profile saved in this browser. Learning interests could not be synced to the server right now.");
+    }
     setEditingProfile(false);
-    setProfileNotice("Profile changes saved in this browser.");
   }
 
   function uploadStudentAvatar(event) {
@@ -470,6 +529,9 @@ export default function StudentDashboard({ email = "student", account, onVerific
   const [cartSelection, setCartSelection] = useState([]);
   const [cartSummaryFilter, setCartSummaryFilter] = useState("all");
   const [orders, setOrders] = useState([]);
+  const [cartBusy, setCartBusy] = useState(false);
+  // Development-only demo purchase: explicit Demo Payment selection or the backend-enabled fallback.
+  const useDemo = selectedPayProvider === "demo" || (!selectedPayProvider && payDemoEnabled);
   const [bookPurchases, setBookPurchases] = useState(() => readStorage(`${baseKey}.bookPurchases`, []));
   useEffect(() => {
     const sync = () => {
@@ -531,12 +593,15 @@ export default function StudentDashboard({ email = "student", account, onVerific
   }
   function markNotificationRead(id) {
     setNotifications(previous => previous.map(item => item.id === id ? { ...item, read: true } : item));
+    if (isServerNotificationId(id)) markServerNotificationRead(id).catch(() => {});
   }
   function markAllNotificationsRead() {
     setNotifications(previous => previous.map(item => item.read ? item : { ...item, read: true }));
+    markAllServerNotificationsRead().catch(() => {});
   }
   function deleteNotification(id) {
     setNotifications(previous => previous.filter(item => item.id !== id));
+    if (isServerNotificationId(id)) deleteServerNotification(id).catch(() => {});
   }
 
 
@@ -703,9 +768,84 @@ export default function StudentDashboard({ email = "student", account, onVerific
   const [researchDashboardSearch, setResearchDashboardSearch] = useState("");
   const [researchProjectStatus, setResearchProjectStatus] = useState("All Projects");
   const [researchNotice, setResearchNotice] = useState("");
+  const researchServerSynced = useRef(false);
   useEffect(() => {
     localStorage.setItem(`${baseKey}.researchRecords`, JSON.stringify(researchRecords));
   }, [baseKey, researchRecords]);
+  // MongoDB is the source of truth for the Research Workspace. Local records are
+  // kept as a fallback and imported once per account when the server is empty.
+  useEffect(() => {
+    let cancelled = false;
+    const normalizeServerRecord = (record) => {
+      const sectionId = RESEARCH_TYPE_SECTIONS[record.type];
+      if (!sectionId) return null;
+      return {
+        ...record.payload,
+        id: record.id,
+        title: record.title,
+        status: record.status || record.payload?.status || "",
+        tags: record.tags || [],
+        courseId: record.courseId || "",
+        courseTitle: record.courseTitle || "",
+        updatedAt: record.updatedAt || record.createdAt || new Date().toISOString(),
+        _server: true,
+      };
+    };
+    const groupBySection = (records) => {
+      const grouped = {};
+      for (const record of records) {
+        const normalized = normalizeServerRecord(record);
+        if (!normalized) continue;
+        const sectionId = RESEARCH_TYPE_SECTIONS[record.type];
+        grouped[sectionId] = [normalized, ...(grouped[sectionId] || [])];
+      }
+      return grouped;
+    };
+    (async () => {
+      try {
+        let serverRecords = await fetchResearchRecords();
+        if (cancelled) return;
+        // One-time migration: push browser-only records to MongoDB when the
+        // server workspace is still empty, preserving existing user work.
+        if (!serverRecords.length && !researchServerSynced.current) {
+          const local = readStorage(`${baseKey}.researchRecords`, {});
+          const localRows = Object.entries(local).flatMap(([sectionId, items]) =>
+            (Array.isArray(items) ? items : []).map((item) => ({
+              type: RESEARCH_SECTION_TYPES[sectionId],
+              title: String(item.title || "").trim(),
+              payload: item,
+              status: String(item.status || "").trim(),
+              tags: Array.isArray(item.tags) ? item.tags : [],
+            })).filter((row) => row.type && row.title.length >= 3)
+          );
+          if (localRows.length) {
+            await apiImportResearchRecords(localRows).catch(() => null);
+            serverRecords = await fetchResearchRecords();
+            if (cancelled) return;
+          }
+        }
+        researchServerSynced.current = true;
+        if (serverRecords.length) {
+          const grouped = groupBySection(serverRecords);
+          setResearchRecords((previous) => {
+            // Keep local-only records that have no server id match.
+            const merged = { ...previous };
+            for (const section of RESEARCH_SECTIONS) {
+              const serverItems = grouped[section.id] || [];
+              const localItems = Array.isArray(previous[section.id]) ? previous[section.id] : [];
+              const serverIds = new Set(serverItems.map((item) => item.id));
+              const localOnly = localItems.filter((item) => String(item.id).startsWith("research-") && !serverIds.has(item.id));
+              merged[section.id] = [...serverItems, ...localOnly];
+            }
+            return merged;
+          });
+        }
+      } catch {
+        // Offline/backend unavailable: keep localStorage research workspace.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [baseKey]);
   const currentResearchSection = RESEARCH_SECTIONS.find((section) => section.id === researchTab) || RESEARCH_SECTIONS[0];
   const researchItems = Array.isArray(researchRecords[researchTab]) ? researchRecords[researchTab] : [];
   const filteredResearchItems = researchItems.filter((item) =>
@@ -740,22 +880,43 @@ export default function StudentDashboard({ email = "student", account, onVerific
         catch { setResearchNotice("Please enter a valid http:// or https:// link."); return; }
       }
     }
-    const record = createResearchRecord(cleaned, researchEditId);
+    const linkedCourseId = String(researchForm.courseId || "").trim();
+    const researchCourseOptions = Array.isArray(enrolledCourses) ? enrolledCourses : [];
+    const linkedCourse = researchCourseOptions.find((course) => String(course.id) === linkedCourseId);
+    const localRecord = makeLocalResearchRecord({ ...cleaned, courseId: linkedCourseId, courseTitle: linkedCourse?.title || "" }, researchEditId);
     setResearchRecords((previous) => {
       const list = Array.isArray(previous[researchTab]) ? previous[researchTab] : [];
-      return { ...previous, [researchTab]: researchEditId ? list.map((item) => item.id === researchEditId ? record : item) : [record, ...list] };
+      return { ...previous, [researchTab]: researchEditId ? list.map((item) => item.id === researchEditId ? { ...item, ...localRecord, id: item.id } : item) : [localRecord, ...list] };
     });
     setResearchForm({}); setResearchEditId(null);
     setResearchNotice(researchEditId ? "Record updated in this browser." : "Record saved in this browser.");
+    // Persist to MongoDB in the background; local state remains the fallback.
+    const payload = { type: RESEARCH_SECTION_TYPES[researchTab], title: cleaned.title, payload: cleaned, status: cleaned.status || "", tags: [], courseId: linkedCourseId };
+    const apiCall = researchEditId && !String(researchEditId).startsWith("research-")
+      ? apiUpdateResearchRecord(researchEditId, payload)
+      : apiCreateResearchRecord(payload);
+    apiCall.then((saved) => {
+      if (!saved?.id) return;
+      const sectionId = RESEARCH_TYPE_SECTIONS[saved.type] || researchTab;
+      setResearchRecords((previous) => {
+        const list = Array.isArray(previous[sectionId]) ? previous[sectionId] : [];
+        const withoutLocal = list.filter((item) => item.id !== localRecord.id && item.id !== saved.id);
+        const merged = { ...saved.payload, ...saved, id: saved.id, updatedAt: saved.updatedAt || new Date().toISOString() };
+        return { ...previous, [sectionId]: [merged, ...withoutLocal] };
+      });
+    }).catch(() => { /* localStorage copy remains available */ });
   }
   function editResearchRecord(item) {
     setResearchEditId(item.id); setResearchForm({ ...item }); setResearchNotice("Editing selected record.");
   }
   function deleteResearchRecord(id, sectionId = researchTab) {
-    if (!window.confirm("Delete this research record from this browser?")) return;
+    if (!window.confirm("Delete this research record?")) return;
     setResearchRecords((previous) => ({ ...previous, [sectionId]: (previous[sectionId] || []).filter((item) => item.id !== id) }));
     if (researchEditId === id) { setResearchEditId(null); setResearchForm({}); }
     setResearchNotice("Record deleted.");
+    if (!String(id).startsWith("research-")) {
+      apiDeleteResearchRecord(id).catch(() => { /* local removal already applied */ });
+    }
   }
 
   // AI Tutor interface demo. Responses are fixed learning templates, not AI-generated.
@@ -977,6 +1138,60 @@ export default function StudentDashboard({ email = "student", account, onVerific
     }
     catch (error) { console.error("Could not save notifications", error); }
   }, [baseKey, notifications]);
+
+  // Merge MongoDB notifications with local/browser-only notifications.
+  useEffect(() => {
+    let cancelled = false;
+    const mergeServer = async () => {
+      try {
+        const data = await apiFetchNotifications({ limit: 100 });
+        if (cancelled) return;
+        const serverItems = (Array.isArray(data?.notifications) ? data.notifications : []).map((item) => ({ ...item, source: "server" }));
+        setNotifications((previous) => {
+          const localOnly = previous.filter((item) => !isServerNotificationId(item.id));
+          const seen = new Set(serverItems.map((item) => item.id));
+          const dedupedLocal = localOnly.filter((item) => !seen.has(item.id));
+          return [...serverItems, ...dedupedLocal]
+            .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+            .slice(0, 150);
+        });
+      } catch {
+        // Keep local notifications when backend is unavailable.
+      }
+    };
+    mergeServer();
+    const onFocus = () => mergeServer();
+    window.addEventListener("focus", onFocus);
+    return () => { cancelled = true; window.removeEventListener("focus", onFocus); };
+  }, [baseKey]);
+
+  // Realtime notification subscription (SSE). Falls back to the focus/merge fetch above.
+  useEffect(() => {
+    const close = subscribeToNotificationStream({
+      onNotification: (notification) => {
+        if (!notification?.id) return;
+        setNotifications((previous) => {
+          if (previous.some((item) => String(item.id) === String(notification.id))) return previous;
+          return [{ ...notification, source: "server" }, ...previous].slice(0, 150);
+        });
+      },
+      onReady: () => {
+        // Re-sync after connect/reconnect to avoid missing events during gaps.
+        apiFetchNotifications({ limit: 100 }).then((data) => {
+          const serverItems = (Array.isArray(data?.notifications) ? data.notifications : []).map((item) => ({ ...item, source: "server" }));
+          setNotifications((previous) => {
+            const localOnly = previous.filter((item) => !isServerNotificationId(item.id));
+            const seen = new Set(serverItems.map((item) => item.id));
+            const dedupedLocal = localOnly.filter((item) => !seen.has(item.id));
+            return [...serverItems, ...dedupedLocal]
+              .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+              .slice(0, 150);
+          });
+        }).catch(() => {});
+      },
+    });
+    return close;
+  }, [baseKey]);
 
   const refreshCart = async () => {
     try { const data = await getCartState(); setCart(data.items || []); } catch (error) { console.error("Could not load cart", error); }
@@ -1421,14 +1636,14 @@ export default function StudentDashboard({ email = "student", account, onVerific
     setCartNotice("All items removed from your cart.");
   }
   async function checkoutCart() {
+    if (cartBusy) return; // Guard against double-click during the async checkout flow.
     const available = cart.filter(c => isCurrentCartItem(c) && (c.itemType === "book" ? !isBookPurchased(email, c.id) && !bookPurchases.some((item) => String(item.id) === String(c.id)) : !alreadyEnrolled(c)));
     if (!available.length) { setCartNotice("Cart is empty or all items are already owned."); return; }
     const total = available.reduce((sum,c) => sum + Math.max(0, Number(c.price) || 0), 0);
     const allFree = total === 0;
-    // Demo fallback only when the backend explicitly enables it (development/testing).
-    const useDemo = !allFree && !selectedPayProvider && payDemoEnabled;
     if (!allFree && !selectedPayProvider && !useDemo) { setCartNotice(payProviders.some((entry) => entry.enabled) ? "Please choose a payment method below to continue." : "No payment provider is configured on the server (see backend/.env.example), so paid checkout is unavailable. Free items can still be checked out."); return; }
     if (!window.confirm(`Checkout: ${available.length} item(s), total PKR ${total.toLocaleString()}.${allFree ? "" : useDemo ? " Sandbox demo checkout — no real payment." : " You will be redirected to the provider's secure page."} Continue?`)) return;
+    setCartBusy(true);
     try {
       if (!checkoutKeyRef.current) checkoutKeyRef.current = globalThis.crypto?.randomUUID?.() || `checkout-${Date.now()}-${Math.random().toString(36).slice(2)}`;
       if (allFree || useDemo) {
@@ -1451,6 +1666,8 @@ export default function StudentDashboard({ email = "student", account, onVerific
     } catch (error) {
       checkoutKeyRef.current = null; // Server-side idempotency still applies.
       setCartNotice(error.message || "Payment is not available right now.");
+    } finally {
+      setCartBusy(false);
     }
   }
 
@@ -1841,6 +2058,8 @@ export default function StudentDashboard({ email = "student", account, onVerific
       legacyTasks={legacyTasks}
       legacyQuizPasses={passedQuizzes.length}
       legacySubmissions={submittedCount}
+      serverRecommendations={serverRecommendations}
+      interestProfile={interestProfile}
       onNavigate={navigateTo}
       onResume={openCoursePlayer}
       onExplore={() => navigate("/courses")}
@@ -2169,6 +2388,16 @@ export default function StudentDashboard({ email = "student", account, onVerific
                     <strong>Subjects shown on Overview</strong><p>{getStudentAcademicSubjects(profileDraft).join(" Â· ")}</p>
                   </div>}
                 </div>
+                <label className="edc-student-profile-about-label">Interests (comma separated)
+                  <input maxLength={500} value={profileDraft.interestsText || ""}
+                    onChange={(e) => setProfileDraft((prev) => ({ ...prev, interestsText: e.target.value }))}
+                    placeholder="e.g. Web Development, Data Science, Design" />
+                  <small>Used for personalized course recommendations.</small></label>
+                <label className="edc-student-profile-about-label">Learning Goals (comma separated)
+                  <input maxLength={500} value={profileDraft.learningGoalsText || ""}
+                    onChange={(e) => setProfileDraft((prev) => ({ ...prev, learningGoalsText: e.target.value }))}
+                    placeholder="e.g. Become a full-stack developer, Pass data structures" />
+                  <small>Saved to your MongoDB profile for recommendations.</small></label>
                 <label className="edc-student-profile-about-label">About Me<textarea rows={5} maxLength={500}
                   value={profileDraft.about} onChange={(e) => setProfileDraft((prev) => ({ ...prev, about: e.target.value }))}
                   placeholder="Tell us about your interests and learning goals..." />
@@ -2176,7 +2405,7 @@ export default function StudentDashboard({ email = "student", account, onVerific
                 <div className="edc-student-profile-actions">
                   <button type="submit" className="edc-btn edc-btn-primary"><Save size={16} /> Save Changes</button>
                   <button type="button" className="edc-btn edc-btn-light" onClick={() => {
-                    setProfileDraft({ ...studentProfile }); setEditingProfile(false); setProfileNotice("");
+                    setProfileDraft({ ...studentProfile, interestsText: (interestProfile.interests || []).join(", "), learningGoalsText: (interestProfile.learningGoals || []).join(", ") }); setEditingProfile(false); setProfileNotice("");
                   }}>Cancel</button>
                 </div>
               </form>
@@ -2189,6 +2418,8 @@ export default function StudentDashboard({ email = "student", account, onVerific
                   <div><MapPin size={16} /><span>Location</span><strong>{studentProfile.city || "Not added yet"}</strong></div>
                   <div><GraduationCap size={16} /><span>Education</span><strong>{educationSummary}</strong></div>
                   <div><BookOpen size={16} /><span>Related Subjects</span><strong>{subjectInterests.length ? subjectInterests.join(", ") : "Not added yet"}</strong></div>
+                  <div><Target size={16} /><span>Interests</span><strong>{(interestProfile.interests || []).length ? interestProfile.interests.join(", ") : "Not added yet"}</strong></div>
+                  <div><GraduationCap size={16} /><span>Learning Goals</span><strong>{(interestProfile.learningGoals || []).length ? interestProfile.learningGoals.join(", ") : "Not added yet"}</strong></div>
                   <div className="edc-profile-about"><span>About Me</span><p>{studentProfile.about || "Not added yet"}</p></div>
                 </div>
               </>
@@ -2412,10 +2643,15 @@ export default function StudentDashboard({ email = "student", account, onVerific
               mode={payProvidersMode}
               selected={selectedPayProvider}
               onSelect={setSelectedPayProvider}
+              demoEnabled={payDemoEnabled}
             />
           )}
-          <p className="edc-cart-demo-note">{payDemoEnabled && !selectedPayProvider ? "No provider configured — sandbox demo checkout will be used." : "Payments are verified server-side before access is granted."}</p>
-          <button type="button" className="edc-cart-checkout" onClick={checkoutCart} disabled={!availableItems.length}><ShoppingCart size={17} /> {payDemoEnabled && !selectedPayProvider ? "Proceed to Sandbox Checkout" : "Proceed to Secure Checkout"} <ArrowRight size={17} /></button>
+          {useDemo ? (
+            <p className="edc-cart-demo-note">Sandbox demo checkout — no real money. Development only. Demo purchases are recorded for testing.</p>
+          ) : (
+            <p className="edc-cart-demo-note">Payments are verified server-side before access is granted.</p>
+          )}
+          <button type="button" className="edc-cart-checkout" onClick={checkoutCart} disabled={!availableItems.length || cartBusy}><ShoppingCart size={17} /> {useDemo ? "Proceed to Sandbox Checkout" : "Proceed to Secure Checkout"} <ArrowRight size={17} /></button>
         </aside>
       </div>
 
@@ -3034,7 +3270,7 @@ export default function StudentDashboard({ email = "student", account, onVerific
           {activeTab === "reviews" && <CourseReviews role="student" email={email} studentName={studentProfile.fullName || profileDisplayName} courses={enrolledCourses} publishedCourses={latestPublishedCourses} onNavigate={navigateTo} />}
           {activeTab === "discussions" && <CourseDiscussions role="student" email={email} studentName={studentProfile.fullName || profileDisplayName} studentAvatar={studentProfile.avatar || ""} courses={enrolledCourses} publishedCourses={latestPublishedCourses} onNavigate={navigateTo} onExplore={() => navigate("/courses")} />}
           {activeTab === "notes" && <CourseNotes email={email} courses={enrolledCourses} publishedCourses={latestPublishedCourses} onNavigate={navigateTo} onJump={jumpToNote} />}
-          {activeTab === "analytics" && <LearningAnalytics courses={enrolledCourses} activity={learningActivity} />}
+          {activeTab === "analytics" && <LearningAnalytics courses={enrolledCourses} activity={learningActivity} serverAnalytics={serverStudentAnalytics} />}
           {activeTab === "quizzes" && <CourseQuizzes role="student" email={email} courses={enrolledCourses} publishedCourses={latestPublishedCourses} onNavigate={navigateTo}
             quizRouteId={quizRouteId} quizCourseId={quizRouteCourseId} quizTeacherEmail={quizRouteTeacher}
             quizView={new URLSearchParams(location.search).get("view") || ""}
@@ -3451,7 +3687,7 @@ export default function StudentDashboard({ email = "student", account, onVerific
                   <span className="edc-research-eyebrow">YOUR RESEARCH, ORGANIZED</span>
                   <h1><Microscope size={27} />Research Workspace</h1>
                   <p>Plan and organize your own projects, sources, notes, datasets, and experiments.</p>
-                  <small>Your records are private to this account on this device; nothing is pre-filled.</small>
+                  <small>Your records are private to your account, synchronized to MongoDB when available, and kept in this browser as a fallback.</small>
                 </div>
                 <div className="edc-research-hero-art" aria-hidden="true"><BookOpen /><Microscope /><NotebookPen /></div>
               </header>
@@ -3576,6 +3812,13 @@ export default function StudentDashboard({ email = "student", account, onVerific
                       : <input type={field.type || "text"} maxLength={500} required={Boolean(field.required)}
                         value={researchForm[field.key] || ""} onChange={(event) => setResearchForm((prev) => ({ ...prev, [field.key]: event.target.value }))} />}
                     </label>)}
+                    <label>
+                      <span>Linked Course (optional)</span>
+                      <select value={researchForm.courseId || ""} onChange={(event) => setResearchForm((prev) => ({ ...prev, courseId: event.target.value }))}>
+                        <option value="">No linked course</option>
+                        {(Array.isArray(enrolledCourses) ? enrolledCourses : []).map((course) => <option key={course.id} value={String(course.id)}>{course.title || "Untitled course"}</option>)}
+                      </select>
+                    </label>
                     <div className="edc-research-actions">
                       <button className="edc-btn edc-btn-primary" type="submit"><Plus size={16} /> {researchEditId ? "Update Record" : "Save Record"}</button>
                       {researchEditId && <button type="button" className="edc-btn edc-btn-light" onClick={() => { setResearchEditId(null); setResearchForm({}); setResearchNotice(""); }}>Cancel Edit</button>}
@@ -3591,6 +3834,7 @@ export default function StudentDashboard({ email = "student", account, onVerific
                   {filteredResearchItems.length ? <div className="edc-research-list">
                     {filteredResearchItems.map((item) => <article key={item.id} className="edc-research-item">
                       <h4>{item.title}</h4>
+                      {item.courseTitle && <div className="edc-research-field"><strong>Linked course:</strong> <span>{item.courseTitle}</span></div>}
                       {currentResearchSection.fields.filter((field) => field.key !== "title" && item[field.key]).map((field) => <div key={field.key} className="edc-research-field">
                         <strong>{field.label}:</strong> {field.key === "url" && /^https?:\/\//i.test(item[field.key])
                           ? <a href={item[field.key]} target="_blank" rel="noopener noreferrer">Open link</a> : <span>{item[field.key]}</span>}
@@ -3603,7 +3847,7 @@ export default function StudentDashboard({ email = "student", account, onVerific
                     description={researchSearch ? "Try a different search term." : "Use the form to add your first research record."} />}
                 </section>
               </div>
-              <p className="edc-research-disclaimer">Entries are stored in localStorage on this device; they are not synchronized, published, or automatically verified. Back up important research elsewhere.</p>
+              <p className="edc-research-disclaimer">Research records are synchronized to your MongoDB account when available and kept in this browser as a fallback. Content is not externally verified; back up important research elsewhere.</p>
             </div>
           )
         )}

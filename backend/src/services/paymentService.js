@@ -17,8 +17,11 @@ export const COMMISSION_RATE = () => {
   return Number.isFinite(rate) && rate >= 0 && rate <= 0.9 ? rate : 0.2;
 };
 
-// Sandbox checkout lives only in development/test and never in production.
-export const demoCheckoutAllowed = () => process.env.NODE_ENV !== "production" && process.env.PAYMENT_DEMO_CHECKOUT === "true";
+// Sandbox payment/checkout lives only in development or test environments and
+// never in production: the flag alone can never enable it there.
+export const demoCheckoutAllowed = () =>
+  ["development", "test"].includes(process.env.NODE_ENV) &&
+  String(process.env.PAYMENT_DEMO_CHECKOUT || "").trim().toLowerCase() === "true";
 
 export const providerName = () => String(process.env.PAYMENT_PROVIDER || "none").trim().toLowerCase();
 
@@ -163,7 +166,8 @@ export async function fulfillOrder(order, verification = {}) {
           order: claimed._id, orderNumber: claimed.orderNumber, studentId: claimed.studentId,
           contentId: item.contentId, kind: item.kind, title: item.title, teacherId: item.teacherId,
           grossAmount: item.price, commissionAmount: commission, teacherAmount: round2(item.price - commission),
-          currency: item.currency, status: "earned" } },
+          currency: item.currency, status: "earned",
+          source: claimed.provider === "demo" ? "demo" : "payment" } },
       { upsert: true },
     ).catch((error) => { if (error.code !== 11000) throw error; });
   }

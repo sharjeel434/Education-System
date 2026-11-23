@@ -7,6 +7,7 @@ import { sanitizeForLog, isValidReturnUrl, ProviderError } from "../services/pay
 import {
   buildOrderItems,
   createPendingOrderForCart,
+  demoCheckoutAllowed,
   fulfillOrder,
   refundOrder,
 } from "../services/paymentService.js";
@@ -48,7 +49,7 @@ const checkoutSchema = z.object({
 }).strict();
 
 export const listProviders = handle(async (_req, res) => {
-  res.json({ success: true, ...providerStatusSummary(), demoCheckout: process.env.NODE_ENV !== "production" && process.env.PAYMENT_DEMO_CHECKOUT === "true" });
+  res.json({ success: true, ...providerStatusSummary(), demoCheckout: demoCheckoutAllowed() });
 });
 
 export const gatewayCheckout = handle(async (req, res) => {

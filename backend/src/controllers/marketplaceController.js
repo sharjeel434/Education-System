@@ -6,6 +6,7 @@ import Teacher from "../models/Teacher.js";
 import TeacherEarning from "../models/TeacherEarning.js";
 import Course from "../models/Course.js";
 import ContentAccess from "../models/ContentAccess.js";
+import PaymentEvent from "../models/PaymentEvent.js";
 import {
   COMMISSION_RATE,
   MARKETPLACE_CURRENCY,
@@ -55,6 +56,8 @@ const presentOrder = (order, names) => ({
   status: order.status,
   total: order.total,
   currency: order.currency,
+  provider: order.provider || "",
+  providerTransactionId: order.providerTransactionId || "",
   items: (order.items || []).map((item) => presentItem(item, names)),
   paymentMethod: order.provider ? `${order.provider} (verified)` : (order.status === "paid" ? "Verified payment" : "Awaiting payment"),
   createdAt: order.createdAt,
@@ -188,16 +191,32 @@ export const cancelOrder = handle(async (req, res) => {
 
 // Sandbox payment ONLY for development/test. In production this always refuses:
 // a real provider plus PAYMENT_WEBHOOK_SECRET must be configured instead.
+// Demo activity is audited in the same audit collection as provider callbacks,
+// with provider "demo" and no fabricated provider transaction data.
+const recordDemoAuditEvent = async ({ eventId, type, orderNumber, result }) => {
+  try {
+    await PaymentEvent.create({ provider: "demo", eventId: String(eventId || "").slice(0, 200), type: String(type || "").slice(0, 80) || "unknown", orderNumber: String(orderNumber || "").slice(0, 40), result });
+    return { fresh: true };
+  } catch (error) {
+    if (error.code === 11000) return { fresh: false };
+    throw error;
+  }
+};
 export const demoCheckout = handle(async (req, res) => {
-  if (!demoCheckoutAllowed()) return fail(res, 403, "No payment provider is configured. Real payments are not enabled yet.");
   const orderNumber = String(req.params.orderNumber || "").trim();
+  const audit = async ({ eventId, type, result }) => recordDemoAuditEvent({ eventId: eventId || `demo_${orderNumber || "refused"}_${Date.now().toString(36)}`, type, orderNumber, result });
+  if (!demoCheckoutAllowed()) {
+    await audit({ eventId: `demo_disabled_${Date.now().toString(36)}`, type: "demo.demo_checkout_rejected", result: "rejected" });
+    return fail(res, 403, "Demo checkout is not available here. It requires a development or test environment with PAYMENT_DEMO_CHECKOUT=true.", { code: "demo_checkout_disabled" });
+  }
   const order = await Order.findOne({ orderNumber, studentId: req.user._id });
-  if (!order) return fail(res, 404, "Order not found.");
-  if (order.status !== "pending") return fail(res, 409, `This order is not awaiting payment (status: ${order.status}).`);
+  if (!order) { await audit({ eventId: `demo_missing_${Date.now().toString(36)}`, type: "demo.demo_checkout_rejected", result: "rejected" }); return fail(res, 404, "Order not found."); }
+  if (order.status !== "pending") { await audit({ eventId: `demo_not_pending_${orderNumber}`, type: "demo.demo_checkout_rejected", result: "rejected" }); return fail(res, 409, `This order is not awaiting payment (status: ${order.status}).`); }
   order.provider = "demo";
   order.providerTransactionId = `demo_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
   await order.save();
   const { order: paid } = await fulfillOrder(order);
+  await audit({ eventId: paid.providerTransactionId, type: "demo.demo_checkout", result: "processed" });
   res.json({ success: true, order: presentOrder(paid.toObject ? paid.toObject() : paid, await teacherNames(paid.items.map((item) => item.teacherId))), demo: true });
 });
 
@@ -210,8 +229,13 @@ export const myEarnings = handle(async (req, res) => {
   const orderNumbers = [...new Set(rows.map((row) => row.orderNumber))];
   const orders = await Order.find({ orderNumber: { $in: orderNumbers } }).select("orderNumber paidAt createdAt").lean();
   const orderDates = new Map(orders.map((order) => [order.orderNumber, order.paidAt || order.createdAt]));
-  const earned = rows.filter((row) => row.status === "earned");
-  const refunded = rows.filter((row) => row.status === "refunded");
+  const isReal = (row) => (row.source || "payment") !== "demo";
+  const realRows = rows.filter(isReal);
+  const demoRows = rows.filter((row) => !isReal(row));
+  const earned = rows.filter((row) => row.status === "earned"); // all earned, incl. demo (for records)
+  const realEarned = realRows.filter((row) => row.status === "earned");
+  const realRefunded = realRows.filter((row) => row.status === "refunded");
+  const demoEarned = demoRows.filter((row) => row.status === "earned");
   const sum = (list, field) => list.reduce((total, row) => total + (Number(row[field]) || 0), 0);
   const sales = rows.map((row) => ({
     id: String(row._id),
@@ -226,6 +250,8 @@ export const myEarnings = handle(async (req, res) => {
     net: row.teacherAmount,
     status: row.status,
     currency: row.currency,
+    source: row.source || "payment",
+    isDemo: !isReal(row),
   }));
   const myCourses = await Course.find({ teacherId: req.user._id, status: { $ne: "deleted" } }).select("_id title approvedVersion").lean();
   const courseIds = myCourses.map((course) => course._id);
@@ -240,13 +266,14 @@ export const myEarnings = handle(async (req, res) => {
   const enrolledStudents = new Set(accessRows.map((row) => String(row.studentId))).size;
   const courseTitles = new Map(myCourses.map((course) => [String(course._id), course.approvedVersion?.title || course.title || "Untitled course"]));
   const salesByCourse = new Map();
-  for (const row of earned) {
+  for (const row of realEarned) {
     const key = String(row.contentId);
-    if (!salesByCourse.has(key)) salesByCourse.set(key, { courseId: key, title: row.title, kind: row.kind, students: 0, sales: 0, revenue: 0, net: 0 });
+    if (!salesByCourse.has(key)) salesByCourse.set(key, { courseId: key, title: row.title, kind: row.kind, students: 0, sales: 0, revenue: 0, net: 0, commission: 0 });
     const entry = salesByCourse.get(key);
     entry.sales += 1;
-    entry.revenue += row.grossAmount;
-    entry.net += row.teacherAmount;
+    entry.revenue += Number(row.grossAmount || 0);
+    entry.net += Number(row.teacherAmount || 0);
+    entry.commission += Number(row.commissionAmount || 0);
   }
   const byCourse = [...courseTitles.entries()].map(([id, title]) => ({
     courseId: id,
@@ -256,27 +283,55 @@ export const myEarnings = handle(async (req, res) => {
     sales: salesByCourse.get(id)?.sales || 0,
     revenue: salesByCourse.get(id)?.revenue || 0,
     net: salesByCourse.get(id)?.net || 0,
+    commission: salesByCourse.get(id)?.commission || 0,
   })).sort((left, right) => right.revenue - left.revenue || right.students - left.students);
+
+  // Monthly trends (verified real earnings only)
+  const monthly = new Map();
+  for (const row of realEarned) {
+    const date = orderDates.get(row.orderNumber) || row.createdAt;
+    const month = date ? new Date(date).toISOString().slice(0, 7) : "unknown";
+    const entry = monthly.get(month) || { month, gross: 0, commission: 0, net: 0, sales: 0 };
+    entry.gross += Number(row.grossAmount || 0);
+    entry.commission += Number(row.commissionAmount || 0);
+    entry.net += Number(row.teacherAmount || 0);
+    entry.sales += 1;
+    monthly.set(month, entry);
+  }
+  const monthlyTrend = [...monthly.values()].filter((e) => e.month !== "unknown").sort((a, b) => a.month.localeCompare(b.month)).slice(-12);
+
+  const realGross = sum(realEarned, "grossAmount");
+  const realCommission = sum(realEarned, "commissionAmount");
+  const realNet = sum(realEarned, "teacherAmount");
+  const realRefundGross = sum(realRefunded, "grossAmount");
   res.json({ success: true, currency: MARKETPLACE_CURRENCY(), commissionRate: COMMISSION_RATE(),
     enrolledStudents,
     totalCourseEnrollments: accessRows.length,
     byCourse,
+    monthlyTrend,
     summary: {
-      grossSales: sum(earned, "grossAmount"),
-      commission: sum(earned, "commissionAmount"),
-      netEarnings: sum(earned, "teacherAmount"),
-      salesCount: earned.length,
-      refundedSales: refunded.length,
-      refundedGross: sum(refunded, "grossAmount"),
+      // Verified real-money totals only. Demo sandbox sales are excluded.
+      grossSales: realGross,
+      commission: realCommission,
+      netEarnings: realNet,
+      salesCount: realEarned.length,
+      refundedSales: realRefunded.length,
+      refundedGross: realRefundGross,
+      pendingEarnings: 0, // no payout settlement model; earnings are recorded on verified paid orders
+      paidEarnings: 0,    // payouts not processed by platform
+      demoSalesCount: demoEarned.length,
+      demoGross: sum(demoEarned, "grossAmount"),
+      hasVerifiedRealPayments: realEarned.length > 0,
     },
     sales });
 });
 
 export const adminFinanceOverview = handle(async (_req, res) => {
+  // Demo sandbox sales are excluded from real-money totals; they stay in the records.
   const [statusGroups, earningTotals, refundedTotals, recentOrders] = await Promise.all([
     Order.aggregate([{ $group: { _id: "$status", count: { $sum: 1 }, total: { $sum: "$total" } } }]),
-    TeacherEarning.aggregate([{ $match: { status: "earned" } }, { $group: { _id: null, gross: { $sum: "$grossAmount" }, commission: { $sum: "$commissionAmount" }, teacher: { $sum: "$teacherAmount" }, count: { $sum: 1 } } }]),
-    TeacherEarning.aggregate([{ $match: { status: "refunded" } }, { $group: { _id: null, gross: { $sum: "$grossAmount" }, count: { $sum: 1 } } }]),
+    TeacherEarning.aggregate([{ $match: { status: "earned", source: { $ne: "demo" } } }, { $group: { _id: null, gross: { $sum: "$grossAmount" }, commission: { $sum: "$commissionAmount" }, teacher: { $sum: "$teacherAmount" }, count: { $sum: 1 } } }]),
+    TeacherEarning.aggregate([{ $match: { status: "refunded", source: { $ne: "demo" } } }, { $group: { _id: null, gross: { $sum: "$grossAmount" }, count: { $sum: 1 } } }]),
     Order.find({}).sort({ createdAt: -1 }).limit(100).lean(),
   ]);
   const byStatus = Object.fromEntries(statusGroups.map((group) => [group._id, { count: group.count, total: group.total }]));
@@ -305,7 +360,7 @@ export const adminFinanceOverview = handle(async (_req, res) => {
     instructor: teacherNamesMap.get(String(item.teacherId)) || "Teacher",
     provider: order.provider || "",
     providerTransactionId: order.providerTransactionId || "",
-    environment: order.environment || "sandbox",
+    environment: order.provider === "demo" ? "demo" : (order.environment || "sandbox"),
     commission: earning ? earning.commissionAmount : (order.status === "paid" ? Number((item.price * COMMISSION_RATE()).toFixed(2)) : 0),
     teacherEarnings: earning ? earning.teacherAmount : (order.status === "paid" ? Number((item.price - item.price * COMMISSION_RATE()).toFixed(2)) : 0),
     reconciliation: reconciliationOf(order.status),

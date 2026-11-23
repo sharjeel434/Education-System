@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import { detectImageType, writePrivateCnic, readPrivateCnic, removePrivateCnic } from "../services/privateCnicStorage.js";
 import { getAccountVerification, verificationModelForRole } from "../services/verificationRecords.js";
+import { recordAdminAction } from "../services/auditService.js";
 
 function publicStatus(record, account) {
   const status = record?.status || "not_submitted";
@@ -149,6 +150,17 @@ export function createVerificationHandlers(Model) {
         rejectionReason: decision === "reject" ? reason : "",
       } }, { returnDocument: "after", runValidators: true });
       if (!updated) return res.status(409).json({ success: false, message: "This verification request has already been reviewed. Refresh the list." });
+      await recordAdminAction({
+        actorEmail: req.user.email, actorRole: req.user.role, actorId: req.user._id,
+        action: decision === "approve" ? "Identity verification approved" : "Identity verification rejected",
+        category: Model.modelName === "Teacher" ? "teacher-verification" : "student-verification",
+        module: "Identity Verification",
+        entityType: Model.modelName === "Teacher" ? "Teacher Verification" : "Student Verification",
+        entityId: String(account._id), targetId: String(account._id),
+        targetName: account.email, result: decision === "approve" ? "Verified" : "Rejected",
+        description: `${req.user.fullName || req.user.email} ${decision === "approve" ? "approved" : "rejected"} the ${Model.modelName.toLowerCase()} verification of ${account.email}.`,
+        details: { before: { status: record?.status || "pending" }, after: { status: updated.status } },
+      });
       res.json({ success: true, message: `Verification ${decision === "approve" ? "approved" : "rejected"}.`, verification: publicStatus(updated, account) });
     } catch (error) { next(error); }
   }

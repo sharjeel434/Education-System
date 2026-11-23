@@ -10,7 +10,7 @@ function createVerificationModel(name, collection, accountModel) {
     accountId: { type: mongoose.Schema.Types.ObjectId, ref: accountModel, required: true, unique: true, immutable: true },
     fullName: { type: String, required: true },
     email: { type: String, required: true, trim: true, lowercase: true, index: true },
-    status: { type: String, enum: ["not_submitted", "pending", "verified", "rejected"], default: "not_submitted", index: true },
+    status: { type: String, enum: ["not_submitted", "pending", "verified", "rejected"], default: "not_submitted" },
     documents: {
       front: documentSchema,
       back: documentSchema,
@@ -20,6 +20,8 @@ function createVerificationModel(name, collection, accountModel) {
     reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: "Admin", default: null },
     rejectionReason: { type: String, default: "" },
   }, { timestamps: true });
+
+  schema.index({ status: 1, submittedAt: -1 });
 
   return mongoose.model(name, schema, collection);
 }

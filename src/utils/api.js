@@ -12,5 +12,12 @@ export function apiFetch(path, options = {}) {
   const headers = new Headers(options.headers);
   const method = String(options.method || "GET").toUpperCase();
   if (!["GET", "HEAD", "OPTIONS"].includes(method)) headers.set("X-Requested-With", "XMLHttpRequest");
+  // JSON string bodies must declare the JSON content type: without it fetch sends
+  // `text/plain;charset=UTF-8` and Express leaves req.body undefined (every
+  // controller then reads an empty/undefined body). FormData/URLSearchParams
+  // bodies already declare their own type, so they are left untouched.
+  if (typeof options.body === "string" && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
   return fetch(`${apiBase}${path}`, { ...options, method, headers, credentials: "include" });
 }

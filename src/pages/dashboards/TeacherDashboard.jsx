@@ -52,6 +52,13 @@ import TeacherBooks from "../../components/books/TeacherBooks";
 import UserModerationAppeals, { UserSupportCenter } from "../../components/moderation/UserModerationAppeals";
 import TeacherCourseEditor from "./TeacherCourseEditor";
 import { NOTIFICATIONS_EVENT } from "../../utils/demoNotifications";
+import {
+  fetchNotifications as apiFetchNotifications,
+  markServerNotificationRead, markAllServerNotificationsRead, deleteServerNotification,
+  subscribeToNotificationStream,
+  fetchTeacherAnalytics,
+} from "../../utils/phase7Api";
+import { fetchMyEarnings } from "../../utils/marketplaceApi";
 
 import TeacherOverview, { TeacherWorkspaceHeader } from "../../components/teacher/TeacherOverview";
 import TeacherLessons from "../../components/teacher/TeacherLessons";
@@ -575,6 +582,8 @@ function TeacherDashboard({ email = "teacher@example.com", account, onVerificati
   
 const [notifications, setNotifications] = useState(() => readSaved(teacherNotificationKey, []));
 const unreadNotifications = notifications.filter((item) => !item.read).length;
+const [serverTeacherAnalytics, setServerTeacherAnalytics] = useState(null);
+const [serverTeacherEarnings, setServerTeacherEarnings] = useState(null);
 
 useEffect(() => {
   const refresh = () => setNotifications(readSaved(teacherNotificationKey, []));
@@ -593,9 +602,96 @@ useEffect(() => {
   catch (error) { console.error("Could not save teacher notifications", error); }
 }, [notifications, teacherNotificationKey]);
 
-function markNotificationRead(id) { setNotifications((current) => current.map((item) => item.id === id ? { ...item, read: true } : item)); }
-function markAllNotificationsRead() { setNotifications((current) => current.map((item) => item.read ? item : { ...item, read: true })); }
-function deleteNotification(id) { setNotifications((current) => current.filter((item) => item.id !== id)); }
+const isServerNotificationId = (id) => /^[a-f0-9]{24}$/i.test(String(id || ""));
+// Merge MongoDB notifications (support replies, etc.) with browser-local teacher notifications.
+useEffect(() => {
+  let cancelled = false;
+  const mergeServer = async () => {
+    try {
+      const data = await apiFetchNotifications({ limit: 100 });
+      if (cancelled) return;
+      const serverItems = (Array.isArray(data?.notifications) ? data.notifications : []).map((item) => ({ ...item, source: "server" }));
+      setNotifications((previous) => {
+        const localOnly = previous.filter((item) => !isServerNotificationId(item.id));
+        const seen = new Set(serverItems.map((item) => item.id));
+        const dedupedLocal = localOnly.filter((item) => !seen.has(item.id));
+        return [...serverItems, ...dedupedLocal]
+          .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+          .slice(0, 150);
+      });
+    } catch {
+      // Keep local notifications when backend is unavailable.
+    }
+  };
+  mergeServer();
+  const onFocus = () => mergeServer();
+  window.addEventListener("focus", onFocus);
+  return () => { cancelled = true; window.removeEventListener("focus", onFocus); };
+}, [teacherNotificationKey]);
+
+// Realtime notification subscription (SSE) with API resync fallback.
+useEffect(() => {
+  const close = subscribeToNotificationStream({
+    onNotification: (notification) => {
+      if (!notification?.id) return;
+      setNotifications((previous) => {
+        if (previous.some((item) => String(item.id) === String(notification.id))) return previous;
+        return [{ ...notification, source: "server" }, ...previous].slice(0, 150);
+      });
+    },
+    onReady: () => {
+      apiFetchNotifications({ limit: 100 }).then((data) => {
+        const serverItems = (Array.isArray(data?.notifications) ? data.notifications : []).map((item) => ({ ...item, source: "server" }));
+        setNotifications((previous) => {
+          const localOnly = previous.filter((item) => !isServerNotificationId(item.id));
+          const seen = new Set(serverItems.map((item) => item.id));
+          const dedupedLocal = localOnly.filter((item) => !seen.has(item.id));
+          return [...serverItems, ...dedupedLocal]
+            .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+            .slice(0, 150);
+        });
+      }).catch(() => {});
+    },
+  });
+  return close;
+}, [teacherNotificationKey]);
+
+// Phase 7: MongoDB-backed teacher analytics.
+useEffect(() => {
+  let cancelled = false;
+  const load = async () => {
+    try { const data = await fetchTeacherAnalytics(); if (!cancelled) setServerTeacherAnalytics(data); } catch { /* local analytics remain available */ }
+  };
+  load();
+  const onFocus = () => load();
+  window.addEventListener("focus", onFocus);
+  return () => { cancelled = true; window.removeEventListener("focus", onFocus); };
+}, [email]);
+
+// Verified teacher earnings (real-money only; demo excluded by backend summary).
+useEffect(() => {
+  let cancelled = false;
+  const load = async () => {
+    try { const data = await fetchMyEarnings(); if (!cancelled) setServerTeacherEarnings(data); } catch { /* earnings panel remains available */ }
+  };
+  load();
+  const onFocus = () => load();
+  window.addEventListener("focus", onFocus);
+  return () => { cancelled = true; window.removeEventListener("focus", onFocus); };
+}, [email]);
+
+function markNotificationRead(id) {
+  setNotifications((current) => current.map((item) => item.id === id ? { ...item, read: true } : item));
+  if (isServerNotificationId(id)) markServerNotificationRead(id).catch(() => {});
+}
+function markAllNotificationsRead() {
+  setNotifications((current) => current.map((item) => item.read ? item : { ...item, read: true }));
+  markAllServerNotificationsRead().catch(() => {});
+}
+function deleteNotification(id) {
+  setNotifications((current) => current.filter((item) => item.id !== id));
+  if (isServerNotificationId(id)) deleteServerNotification(id).catch(() => {});
+}
 
 const [workspaceRevision, setWorkspaceRevision] = useState(0);
 useEffect(() => {
@@ -1576,7 +1672,7 @@ async function handleTeacherProfileImage(event) {
         {/* MY COURSES */}
 
        
-{tab === "analytics" && <InstructorAnalytics email={email} courses={courses} />}
+{tab === "analytics" && <InstructorAnalytics email={email} courses={courses} serverAnalytics={serverTeacherAnalytics} earnings={serverTeacherEarnings} />}
 {tab === "quizzes" && <CourseQuizzes role="teacher" email={email} courses={courses.map(c => ({ ...c, teacherEmail: email }))} />}
 {tab === "course-assignments" && <CourseAssignments role="teacher" email={email} courses={courses.map(c => ({ ...c, teacherEmail: email }))} />}
 {tab === "curriculum" && <CurriculumBuilder role="teacher" email={email} courses={courses.map(c => ({ ...c, teacherEmail: email }))}

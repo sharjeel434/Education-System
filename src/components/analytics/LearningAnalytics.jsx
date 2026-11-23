@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { ArrowLeft, Award, BookOpen, CalendarDays, CheckCircle2, Clock3, Download, Flame, PlayCircle, Target, TrendingUp } from "lucide-react";
 import "./LearningAnalytics.css";
 
@@ -11,7 +11,7 @@ const formatTime = seconds => {
   return minutes >= 60 ? `${Math.floor(minutes / 60)}h ${minutes % 60}m` : `${minutes}m`;
 };
 
-export default function LearningAnalytics({ courses = [], activity = {} }) {
+export default function LearningAnalytics({ courses = [], activity = {}, serverAnalytics = null }) {
   const [detail, setDetail] = useState("");
   const [range, setRange] = useState(7);
   const [activeSection, setActiveSection] = useState("overview");
@@ -30,12 +30,15 @@ export default function LearningAnalytics({ courses = [], activity = {} }) {
   if (!(Number(days[today]) > 0)) cursor.setDate(cursor.getDate() - 1);
   for (let i = 0; i < 365 && Number(days[localDay(cursor)]) > 0; i++) { streak++; cursor.setDate(cursor.getDate() - 1); }
 
-  const completedCourses = courses.filter(course => Number(course.progress) === 100).length;
-  const activeCourses = courses.filter(course => Number(course.progress) > 0 && Number(course.progress) < 100).length;
-  const untouchedCourses = courses.length - completedCourses - activeCourses;
-  const totalLessons = courses.reduce((sum, course) => sum + Math.max(0, Number(course.lessons) || 0), 0);
-  const completedLessons = courses.reduce((sum, course) => sum + Math.max(0, Number(course.completedLessons) || 0), 0);
-  const lessonProgress = totalLessons ? Math.round(completedLessons / totalLessons * 100) : 0;
+  const serverSummary = serverAnalytics?.summary || null;
+  const serverCourses = Array.isArray(serverAnalytics?.courses) ? serverAnalytics.courses : [];
+  const displayCourses = serverCourses.length ? serverCourses.map((course) => ({ ...course, id: course.courseId || course.id, title: course.title, lessons: course.totalLessons ?? course.lessons ?? 0, completedLessons: course.completedLessons ?? 0, progress: course.progress ?? 0, teacherEmail: course.teacherEmail || "" })) : courses;
+  const completedCourses = serverSummary ? Number(serverSummary.completedCourses || 0) : courses.filter(course => Number(course.progress) === 100).length;
+  const activeCourses = serverSummary ? Math.max(0, Number(serverSummary.enrolledCourses || 0) - completedCourses) : courses.filter(course => Number(course.progress) > 0 && Number(course.progress) < 100).length;
+  const untouchedCourses = serverSummary ? 0 : courses.length - completedCourses - activeCourses;
+  const totalLessons = serverSummary ? Number(serverSummary.totalLessons || 0) : courses.reduce((sum, course) => sum + Math.max(0, Number(course.lessons) || 0), 0);
+  const completedLessons = serverSummary ? Number(serverSummary.completedLessons || 0) : courses.reduce((sum, course) => sum + Math.max(0, Number(course.completedLessons) || 0), 0);
+  const lessonProgress = serverSummary ? Number(serverSummary.overallProgress || 0) : (totalLessons ? Math.round(completedLessons / totalLessons * 100) : 0);
   const activeDays = chartDays.filter(day => day.seconds > 0).length;
   const maxSeconds = Math.max(60, ...chartDays.map(day => day.seconds));
   const chartPoints = chartDays.map((day, index) => ({
@@ -45,12 +48,15 @@ export default function LearningAnalytics({ courses = [], activity = {} }) {
   }));
   const linePath = chartPoints.map((point, index) => `${index ? "L" : "M"}${point.x},${point.y}`).join(" ");
   const areaPath = `${linePath} L${chartPoints.at(-1)?.x || 666},198 L${chartPoints[0]?.x || 36},198 Z`;
-  const milestones = [
+  const serverMilestones = Array.isArray(serverAnalytics?.milestones) ? serverAnalytics.milestones : null;
+  const milestones = serverMilestones ? serverMilestones.map((item) => ({ title: item.title, earned: Boolean(item.earned), detail: item.detail || "", icon: item.earned ? Award : Target })) : [
     { title: "First Steps", earned: (Number(activity.totalSeconds) || 0) >= 60, detail: "Watch your first minute", icon: PlayCircle },
     { title: "Focused Learner", earned: (Number(activity.totalSeconds) || 0) >= 1800, detail: "Learn for 30 minutes", icon: Target },
     { title: "Consistent Learner", earned: streak >= 3, detail: "Build a 3-day streak", icon: Flame },
     { title: "Course Finisher", earned: completedCourses > 0, detail: "Complete a course", icon: Award },
   ];
+  const quizPerformance = Array.isArray(serverAnalytics?.quizPerformance) ? serverAnalytics.quizPerformance : [];
+  const revisionTopics = Array.isArray(serverAnalytics?.revisionTopics) ? serverAnalytics.revisionTopics : [];
   const goTo = (id, section) => { setActiveSection(section); document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }); };
   const exportReport = () => {
     const rows = [["Learning Analytics Report"], ["Range", `Last ${range} days`], ["Video watch time", formatTime(activity.totalSeconds)], ["Learning streak", `${streak} days`], [], ["Course", "Lessons completed", "Total lessons", "Progress"]];
@@ -94,8 +100,12 @@ export default function LearningAnalytics({ courses = [], activity = {} }) {
       <section className="edc-la-panel edc-la-snapshot"><h3><Clock3 size={18}/> Study Snapshot</h3><strong className="edc-la-snapshot-total">{formatTime(activity.totalSeconds)}</strong><span className="edc-la-snapshot-caption">Total learning time</span><div className="edc-la-summary-row"><span>Today</span><strong>{formatTime(days[today])}</strong></div><div className="edc-la-summary-row"><span>This month</span><strong>{formatTime(monthlySeconds)}</strong></div><div className="edc-la-summary-row"><span>Lessons completed</span><strong>{completedLessons} / {totalLessons}</strong></div></section>
     </div>
     <div className="edc-la-bottom-grid">
-      <section className="edc-la-panel edc-la-course-panel" id="edc-la-progress"><div className="edc-la-panel-title"><h3><BookOpen size={18}/> Course Performance</h3><button type="button" onClick={() => setDetail("enrolled")}>View All Courses →</button></div>{courses.length ? <div className="edc-la-table-wrap"><table><thead><tr><th>Course Title</th><th>Lessons</th><th>Completion</th><th>Progress</th></tr></thead><tbody>{courses.map(course => { const progress = Math.min(100, Math.max(0, Number(course.progress) || 0)); return <tr key={`${course.teacherEmail || "demo"}:${course.id}`}><td><span className="edc-la-course-icon"><BookOpen size={17}/></span><strong>{course.title || "Untitled course"}</strong></td><td>{course.completedLessons || 0} / {course.lessons || 0}</td><td>{Math.round(progress)}%</td><td><div className="edc-la-mini-track"><span style={{ width: `${progress}%` }}/></div></td></tr>; })}</tbody></table></div> : <p className="edc-la-empty">Enroll in a course to see your learning progress here.</p>}</section>
-      <section className="edc-la-panel edc-la-milestone-panel" id="edc-la-milestones"><div className="edc-la-panel-title"><h3><Award size={18}/> Learning Milestones</h3><span className="edc-la-milestone-count">{milestones.filter(milestone => milestone.earned).length} / {milestones.length} earned</span></div><div className="edc-la-milestones">{milestones.map(milestone => { const Icon = milestone.icon; return <article key={milestone.title} className={milestone.earned ? "earned" : ""}><span className="edc-la-milestone-icon"><Icon size={18}/></span><div><strong>{milestone.title}</strong><small>{milestone.detail}</small></div>{milestone.earned && <CheckCircle2 size={17}/>}</article>; })}</div><p className="edc-la-footnote">Learning activity is based on course video playback recorded in this browser.</p></section>
+      <section className="edc-la-panel edc-la-course-panel" id="edc-la-progress"><div className="edc-la-panel-title"><h3><BookOpen size={18}/> Course Performance</h3><button type="button" onClick={() => setDetail("enrolled")}>View All Courses →</button></div>{displayCourses.length ? <div className="edc-la-table-wrap"><table><thead><tr><th>Course Title</th><th>Lessons</th><th>Completion</th><th>Progress</th></tr></thead><tbody>{displayCourses.map(course => { const progress = Math.min(100, Math.max(0, Number(course.progress) || 0)); return <tr key={`${course.teacherEmail || "demo"}:${course.id}`}><td><span className="edc-la-course-icon"><BookOpen size={17}/></span><strong>{course.title || "Untitled course"}</strong></td><td>{course.completedLessons || 0} / {course.lessons || 0}</td><td>{Math.round(progress)}%</td><td><div className="edc-la-mini-track"><span style={{ width: `${progress}%` }}/></div></td></tr>; })}</tbody></table></div> : <p className="edc-la-empty">Enroll in a course to see your learning progress here.</p>}</section>
+      <section className="edc-la-panel edc-la-milestone-panel" id="edc-la-milestones"><div className="edc-la-panel-title"><h3><Award size={18}/> Learning Milestones</h3><span className="edc-la-milestone-count">{milestones.filter(milestone => milestone.earned).length} / {milestones.length} earned</span></div><div className="edc-la-milestones">{milestones.map(milestone => { const Icon = milestone.icon; return <article key={milestone.title} className={milestone.earned ? "earned" : ""}><span className="edc-la-milestone-icon"><Icon size={18}/></span><div><strong>{milestone.title}</strong><small>{milestone.detail}</small></div>{milestone.earned && <CheckCircle2 size={17}/>}</article>; })}</div><p className="edc-la-footnote">{serverAnalytics ? "Progress, quiz, and milestone metrics are loaded from MongoDB. Video watch time is still recorded in this browser." : "Learning activity is based on course video playback recorded in this browser."}</p></section>
     </div>
+    {serverAnalytics && <div className="edc-la-bottom-grid">
+      <section className="edc-la-panel edc-la-course-panel"><div className="edc-la-panel-title"><h3><CheckCircle2 size={18}/> Quiz Performance</h3><span className="edc-la-milestone-count">{serverSummary?.passedQuizzes || 0} passed / {serverSummary?.quizAttempts || 0} attempts</span></div>{quizPerformance.length ? <div className="edc-la-table-wrap"><table><thead><tr><th>Course</th><th>Date</th><th>Score</th><th>Status</th></tr></thead><tbody>{quizPerformance.slice(0, 8).map((attempt, index) => <tr key={`${attempt.courseId}-${attempt.submittedAt || index}`}><td><strong>{attempt.courseTitle || "Course"}</strong></td><td>{attempt.submittedAt ? new Date(attempt.submittedAt).toLocaleDateString() : "—"}</td><td>{Math.round(Number(attempt.percentage) || 0)}%</td><td>{attempt.passed ? "Passed" : "Needs revision"}</td></tr>)}</tbody></table></div> : <p className="edc-la-empty">No quiz attempts recorded in MongoDB yet.</p>}</section>
+      <section className="edc-la-panel edc-la-milestone-panel"><div className="edc-la-panel-title"><h3><Target size={18}/> Revision Recommendations</h3></div>{revisionTopics.length ? <div className="edc-la-milestones">{revisionTopics.map((item, index) => <article key={`${item.topic}-${index}`}><span className="edc-la-milestone-icon"><Target size={18}/></span><div><strong>{item.topic}</strong><small>{item.reason}</small></div></article>)}</div> : <p className="edc-la-empty">No revision topics right now. Keep up the good work.</p>}</section>
+    </div>}
   </div>;
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Award,
   BarChart3,
@@ -62,8 +62,8 @@ function getMonths(count) {
 
 function ProgressChart({ courses, metric }) {
   const valueFor = metric === "enrollments"
-    ? (course) => course.students
-    : (course) => completionFor(course) || 0;
+    ? (course) => Number(course.students ?? course.enrollments ?? 0)
+    : (course) => (course.completion != null ? Number(course.completion) : (completionFor(course) || 0));
   const values = courses.map(valueFor);
   const max = Math.max(1, ...values);
   const points = values.map((value, index) => ({
@@ -79,7 +79,7 @@ function ProgressChart({ courses, metric }) {
   return (
     <div className="edc-ia-line-chart">
       {courses.length ? (
-        <svg viewBox="0 0 700 220" role="img" aria-label="Saved learning progress by course">
+        <svg viewBox="0 0 700 220" role="img" aria-label="Learning progress by course">
           <defs>
             <linearGradient id="edc-ia-progress-area" x1="0" x2="0" y1="0" y2="1">
               <stop offset="0%" stopColor="#7412c7" stopOpacity=".23" />
@@ -98,7 +98,7 @@ function ProgressChart({ courses, metric }) {
               ? `${value} enrollments`
               : `${Math.round(value)}% average progress`;
             return (
-              <g key={String(course.id)}>
+              <g key={String(course.id || course.courseId || index)}>
                 <circle cx={x} cy={y} r="5" className="edc-ia-progress-dot">
                   <title>{`${course.title || "Untitled course"}: ${label}`}</title>
                 </circle>
@@ -110,10 +110,10 @@ function ProgressChart({ courses, metric }) {
           })}
         </svg>
       ) : (
-        <div className="edc-ia-chart-empty">No saved course enrollments yet.</div>
+        <div className="edc-ia-chart-empty">No course analytics data available yet.</div>
       )}
       {courses.length > 0 && !hasData && (
-        <div className="edc-ia-chart-empty">No progress data is available for these enrollments.</div>
+        <div className="edc-ia-chart-empty">No progress data is available for these courses.</div>
       )}
     </div>
   );
@@ -231,7 +231,7 @@ function downloadReport(data) {
   URL.revokeObjectURL(url);
 }
 
-export default function InstructorAnalytics({ email, courses = [] }) {
+export default function InstructorAnalytics({ email, courses = [], serverAnalytics = null, earnings = null }) {
   const [, setRevision] = useState(0);
   const [detail, setDetail] = useState("");
   const [period, setPeriod] = useState(6);
@@ -270,12 +270,21 @@ export default function InstructorAnalytics({ email, courses = [] }) {
         (Date.parse(right.purchasedAt || "") || 0) -
         (Date.parse(left.purchasedAt || "") || 0),
     );
-  const totalRevenue = sales.reduce((total, sale) => total + number(sale.amount), 0);
-  const averageProgress = enrollments.length
+  const totalDemoRevenue = sales.reduce((total, sale) => total + number(sale.amount), 0);
+  const localAverageProgress = enrollments.length
     ? enrollments.reduce((total, enrollment) => total + number(enrollment.progress), 0) /
       enrollments.length
     : null;
-  const statuses = enrollments.reduce(
+  const serverSummary = serverAnalytics?.summary || null;
+  const serverCourses = Array.isArray(serverAnalytics?.courses) ? serverAnalytics.courses : [];
+  const earningsSummary = earnings?.summary || null;
+  const verifiedGross = Number(earningsSummary?.grossSales || 0);
+  const verifiedNet = Number(earningsSummary?.netEarnings || 0);
+  const verifiedCommission = Number(earningsSummary?.commission || 0);
+  const hasVerifiedRealPayments = Boolean(earningsSummary?.hasVerifiedRealPayments);
+  const averageProgress = serverSummary ? (Number(serverSummary.completionPercent) || 0) : localAverageProgress;
+  const displayEnrollmentsCount = serverSummary ? Number(serverSummary.enrolledStudents || 0) : enrollments.length;
+  const localStatuses = enrollments.reduce(
     (counts, enrollment) => {
       const status = statusFor(number(enrollment.progress));
       counts[status] += 1;
@@ -283,18 +292,35 @@ export default function InstructorAnalytics({ email, courses = [] }) {
     },
     { Completed: 0, "In Progress": 0, "Not Started": 0 },
   );
+  const serverStatuses = serverCourses.reduce((counts, course) => {
+    const status = course.status === "Completed" ? "Completed" : course.status === "In Progress" ? "In Progress" : "Not Started";
+    counts[status] += Number(course.enrollments || 0);
+    return counts;
+  }, { Completed: 0, "In Progress": 0, "Not Started": 0 });
+  const statuses = serverCourses.length ? serverStatuses : localStatuses;
   const months = getMonths(period);
-  const progressCourses = [...data]
-    .filter((course) => course.students > 0)
-    .sort((left, right) => right.students - left.students)
+  const progressSource = serverCourses.length ? serverCourses.map((course) => ({
+    id: course.courseId,
+    title: course.title,
+    students: Number(course.enrollments || 0),
+    completion: Number(course.completionPercent ?? course.averageCompletion ?? 0),
+    lessons: Number(course.lessons || 0),
+    completedLessons: Number(course.completedLessons || 0),
+    quizAttempts: Number(course.quizAttempts || 0),
+    passRate: course.passRate,
+    avgRating: course.avgRating,
+  })) : data;
+  const progressCourses = [...progressSource]
+    .filter((course) => (course.students || course.enrollments || 0) > 0 || serverCourses.length)
+    .sort((left, right) => (Number(right.students || right.enrollments || 0) - Number(left.students || left.enrollments || 0)))
     .slice(0, 6);
-  const completionTotal = enrollments.length;
+  const completionTotal = serverCourses.length ? displayEnrollmentsCount : enrollments.length;
   const topSalesCourse = [...data]
     .filter((course) => course.sales > 0)
     .sort((left, right) => right.revenue - left.revenue)[0];
-  const topEnrollmentCourse = [...data]
-    .filter((course) => course.students > 0)
-    .sort((left, right) => right.students - left.students)[0];
+  const topEnrollmentCourse = [...progressSource]
+    .filter((course) => Number(course.students || course.enrollments || 0) > 0)
+    .sort((left, right) => Number(right.students || right.enrollments || 0) - Number(left.students || left.enrollments || 0))[0];
   const salesByCourse = [...data]
     .filter((course) => course.sales > 0)
     .sort((left, right) => right.revenue - left.revenue)
@@ -364,17 +390,26 @@ export default function InstructorAnalytics({ email, courses = [] }) {
           )}
           {detail === "revenue" && (
             <>
-              <p>Gross values from saved demo checkout records; this is not a payout or a real balance.</p>
+              <p>Verified real-money earnings are shown separately from demo/sandbox transactions. Demo transactions are never counted as real earnings.</p>
               <div className="edc-ia-detail-list">
-                {data.length ? data.map((course) => (
-                  <article key={String(course.id)}>
+                <article>
+                  <strong>Verified Gross Sales (Real)</strong>
+                  <span>{formatCurrency(verifiedGross)}</span>
+                  <small>Platform commission {formatCurrency(verifiedCommission)} · Teacher net {formatCurrency(verifiedNet)}</small>
+                </article>
+                <article>
+                  <strong>Demo/Sandbox Gross (Not real money)</strong>
+                  <span>{formatCurrency(totalDemoRevenue)}</span>
+                  <small>Excluded from verified revenue and earnings totals.</small>
+                </article>
+                {(earnings?.byCourse || []).length ? earnings.byCourse.filter((c) => Number(c.revenue || 0) > 0).map((course) => (
+                  <article key={String(course.courseId)}>
                     <strong>{course.title || "Untitled course"}</strong>
-                    <span>{course.sales} saved sales</span>
-                    <small>{formatCurrency(course.revenue)} gross recorded sales</small>
+                    <span>{Number(course.sales || 0)} verified real sales</span>
+                    <small>{formatCurrency(Number(course.revenue || 0))} gross · {formatCurrency(Number(course.net || 0))} net</small>
                   </article>
-                )) : <p>No courses are saved for this teacher yet.</p>}
+                )) : <p>{hasVerifiedRealPayments ? "" : "No verified live payments have been recorded yet."}</p>}
               </div>
-              <h2>Total: {formatCurrency(totalRevenue)}</h2>
             </>
           )}
           {detail === "completion" && (
@@ -415,27 +450,29 @@ export default function InstructorAnalytics({ email, courses = [] }) {
 
           <p className="edc-ia-notice">
             <CircleAlert size={16} />
-            Saved browser-local enrollments and demo checkout records only. No real payments or platform-wide reporting.
+            {serverSummary
+              ? `MongoDB-backed learning metrics: ${Number(serverSummary.totalPublishedCourses || 0)} published courses, ${Number(serverSummary.enrolledStudents || 0)} enrollments, ${Number(serverSummary.completedLessons || 0)} completed lessons, ${Number(serverSummary.totalQuizAttempts || 0)} quiz attempts. Sales/revenue cards below still use saved browser-local demo records.`
+              : "Saved browser-local enrollments and demo checkout records only. No real payments or platform-wide reporting."}
           </p>
 
           <section className="edc-ia-stats" aria-label="Analytics summary">
             <button type="button" className="purple" onClick={() => setDetail("enrollments")}>
               <span><GraduationCap size={22} /></span>
               <small>Total Enrollments</small>
-              <strong>{enrollments.length.toLocaleString()}</strong>
+              <strong>{displayEnrollmentsCount.toLocaleString()}</strong>
               <em>View details →</em>
             </button>
             <button type="button" className="gold" onClick={() => setDetail("sales")}>
               <span><BarChart3 size={22} /></span>
-              <small>Total Sales</small>
+              <small>Demo Sales (Local)</small>
               <strong>{sales.length.toLocaleString()}</strong>
               <em>View details →</em>
             </button>
             <button type="button" className="purple" onClick={() => setDetail("revenue")}>
               <span><WalletCards size={22} /></span>
-              <small>Gross Demo Revenue</small>
-              <strong>{formatCurrency(totalRevenue)}</strong>
-              <em>View details →</em>
+              <small>{hasVerifiedRealPayments ? "Verified Gross Revenue" : "Verified Revenue (Real)"}</small>
+              <strong>{formatCurrency(verifiedGross)}</strong>
+              <em>{hasVerifiedRealPayments ? `Net ${formatCurrency(verifiedNet)}` : "No verified live payments yet"}</em>
             </button>
             <button type="button" className="gold" onClick={() => setDetail("completion")}>
               <span><UsersRound size={22} /></span>
@@ -475,18 +512,25 @@ export default function InstructorAnalytics({ email, courses = [] }) {
                 <table className="edc-ia-performance-table">
                   <thead><tr><th>Course</th><th>Enrollments</th><th>Completion</th><th>Gross Demo Sales</th></tr></thead>
                   <tbody>
-                    {data.map((course) => (
-                      <tr key={String(course.id)}>
-                        <td>{course.title || "Untitled course"}</td>
-                        <td>{course.students}</td>
-                        <td>
-                          {completionFor(course) === null ? "—" : `${Math.round(completionFor(course))}%`}
-                          {completionFor(course) !== null && <span className="edc-ia-progress-track"><i style={{ width: `${completionFor(course)}%` }} /></span>}
-                        </td>
-                        <td>{formatCurrency(course.revenue)}</td>
-                      </tr>
-                    ))}
-                    {!data.length && <tr><td colSpan={4}>No courses are saved for this teacher yet.</td></tr>}
+                    {(serverCourses.length ? serverCourses : data).map((course) => {
+                      const isServer = Boolean(serverCourses.length);
+                      const enrollments = isServer ? Number(course.enrollments || 0) : course.students;
+                      const completion = isServer ? (Number(course.completionPercent ?? course.averageCompletion) || 0) : completionFor(course);
+                      const revenue = isServer ? 0 : course.revenue;
+                      const title = course.title || "Untitled course";
+                      return (
+                        <tr key={String(course.courseId || course.id)}>
+                          <td>{title}</td>
+                          <td>{enrollments}</td>
+                          <td>
+                            {completion === null ? "—" : `${Math.round(completion)}%`}
+                            {completion !== null && <span className="edc-ia-progress-track"><i style={{ width: `${Math.max(0, Math.min(100, Number(completion) || 0))}%` }} /></span>}
+                          </td>
+                          <td>{isServer ? "—" : formatCurrency(revenue)}</td>
+                        </tr>
+                      );
+                    })}
+                    {!(serverCourses.length ? serverCourses : data).length && <tr><td colSpan={4}>No courses are saved for this teacher yet.</td></tr>}
                   </tbody>
                 </table>
               </div>

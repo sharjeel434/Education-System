@@ -5,6 +5,7 @@ import connectDB from "./config/db.js";
 import { migrateVerificationRecords } from "./services/verificationRecords.js";
 import { validateEnvironment } from "./config/security.js";
 import RateLimitCounter from "./models/RateLimitCounter.js";
+import { initNotificationRealtime, closeNotificationRealtime } from "./services/notificationRealtime.js";
 
 // A missing mode on the deployment entry point must select secure defaults.
 process.env.NODE_ENV ||= "production";
@@ -18,8 +19,9 @@ const startServer = async () => {
   await connectDB();
   await RateLimitCounter.init();
   await migrateVerificationRecords();
+  await initNotificationRealtime();
 
-  app.listen(PORT, HOST, () => {
+  const server = app.listen(PORT, HOST, () => {
     console.log("--------------------------------");
     console.log("EduConnect AI Backend Started");
     console.log(`Listening: ${HOST}:${PORT}`);
@@ -27,6 +29,13 @@ const startServer = async () => {
     console.log(`Health: http://127.0.0.1:${PORT}/api/health`);
     console.log("--------------------------------");
   });
+
+  const shutdown = async () => {
+    try { await closeNotificationRealtime(); } catch {}
+    server.close(() => process.exit(0));
+  };
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
 };
 
 startServer().catch(() => { console.error("Backend startup failed. Check database and security configuration."); process.exitCode = 1; });

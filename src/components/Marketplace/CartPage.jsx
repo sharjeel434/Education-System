@@ -235,8 +235,8 @@ export default function CartPage({ email, onBack, onComplete }) {
               {checkingOut ? "Processing…" : isFreeOrder ? "Complete Checkout (Free)" : "Pay Securely"}
             </button>
             {!isFreeOrder && demoEnabled && (
-              <button type="button" onClick={demoCheckoutDemo} style={{ marginTop: 8, background: "none", border: 0, color: "#7c3aed", fontSize: 12, fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}>
-                Use sandbox demo checkout (test only, no real payment)
+              <button type="button" disabled={checkingOut} onClick={demoCheckoutDemo} style={{ marginTop: 8, background: "none", border: 0, color: "#7c3aed", fontSize: 12, fontWeight: 700, cursor: checkingOut ? "not-allowed" : "pointer", textDecoration: "underline" }}>
+                Demo Payment — No Real Money (Test Only)
               </button>
             )}
           </aside>

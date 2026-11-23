@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 
 // Digital products carry no quantity: presence in the cart is the unit.
 const schema = new mongoose.Schema({
-  studentId: { type: mongoose.Schema.Types.ObjectId, required: true, immutable: true, index: true },
+  studentId: { type: mongoose.Schema.Types.ObjectId, required: true, immutable: true },
   kind: { type: String, enum: ["course", "book"], required: true, immutable: true },
   contentId: { type: mongoose.Schema.Types.ObjectId, required: true, immutable: true },
 }, { timestamps: true });

@@ -245,6 +245,8 @@ test("Marketplace cart, orders, payments, earnings and security", { timeout: 120
     const replay = await rawWebhook({ eventId: "evt-refund-1", type: "payment.refunded", orderNumber, transactionId: "refund-test-1", amount: 300, currency: "PKR" });
     assert.equal(replay.data.alreadyProcessed, true, "Refund replay is idempotent");
     const overview = await request("/marketplace/finance/overview", { actor: "admin" });
-    assert.ok(Number(overview.data.summary.refundedGross) >= 300);
+    // The refunded sale was a demo sale: real payout totals exclude it.
+    assert.equal(Number(overview.data.summary.refundedSales), 0, "Demo refunds are excluded from real payout totals");
+    assert.equal(Number(overview.data.summary.refundedGross), 0);
   });
 });
