@@ -2,10 +2,6 @@
 .dashboard-page .edc-main[data-active-tab="reviews"] > .edc-main-header { display: none; }
 .edc-my-reviews button,.edc-my-reviews input,.edc-my-reviews select,.edc-my-reviews textarea { font-family: inherit; }
 .edc-mr-heading { position: relative; min-height: 79px; padding: 0 235px 0 4px; }
-.edc-mr-breadcrumb { position: relative; z-index: 1; display: flex; align-items: center; gap: 10px; margin-bottom: 10px; color: #7135a4; font-size: 10px; }
-.edc-mr-breadcrumb > span { color: #b398c8; }
-.edc-my-reviews .edc-mr-breadcrumb button { padding: 0; border: 0; background: transparent; color: #745085; font-size: 10px; font-weight: 550; cursor: pointer; }
-.edc-mr-breadcrumb strong { color: #48215f; font-size: 10px; font-weight: 650; }
 .edc-mr-heading h2 { position: relative; z-index: 1; margin: 0 0 4px; color: #32104f; font-size: 27px; font-weight: 800; line-height: 1.2; letter-spacing: -.5px; }
 .edc-mr-heading p { position: relative; z-index: 1; margin: 0; color: #5a3b73; font-size: 12px; line-height: 1.5; }
 .edc-mr-heading-art { position: absolute; right: 3px; bottom: -10px; width: 245px; height: 109px; object-fit: contain; pointer-events: none; }

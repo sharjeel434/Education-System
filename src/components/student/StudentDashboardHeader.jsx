@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, Bell, ChevronDown, LogOut, UserRound } from "lucide-react";
+import { ArrowRight, Bell, ChevronDown, LogOut, ShieldCheck, UserRound } from "lucide-react";
 import { NOTIFICATIONS_EVENT } from "../../utils/demoNotifications";
 import { SidebarTrigger } from "../workspace/WorkspaceSidebar";
 import "./StudentDashboardTheme.css";

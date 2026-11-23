@@ -38,6 +38,7 @@ import {
   Award,
   ShieldCheck,
   Zap,
+  Info,
 } from "lucide-react";
 
 import { getManagedCourses, refreshContent, saveContent, submitContent, removeContent, uploadContentFile, CONTENT_CHANGED_EVENT } from "../../utils/contentApi";
@@ -55,6 +56,9 @@ import { NOTIFICATIONS_EVENT } from "../../utils/demoNotifications";
 
 import TeacherOverview, { TeacherWorkspaceHeader } from "../../components/teacher/TeacherOverview";
 import TeacherLessons from "../../components/teacher/TeacherLessons";
+import TeacherCnicUpload from "../../components/teacher/TeacherCnicUpload";
+import VerifiedBadge from "../../components/verification/VerifiedBadge";
+import StudentProfileBadge from "../../components/verification/StudentProfileBadge";
 import WorkspaceSidebar from "../../components/workspace/WorkspaceSidebar";
 import TeacherStudents from "../../components/teacher/TeacherStudents";
 import TeacherEarnings from "../../components/teacher/TeacherEarnings";
@@ -420,8 +424,8 @@ function TeacherProfileOverview({
                   <TeacherCnicUpload cnicStatus={cnicStatus} onSubmitted={onVerificationSubmitted} rejectionReason={rejectionReason} />
                 )}
                 <div style={{ marginTop: 18, display: "flex", flexWrap: "wrap", gap: 10 }}>
-                  <button type="button" style={styles.lightButton} onClick={onEdit}><Edit3 size={16} /> Edit Profile</button>
-                  <button type="button" style={styles.lightButton} onClick={() => onNavigate("help-support")}><LifeBuoy size={16} /> Help & Support</button>
+                  <button type="button" className="edc-pd-secondary" onClick={onEdit}><Edit3 size={16} /> Edit Profile</button>
+                  <button type="button" className="edc-pd-secondary" onClick={() => onNavigate("help-support")}><LifeBuoy size={16} /> Help & Support</button>
                 </div>
               </section>
             )}
@@ -507,6 +511,13 @@ function TeacherDashboard({ email = "teacher@example.com", account, onVerificati
   const courseKey = `educonnect.teacher.${email}.courses`;
   const profileKey = `educonnect.teacher.${email}.profile`;
   const teacherNotificationKey = `educonnect.teacher.${String(email || "").trim().toLowerCase()}.notifications`;
+  const registeredAccount = useMemo(() => {
+    const accountEmail = String(email || "").trim().toLowerCase();
+    const users = readSaved("educonnect.registeredUsers", []);
+    return Array.isArray(users)
+      ? users.find((user) => String(user.email || "").trim().toLowerCase() === accountEmail) || null
+      : null;
+  }, [email]);
 
   const [courses, setCourses] = useState(() =>
     getManagedCourses(email)
@@ -561,6 +572,9 @@ function TeacherDashboard({ email = "teacher@example.com", account, onVerificati
     : null;
 
   const [profile, setProfile] = useState(() => readTeacherProfile(profileKey, email));
+  const [profileCompleted, setProfileCompleted] = useState(
+    () => registeredAccount?.profileCompleted === true
+  );
 
   const dashboardPathname = location.pathname;
   const dashboardSearch = location.search;
@@ -569,7 +583,7 @@ function TeacherDashboard({ email = "teacher@example.com", account, onVerificati
     const timer = window.setTimeout(() => setTab(teacherTabFromLocation({ pathname: dashboardPathname, search: dashboardSearch })), 0);
     return () => window.clearTimeout(timer);
   }, [dashboardPathname, dashboardSearch]);
-  
+
 const [notifications, setNotifications] = useState(() => readSaved(teacherNotificationKey, []));
 const unreadNotifications = notifications.filter((item) => !item.read).length;
 
@@ -892,7 +906,7 @@ function removeThumbnail() {
     );
   }
 
-  function removeLesson(courseId, lessonId, options) {
+  async function removeLesson(courseId, lessonId, options) {
     if (!options?.skipConfirm && !window.confirm("Remove this lesson?")) return false;
     const saved = await updateCourses((previous) =>
       previous.map((course) =>
@@ -1354,6 +1368,7 @@ async function handleTeacherProfileImage(event) {
         <main className="edc-teacher-main">
           <TeacherWorkspaceHeader
             profile={{ ...profile, name: teacherDisplayName }}
+            identityVerified={cnicStatus === "verified"}
             unread={unreadNotifications}
             notifications={notifications}
             onReadNotification={markNotificationRead}
@@ -1427,6 +1442,7 @@ async function handleTeacherProfileImage(event) {
       <main className="edc-teacher-main">
         <TeacherWorkspaceHeader
           profile={{ ...profile, name: teacherDisplayName }}
+          identityVerified={cnicStatus === "verified"}
           unread={unreadNotifications}
           notifications={notifications}
           onReadNotification={markNotificationRead}
@@ -2210,6 +2226,16 @@ async function handleTeacherProfileImage(event) {
         {/* PROFILE */}
         {tab === "profile" && (
           <div className="edc-profile-page">
+            {!profileCompleted && (
+              <div className="edc-profile-update-banner" role="status">
+                <div className="edc-profile-update-banner-icon" aria-hidden="true"><Info size={20} /></div>
+                <div>
+                  <strong>Update Your Profile</strong>
+                  <span>Add your Subjects, Qualifications, and Teaching Classes to complete your profile.</span>
+                </div>
+                <button type="button" onClick={startProfileEdit}><Edit3 size={14} />Update Profile</button>
+              </div>
+            )}
             {showProfileEditor && <div className="edc-profile-heading">
               <div className="edc-profile-heading-copy"><h2>Edit Teacher Profile</h2><p>Changes will appear after you save.</p></div>
               <button type="button" className="edc-pd-secondary" onClick={cancelProfileEdit}><X size={16} />Cancel</button>
@@ -2232,6 +2258,37 @@ async function handleTeacherProfileImage(event) {
                     try {
                       localStorage.setItem(profileKey, JSON.stringify(profile));
                       window.dispatchEvent(new Event("educonnect:teacher-profile-changed"));
+                      const subjects = [
+                        ...profileList(profile.subjects),
+                        ...profileList(profile.teachingSubjects),
+                        ...teacherFocusSubjects,
+                      ].some((value) => String(value || "").trim());
+                      const teachingLevel = profile.teachingLevel || profile.teachingEducationLevel || "";
+                      const complete = Boolean(
+                        subjects &&
+                        String(profile.qualification || "").trim() &&
+                        String(teachingLevel || "").trim()
+                      );
+                      try {
+                        const users = readSaved("educonnect.registeredUsers", []);
+                        if (Array.isArray(users)) {
+                          const accountEmail = String(email || "").trim().toLowerCase();
+                          const accountIndex = users.findIndex(
+                            (user) => String(user?.email || "").trim().toLowerCase() === accountEmail
+                          );
+                          if (accountIndex >= 0) {
+                            users[accountIndex] = {
+                              ...users[accountIndex],
+                              name: String(profile.name || users[accountIndex].name || "").trim(),
+                              profileCompleted: complete,
+                            };
+                            localStorage.setItem("educonnect.registeredUsers", JSON.stringify(users));
+                            setProfileCompleted(complete);
+                          }
+                        }
+                      } catch {
+                        // The profile remains saved if account metadata cannot be updated.
+                      }
                       setProfileSaved(true);
                       setShowProfileEditor(false);
                     } catch {

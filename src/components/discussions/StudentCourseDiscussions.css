@@ -2,10 +2,6 @@
 .dashboard-page .edc-main[data-active-tab="discussions"] > .edc-main-header { display: none; }
 .edc-course-qa button,.edc-course-qa input,.edc-course-qa textarea,.edc-course-qa select { font-family: inherit; }
 .edc-dq-heading { position: relative; min-height: 84px; padding: 0 260px 0 4px; }
-.edc-dq-breadcrumb { position: relative; z-index: 1; display: flex; align-items: center; gap: 10px; margin-bottom: 10px; color: #8d62af; font-size: 10px; }
-.edc-dq-breadcrumb > span { color: #b79bc7; }
-.edc-course-qa .edc-dq-breadcrumb button { padding: 0; border: 0; background: transparent; color: #7f5a99; font-size: 10px; font-weight: 550; cursor: pointer; }
-.edc-dq-breadcrumb strong { color: #543173; font-size: 10px; font-weight: 650; }
 .edc-dq-heading h2 { position: relative; z-index: 1; margin: 0 0 4px; color: #32124e; font-size: 28px; font-weight: 800; line-height: 1.2; letter-spacing: -.55px; }
 .edc-dq-heading p { position: relative; z-index: 1; margin: 0; color: #634778; font-size: 12px; line-height: 1.5; }
 .edc-dq-heading > img { position: absolute; right: 0; bottom: -7px; width: 265px; height: 110px; object-fit: contain; pointer-events: none; }

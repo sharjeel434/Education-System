@@ -15,6 +15,12 @@ import {
 } from "lucide-react";
 import { appendAdminActivityRecord } from "../components/admin/adminData";
 import { apiFetch } from "../utils/api";
+import {
+  clearDevelopmentAdminSession,
+  DEV_ADMIN_SESSION_KEY,
+  getConfiguredDevelopmentAdminEmail,
+  matchesDevelopmentAdminCredentials,
+} from "../utils/devAdminSession";
 import "./AuthPages.css";
 
 async function loginAccount(email, password) {
@@ -56,6 +62,17 @@ function recordAdminLoginAttempt(email, success, description) {
     });
   } catch {
     // Sign-in remains available if browser audit storage is unavailable.
+  }
+}
+
+function findSavedAccount(email) {
+  try {
+    const users = JSON.parse(window.localStorage.getItem("educonnect.registeredUsers") || "[]");
+    return Array.isArray(users)
+      ? users.find((user) => String(user?.email || "").trim().toLowerCase() === email)
+      : undefined;
+  } catch {
+    return undefined;
   }
 }
 
@@ -122,17 +139,52 @@ function LoginPage() {
       return;
     }
 
+    const adminConfig = {
+      isDevelopment: import.meta.env.DEV,
+      adminEmail: import.meta.env.VITE_ADMIN_EMAIL,
+      adminPassword: import.meta.env.VITE_ADMIN_PASSWORD,
+    };
+    const configuredAdminEmail = getConfiguredDevelopmentAdminEmail(adminConfig);
+    const isConfiguredAdminEmail = normalizedEmail === configuredAdminEmail && Boolean(configuredAdminEmail);
     let authenticatedUser;
-    setLoading(true);
-    try {
-      const result = await loginAccount(normalizedEmail, password);
-      authenticatedUser = result.user;
-    } catch (loginError) {
-      setError(loginError instanceof Error ? loginError.message : "Login failed.");
+    let isDevelopmentAdminLogin = false;
+
+    if (isConfiguredAdminEmail) {
+      if (!matchesDevelopmentAdminCredentials(normalizedEmail, password, adminConfig)) {
+        recordAdminLoginAttempt(
+          normalizedEmail,
+          false,
+          "An Admin sign-in attempt failed its credential check. No password or credential value was stored.",
+        );
+        setError("That password does not match this account.");
+        return;
+      }
+
+      const savedAccount = findSavedAccount(normalizedEmail);
+      if (savedAccount && savedAccount.role !== "Admin") {
+        recordAdminLoginAttempt(
+          normalizedEmail,
+          false,
+          "An Admin sign-in attempt was blocked because the saved account does not have the Admin role.",
+        );
+        setError("This account does not have Admin access.");
+        return;
+      }
+
+      authenticatedUser = { email: configuredAdminEmail, role: "admin" };
+      isDevelopmentAdminLogin = true;
+    } else {
+      setLoading(true);
+      try {
+        const result = await loginAccount(normalizedEmail, password);
+        authenticatedUser = result.user;
+      } catch (loginError) {
+        setError(loginError instanceof Error ? loginError.message : "Login failed.");
+        setLoading(false);
+        return;
+      }
       setLoading(false);
-      return;
     }
-    setLoading(false);
 
     const dashboardRole =
       authenticatedUser.role === "admin"
@@ -145,7 +197,9 @@ function LoginPage() {
       recordAdminLoginAttempt(
         authenticatedUser.email,
         true,
-        "Admin signed in through the backend API. Credentials were not recorded."
+        isDevelopmentAdminLogin
+          ? "Admin signed in using configured development credentials. Credentials were not recorded."
+          : "Admin signed in through the backend API. Credentials were not recorded."
       );
     }
 
@@ -163,6 +217,11 @@ function LoginPage() {
     // Compatibility with the existing dashboard UI while it is migrated.
     window.sessionStorage.setItem("educonnect.demoEmail", authenticatedUser.email);
     window.sessionStorage.removeItem("educonnect.authToken");
+    if (isDevelopmentAdminLogin) {
+      window.sessionStorage.setItem(DEV_ADMIN_SESSION_KEY, "true");
+    } else {
+      clearDevelopmentAdminSession();
+    }
 
     window.sessionStorage.setItem(
       "educonnect.demoRole",
@@ -175,6 +234,46 @@ function LoginPage() {
         : dashboardRole === "Teacher"
           ? "/teacher/dashboard"
           : "/student/dashboard";
+
+    if (
+      authenticatedUser.role !== "Admin" &&
+      authenticatedUser.profileSetupShown === false
+    ) {
+      try {
+        const users = JSON.parse(
+          window.localStorage.getItem("educonnect.registeredUsers") || "[]"
+        );
+        if (Array.isArray(users)) {
+          const accountIndex = users.findIndex(
+            (user) =>
+              String(user.email || "").trim().toLowerCase() ===
+              String(authenticatedUser.email || "").trim().toLowerCase()
+          );
+          if (accountIndex >= 0) {
+            users[accountIndex].profileSetupShown = true;
+            window.localStorage.setItem(
+              "educonnect.registeredUsers",
+              JSON.stringify(users)
+            );
+          }
+        }
+      } catch {
+        // Login can continue if account metadata cannot be updated.
+      }
+
+      if (authenticatedUser.role === "Teacher") {
+        navigate("/teacher/dashboard", {
+          replace: true,
+          state: { teacherTab: "profile" },
+        });
+      } else {
+        navigate("/student/dashboard", {
+          replace: true,
+          state: { studentTab: "profile" },
+        });
+      }
+      return;
+    }
 
     navigate(dashboardPath, {
       replace: true,

@@ -1,5 +1,5 @@
 
-import { useEffect } from "react";
+import { useEffect, useState, useCallback } from "react";
 import {
   Link,
   Navigate,
@@ -26,6 +26,7 @@ import AdminLayout from "../components/admin/AdminLayout";
 import "./AuthPages.css";
 import { apiFetch } from "../utils/api";
 import { clearContentSession, refreshContent } from "../utils/contentApi";
+import { clearDevelopmentAdminSession, isDevelopmentAdminSession } from "../utils/devAdminSession";
 
 const DASHBOARDS = {
   Student: "/student/dashboard",
@@ -38,8 +39,16 @@ function DashboardPage() {
   const location = useLocation();
   const role = window.sessionStorage.getItem("educonnect.demoRole");
   const email = window.sessionStorage.getItem("educonnect.demoEmail");
+  const isDevAdminSession = isDevelopmentAdminSession({
+    isDevelopment: import.meta.env.DEV,
+    adminEmail: import.meta.env.VITE_ADMIN_EMAIL,
+    adminPassword: import.meta.env.VITE_ADMIN_PASSWORD,
+    role,
+    email,
+    marker: window.sessionStorage.getItem("educonnect.devAdminSession"),
+  });
   const [account, setAccount] = useState(null);
-  const [authState, setAuthState] = useState("loading");
+  const [authState, setAuthState] = useState(() => isDevAdminSession ? "valid" : "loading");
   const [retryCount, setRetryCount] = useState(0);
   const refreshAccount = useCallback(() => setRetryCount((value) => value + 1), []);
 
@@ -78,7 +87,7 @@ function DashboardPage() {
   }, [email, isBlockedAdminRoute, location.pathname, role]);
 
   useEffect(() => {
-    if (!email || !role) {
+    if (!email || !role || isDevAdminSession) {
       return;
     }
     const controller = new AbortController();
@@ -98,19 +107,26 @@ function DashboardPage() {
           return;
         }
         setAccount(user);
-        refreshContent(true).catch(console.error);
+        if (role !== "Admin") refreshContent(true).catch(console.error);
         setAuthState("valid");
       } catch (error) {
         if (error.name !== "AbortError") setAuthState((current) => current === "valid" ? current : "error");
       }
     })();
     return () => controller.abort();
-  }, [email, role, retryCount]);
+  }, [email, isDevAdminSession, role, retryCount]);
 
   async function signOut() {
+    if (!isDevAdminSession) {
+      try {
+        const response = await apiFetch("/auth/logout", { method: "POST" });
+        if (!response.ok && response.status !== 401) throw new Error("Could not log out. Please try again.");
+      } catch (error) {
+        window.alert(error instanceof Error ? error.message : "Could not log out. Please try again.");
+        return;
+      }
+    }
     try {
-      const response = await apiFetch("/auth/logout", { method: "POST" });
-      if (!response.ok && response.status !== 401) throw new Error("Could not log out. Please try again.");
       clearContentSession();
     } catch (error) {
       window.alert(error instanceof Error ? error.message : "Could not log out. Please try again.");
@@ -119,6 +135,7 @@ function DashboardPage() {
     window.sessionStorage.removeItem("educonnect.demoEmail");
     window.sessionStorage.removeItem("educonnect.demoRole");
     window.sessionStorage.removeItem("educonnect.authToken");
+    clearDevelopmentAdminSession();
     navigate("/login", { replace: true });
   }
 
@@ -151,6 +168,10 @@ function DashboardPage() {
     );
   }
 
+  if (role === "Admin") {
+    return <AdminLayout email={email} onLogout={signOut} />;
+  }
+
   const welcomeTitle =
     role === "Teacher"
       ? "Welcome to your teaching space."
@@ -163,7 +184,7 @@ function DashboardPage() {
 
   const dashboardContent = (
     <>
-      {role === "Student" ? <StudentDashboardHeader email={email} onLogout={signOut} /> : <header className="auth-topbar">
+      {role === "Student" ? <StudentDashboardHeader email={email} onLogout={signOut} identityVerified={account?.cnicVerification?.status === "verified"} /> : <header className="auth-topbar">
         <Link
           className="auth-brand"
           to="/"

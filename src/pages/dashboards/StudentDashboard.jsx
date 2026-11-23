@@ -53,8 +53,8 @@ import {
   ShieldAlert,
   LifeBuoy,
   Crown,
-  House,
   Trophy,
+  Info,
 } from "lucide-react";
 import "./Dashboard.css";
 import "./StudentShoppingCart.css";
@@ -253,6 +253,8 @@ export default function StudentDashboard({ email = "student", account, onVerific
 
   const [activeTab, setActiveTab] = useState(() => quizRouteId ? "quizzes" : "overview");
   const requestedTab = location.state?.studentTab;
+  const showProfileVerification = location.state?.profileSection === "verification";
+  const verificationFocusKey = useRef("");
   useEffect(() => {
     if (requestedTab && MENU.some(item => item.id === requestedTab)) {
       // Router state can request a destination tab without changing the route.
@@ -260,7 +262,7 @@ export default function StudentDashboard({ email = "student", account, onVerific
       setActiveTab(requestedTab);
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
-  }, [requestedTab, location.key, showProfileVerification]);
+  }, [requestedTab, location.key]);
   useEffect(() => {
     if (activeTab !== "profile" || !showProfileVerification || verificationFocusKey.current === location.key) return;
     verificationFocusKey.current = location.key;
@@ -347,21 +349,50 @@ export default function StudentDashboard({ email = "student", account, onVerific
     } catch { /* wait for metadata */ }
   }
 
-  const [studentProfile, setStudentProfile] = useState(() =>
-    readStorage(`${baseKey}.profile`, {
-      fullName: "", phone: "", city: "", about: "", avatar: "", educationLevel: "", classNumber: "", intermediateYear: "", stream: "PreEngineering", degreeLevel: "", programChoice: "", program: "",
-    })
-  );
   const registeredAccount = useMemo(() => {
     const accountEmail = String(email || "").trim().toLowerCase();
     const users = readStorage("educonnect.registeredUsers", []);
     if (!accountEmail || !Array.isArray(users)) return null;
     return users.find((user) => String(user?.email || "").trim().toLowerCase() === accountEmail) || null;
   }, [email]);
+  const [profileCompleted, setProfileCompleted] = useState(
+    () => registeredAccount?.profileCompleted === true
+  );
+  const [studentProfile, setStudentProfile] = useState(() => {
+    const existingProfile = readStorage(`${baseKey}.profile`, {});
+    return {
+      fullName: existingProfile.fullName || registeredAccount?.name || "",
+      phone: existingProfile.phone || "",
+      city: existingProfile.city || "",
+      about: existingProfile.about || "",
+      avatar: existingProfile.avatar || "",
+      educationLevel: existingProfile.educationLevel || "",
+      classNumber: existingProfile.classNumber || "",
+      intermediateYear: existingProfile.intermediateYear || "",
+      stream: existingProfile.stream || "PreEngineering",
+      degreeLevel: existingProfile.degreeLevel || "",
+      programChoice: existingProfile.programChoice || "",
+      program: existingProfile.program || "",
+    };
+  });
   const [profileDraft, setProfileDraft] = useState(() =>
-    readStorage(`${baseKey}.profile`, {
-      fullName: "", phone: "", city: "", about: "", avatar: "", educationLevel: "", classNumber: "", intermediateYear: "", stream: "PreEngineering", degreeLevel: "", programChoice: "", program: "",
-    })
+    (() => {
+      const existingProfile = readStorage(`${baseKey}.profile`, {});
+      return {
+        fullName: existingProfile.fullName || registeredAccount?.name || "",
+        phone: existingProfile.phone || "",
+        city: existingProfile.city || "",
+        about: existingProfile.about || "",
+        avatar: existingProfile.avatar || "",
+        educationLevel: existingProfile.educationLevel || "",
+        classNumber: existingProfile.classNumber || "",
+        intermediateYear: existingProfile.intermediateYear || "",
+        stream: existingProfile.stream || "PreEngineering",
+        degreeLevel: existingProfile.degreeLevel || "",
+        programChoice: existingProfile.programChoice || "",
+        program: existingProfile.program || "",
+      };
+    })()
   );
   const [editingProfile, setEditingProfile] = useState(false);
   const [profileNotice, setProfileNotice] = useState("");
@@ -393,7 +424,7 @@ export default function StudentDashboard({ email = "student", account, onVerific
       setProfileNotice("Please enter your full name (at least 2 characters).");
       return;
     }
-    setStudentProfile({
+    const nextProfile = {
       fullName: fullName.slice(0, 80),
       phone: profileDraft.phone.trim().slice(0, 25),
       city: profileDraft.city.trim().slice(0, 80),
@@ -406,7 +437,43 @@ export default function StudentDashboard({ email = "student", account, onVerific
       degreeLevel: profileDraft.educationLevel === "university" ? profileDraft.degreeLevel : "",
       programChoice: ["university", "online"].includes(profileDraft.educationLevel) ? profileDraft.programChoice : "",
       program: ["university", "online"].includes(profileDraft.educationLevel) ? profileDraft.program.trim().slice(0, 100) : "",
-    });
+    };
+    setStudentProfile(nextProfile);
+
+    const hasEducationLevel = Boolean(String(nextProfile.educationLevel || "").trim());
+    const complete = hasEducationLevel && (
+      nextProfile.educationLevel === "school"
+        ? Boolean(String(nextProfile.classNumber || "").trim())
+        : nextProfile.educationLevel === "intermediate"
+          ? Boolean(
+              String(nextProfile.intermediateYear || "").trim() &&
+              String(nextProfile.stream || "").trim()
+            )
+          : nextProfile.educationLevel === "university"
+            ? Boolean(
+                String(nextProfile.degreeLevel || "").trim() &&
+                String(nextProfile.program || "").trim()
+              )
+            : nextProfile.educationLevel === "online"
+              ? Boolean(String(nextProfile.programChoice || "").trim())
+              : false
+    );
+    try {
+      const users = readStorage("educonnect.registeredUsers", []);
+      if (Array.isArray(users)) {
+        const accountEmail = String(email || "").trim().toLowerCase();
+        const accountIndex = users.findIndex(
+          (user) => String(user?.email || "").trim().toLowerCase() === accountEmail
+        );
+        if (accountIndex >= 0) {
+          users[accountIndex] = { ...users[accountIndex], name: fullName, profileCompleted: complete };
+          localStorage.setItem("educonnect.registeredUsers", JSON.stringify(users));
+          setProfileCompleted(complete);
+        }
+      }
+    } catch {
+      // The profile remains saved if account metadata cannot be updated.
+    }
     setEditingProfile(false);
     setProfileNotice("Profile changes saved in this browser.");
   }
@@ -2020,7 +2087,6 @@ export default function StudentDashboard({ email = "student", account, onVerific
             : "Not added yet";
     return (
       <div className="edc-tab-content edc-student-profile-page edc-profile-dashboard">
-        <nav className="edc-profile-breadcrumb" aria-label="Breadcrumb"><House size={13} /><span>/</span><strong>My Profile</strong></nav>
         <header className="edc-profile-hero">
           <div><span className="edc-profile-eyebrow">YOUR ACCOUNT</span><h1><UserRound size={27} />My Profile</h1>
             <p>Manage your personal information and see your learning activity.</p>
@@ -2028,6 +2094,16 @@ export default function StudentDashboard({ email = "student", account, onVerific
           </div>
           <div className="edc-profile-hero-art" aria-hidden="true"><UserRound /><Pencil /></div>
         </header>
+        {!profileCompleted && (
+          <div className="edc-profile-update-banner" role="status">
+            <div className="edc-profile-update-banner-icon" aria-hidden="true"><Info size={20} /></div>
+            <div>
+              <strong>Update Your Profile</strong>
+              <span>Complete your education details (Education Level, Class, Degree, Institution) to personalize your experience.</span>
+            </div>
+            <button type="button" onClick={beginProfileEdit}><Pencil size={14} />Update Profile</button>
+          </div>
+        )}
 
         <div className="edc-profile-layout">
           <aside className="edc-profile-aside">
@@ -2292,11 +2368,6 @@ export default function StudentDashboard({ email = "student", account, onVerific
     }
 
     return <div className="edc-tab-content edc-shopping-cart-page">
-      <div className="edc-cart-breadcrumb">
-        <button type="button" onClick={() => navigateTo("orders")}><House size={14} /> <span>My Purchases</span></button>
-        <ChevronRight size={14} />
-        <strong>Shopping Cart</strong>
-      </div>
       <header className="edc-cart-hero">
         <div>
           <span className="edc-cart-eyebrow">YOUR SELECTED LEARNING</span>
@@ -2484,7 +2555,6 @@ export default function StudentDashboard({ email = "student", account, onVerific
 
     return (
       <div className="edc-tab-content edc-portfolio-page edc-portfolio-dashboard">
-        <nav className="edc-portfolio-breadcrumb" aria-label="Breadcrumb"><House size={13} /><span>/</span><strong>Certificates &amp; Portfolio</strong></nav>
         <header className="edc-portfolio-hero">
           <div>
             <span className="edc-portfolio-eyebrow">YOUR LEARNING ACHIEVEMENTS</span>
@@ -3410,7 +3480,6 @@ export default function StudentDashboard({ email = "student", account, onVerific
         {activeTab === "research" && (
           researchView === "overview" ? (
             <div className="edc-tab-content edc-research-page edc-research-dashboard">
-              <nav className="edc-research-breadcrumb" aria-label="Breadcrumb"><House size={13} /><span>/</span><strong>Research Workspace</strong></nav>
               <header className="edc-research-hero">
                 <div>
                   <span className="edc-research-eyebrow">YOUR RESEARCH, ORGANIZED</span>

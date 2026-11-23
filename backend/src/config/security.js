@@ -40,8 +40,6 @@ export function validateEnvironment(env = process.env) {
   if (!env.CLIENT_ORIGIN) throw new Error("Production CLIENT_ORIGIN is required.");
   const secret = env.JWT_SECRET || "";
   if (Buffer.byteLength(secret) < 32 || new Set(secret).size < 12 || /change.?me|replace.?me|your[_-]?secret|example|12345/i.test(secret)) throw new Error("Production JWT_SECRET must be a strong independent secret of at least 32 bytes.");
-  const key = env.CNIC_ENCRYPTION_KEY || "";
-  if (!/^[a-f0-9]{64}$/i.test(key) || new Set(key.toLowerCase()).size < 8 || key === secret) throw new Error("Production CNIC_ENCRYPTION_KEY must be an independent random 32-byte hexadecimal key.");
   if (env.PASSWORD_RESET_DEV_LINK === "true" || env.CONTENT_DEMO_CHECKOUT === "true") throw new Error("Development reset logging and demo checkout must be disabled in production.");
   const resetOrigin = env.PASSWORD_RESET_FRONTEND_ORIGIN || [...origins][0];
   if (!origins.has(resetOrigin)) throw new Error("PASSWORD_RESET_FRONTEND_ORIGIN must match a trusted CLIENT_ORIGIN.");

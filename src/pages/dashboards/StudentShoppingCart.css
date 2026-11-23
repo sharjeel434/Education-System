@@ -3,32 +3,6 @@
   color: #281c4b;
 }
 
-.edc-cart-breadcrumb {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 20px;
-  color: #8a83a0;
-  font-size: 11px;
-}
-
-.edc-cart-breadcrumb button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0;
-  border: 0;
-  color: #69617e;
-  background: transparent;
-  font: inherit;
-  cursor: pointer;
-}
-
-.edc-cart-breadcrumb button svg,
-.edc-cart-breadcrumb strong {
-  color: #6333c4;
-}
-
 .edc-cart-hero {
   position: relative;
   display: flex;

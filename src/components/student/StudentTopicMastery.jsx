@@ -114,7 +114,6 @@ export default function StudentTopicMastery({ email, courses = [], publishedCour
 
   return <section className="edc-topic-mastery">
     <header className="edc-tm-heading">
-      <nav aria-label="Breadcrumb"><button type="button" aria-label="Overview" onClick={() => onNavigate?.("overview")}><BookOpen size={14} /></button><span>/</span><button type="button" onClick={() => onNavigate?.("learning")}>My Learning</button><span>/</span><strong>Topic Mastery</strong></nav>
       <div className="edc-tm-heading-copy"><span className="edc-tm-heading-icon"><Layers size={25} /></span><div><h2>Topic Mastery</h2><p>Track strengths and areas to review using your completed course quizzes.</p></div></div>
       <div className="edc-tm-heading-art" aria-hidden="true"><GraduationCap /><Target /></div>
     </header>

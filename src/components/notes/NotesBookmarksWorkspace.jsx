@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Bookmark, BookOpen, CalendarDays, ChevronLeft, ChevronRight, Clock3, FileText, GraduationCap, Home, MoreVertical, Pencil, Play, Plus, Search, Trash2, X } from "lucide-react";
+import { Bookmark, BookOpen, CalendarDays, ChevronLeft, ChevronRight, Clock3, FileText, GraduationCap, MoreVertical, Pencil, Play, Plus, Search, Trash2, X } from "lucide-react";
 import { courseLessonCount, deleteNoteRecord, filterStudyNotes, formatNoteTime, noteCourseKey, noteDisplayTitle, noteHasTimestamp, notesLibrary, readCourseNotes, removeLessonBookmark, saveCourseNotes, savedLessonIndex, savedLessonTitle, saveNoteRecord, subscribeCourseNotes, togglePinnedNote } from "../../utils/courseNotes";
 import notesArt from "../../assets/student-notes.svg";
 import "./NotesBookmarksWorkspace.css";
@@ -98,7 +98,7 @@ export default function NotesBookmarksWorkspace({ email = "student", courses = [
   const empty = (kind, filtered) => <div className="edc-nb-empty">{kind === "notes" ? <FileText size={27} /> : <Bookmark size={27} />}<strong>{filtered ? "No matching results" : kind === "notes" ? "Your notes start here" : "No bookmarked lessons yet"}</strong><p>{filtered ? "Try a different search or course filter." : kind === "notes" ? "Save your own ideas and key points from your courses." : "Bookmark a lesson in your learning player to find it here."}</p>{filtered ? <button type="button" onClick={() => { filter(setSearch, ""); filter(setCourseFilter, "all"); }}>Clear filters</button> : kind === "notes" && owned.length ? <button type="button" onClick={() => openEditor()}><Plus size={14} /> Add your first note</button> : onNavigate && <button type="button" onClick={() => onNavigate("learning")}>Go to My Learning <ChevronRight size={14} /></button>}</div>;
 
   return <section className={`edc-study-notes ${activeView === "bookmarks" ? "edc-nb-bookmarks-selected" : ""}`}>
-    <header className="edc-nb-heading"><nav aria-label="Breadcrumb"><button type="button" aria-label="Overview" onClick={() => onNavigate?.("overview")}><Home size={13} /></button><span>/</span><button type="button" onClick={() => onNavigate?.("learning")}>My Learning</button><span>/</span><strong>Notes & Bookmarks</strong></nav><h2><Bookmark size={29} /> Notes & Bookmarks</h2><p>Keep your study notes and saved lessons in one place for quick access.</p><img src={notesArt} alt="" /></header>
+    <header className="edc-nb-heading"><h2><Bookmark size={29} /> Notes & Bookmarks</h2><p>Keep your study notes and saved lessons in one place for quick access.</p><img src={notesArt} alt="" /></header>
 
     <div className="edc-nb-stats">
       <button type="button" className="edc-nb-stat" onClick={() => focusPanel("notes")}><span><FileText size={26} /></span><span><small>Total Notes</small><strong>{library.notes.length}</strong></span></button>

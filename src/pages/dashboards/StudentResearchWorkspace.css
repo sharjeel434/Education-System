@@ -1,6 +1,4 @@
 .edc-research-dashboard{display:grid;gap:12px;color:#2b1048}
-.edc-research-breadcrumb{display:flex;align-items:center;gap:8px;min-height:18px;color:#8b829d;font-size:10px}
-.edc-research-breadcrumb svg,.edc-research-breadcrumb strong{color:#6f32ca}
 .edc-research-dashboard .edc-research-hero{position:relative;display:flex;min-height:105px;align-items:center;justify-content:space-between;gap:18px;overflow:hidden;padding:16px 21px;border:1px solid #e6ddfa;border-radius:15px;background:linear-gradient(110deg,#fff 0%,#fbf9ff 52%,#eee7ff 100%);box-shadow:0 5px 16px #3a226f0d}
 .edc-research-hero::after{position:absolute;top:-68px;right:60px;width:180px;height:180px;border-radius:50%;background:#d7c6ff4a;content:""}
 .edc-research-hero>div:first-child{position:relative;z-index:1}

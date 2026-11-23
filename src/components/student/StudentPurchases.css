@@ -1,6 +1,4 @@
 .edc-purchases-page { gap: 14px; color: #281c4b; }
-.edc-purchases-breadcrumb { display:flex; align-items:center; gap:8px; min-height:18px; color:#8b829d; font-size:10px; }
-.edc-purchases-breadcrumb svg,.edc-purchases-breadcrumb strong { color:#6f32ca; }
 .edc-purchases-hero { position:relative; display:flex; min-height:98px; align-items:center; justify-content:space-between; gap:18px; overflow:hidden; padding:16px 21px; border:1px solid #e6ddfa; border-radius:15px; background:linear-gradient(110deg,#fff 0%,#fbf9ff 52%,#eee7ff 100%); box-shadow:0 5px 16px #3a226f0d; }
 .edc-purchases-hero::after { position:absolute; top:-74px; right:47px; width:185px; height:185px; border-radius:50%; background:#d7c6ff4a; content:""; }
 .edc-purchases-hero>div:first-child { position:relative; z-index:1; }

@@ -4,9 +4,6 @@
 .edc-study-planner button,.edc-study-planner input,.edc-study-planner select{font:inherit}
 .edc-study-planner button{cursor:pointer}
 .edc-study-planner button:focus-visible,.edc-study-planner input:focus-visible,.edc-study-planner select:focus-visible{outline:2px solid #bd8bf2;outline-offset:2px}
-.edc-sp-heading nav{display:flex;align-items:center;gap:9px;margin:0 0 7px;color:#9877ad;font-size:10px}
-.edc-sp-heading nav button{padding:0;border:0;background:transparent;color:#7435b2;font-size:inherit}
-.edc-sp-heading nav strong{color:#43235f;font-weight:650}
 .edc-sp-heading-title{display:flex;align-items:center;gap:10px}
 .edc-sp-heading-title>span{display:grid;flex:0 0 35px;width:35px;height:35px;place-items:center;border-radius:10px;background:#efe5ff;color:var(--edc-primary)}
 .edc-sp-heading-title h2{margin:0;color:#30104f;font-size:24px;font-weight:800;line-height:1.2}

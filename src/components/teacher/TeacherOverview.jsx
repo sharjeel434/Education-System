@@ -36,6 +36,7 @@ import {
 } from "../../utils/discussionHelpers";
 import "./TeacherOverview.css";
 import { SidebarTrigger } from "../workspace/WorkspaceSidebar";
+import VerifiedBadge from "../verification/VerifiedBadge";
 
 const currency = (value) =>
   `PKR ${Number(value || 0).toLocaleString("en-PK", { maximumFractionDigits: 0 })}`;
@@ -61,6 +62,7 @@ export function TeacherAvatar({ profile, size = "" }) {
 
 export function TeacherWorkspaceHeader({
   profile,
+  identityVerified = false,
   unread,
   notifications = [],
   onReadNotification,

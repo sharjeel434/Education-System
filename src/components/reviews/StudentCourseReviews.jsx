@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CalendarDays, ChevronLeft, ChevronRight, Code2, Database, House, PencilLine, Plus, Search, SquarePen, Star, ThumbsUp, Trash2, UserRound, X } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Code2, Database, PencilLine, Plus, Search, SquarePen, Star, ThumbsUp, Trash2, UserRound, X } from "lucide-react";
 import { fetchMyReviews, saveMongoReview, deleteMongoReview, LEARNING_UPDATED_EVENT } from "../../utils/mongoLearningApi";
 import reviewArtwork from "../../assets/student-reviews.svg";
 import reactLogo from "../../assets/partners/react.svg";
@@ -22,7 +22,7 @@ function ReviewThumbnail({ course }) {
   return <span className={`edc-mr-thumbnail${javascript ? " edc-mr-thumbnail-js" : ""}`}>{image && !failed ? <img className="edc-mr-thumbnail-photo" src={image} alt="" onError={() => setFailed(true)}/> : logo ? <img src={logo} alt=""/> : javascript ? <b>JS</b> : <Icon size={30} strokeWidth={1.7}/>}</span>;
 }
 
-export default function StudentCourseReviews({ email, studentName = "", courses = [], publishedCourses = [], onNavigate }) {
+export default function StudentCourseReviews({ email, courses = [], publishedCourses = [] }) {
   const studentEmail = normalize(email);
   const [reviews, setReviews] = useState([]);
   const [search, setSearch] = useState("");
@@ -124,7 +124,7 @@ export default function StudentCourseReviews({ email, studentName = "", courses 
   const clearFilters = () => { setSearch(""); setCourseFilter("all"); setRatingFilter("all"); setPage(1); };
 
   return <section className="edc-my-reviews">
-    <header className="edc-mr-heading"><div className="edc-mr-breadcrumb"><House size={13}/><span>/</span><button type="button" onClick={() => onNavigate?.("profile")}>My Profile</button><span>/</span><strong>My Reviews</strong></div><h2>My Reviews</h2><p>View, manage, and update your course reviews and ratings.</p><img src={reviewArtwork} alt="" className="edc-mr-heading-art"/></header>
+    <header className="edc-mr-heading"><h2>My Reviews</h2><p>View, manage, and update your course reviews and ratings.</p><img src={reviewArtwork} alt="" className="edc-mr-heading-art"/></header>
     <div className="edc-mr-controls"><div className="edc-mr-stats">{[{ label: "Total Reviews", value: own.length, icon: Star, color: "purple" }, { label: "Avg. Rating", value: `${average} / 5`, icon: Star, color: "amber" }, { label: "Positive Reviews", value: positive, icon: ThumbsUp, color: "green" }, { label: "Reviews You Can Edit", value: editable, icon: SquarePen, color: "purple" }].map(stat => <article key={stat.label} className={`edc-mr-stat edc-mr-stat-${stat.color}`}><span className="edc-mr-stat-icon"><stat.icon size={27} strokeWidth={1.8}/></span><div><span>{stat.label}</span><strong>{stat.value}</strong></div></article>)}</div>
       <div className="edc-mr-toolbar"><label className="edc-mr-search"><Search size={17}/><input type="search" aria-label="Search your reviews" placeholder="Search your reviews..." value={search} onChange={event => { setSearch(event.target.value); setPage(1); }}/></label><select aria-label="Filter reviews by course" value={courseFilter} onChange={event => { setCourseFilter(event.target.value); setPage(1); }}><option value="all">All Courses</option>{filterOptions.map(([key, title]) => <option key={key} value={key}>{title}</option>)}</select><select aria-label="Filter reviews by rating" value={ratingFilter} onChange={event => { setRatingFilter(event.target.value); setPage(1); }}><option value="all">All Ratings</option>{[5, 4, 3, 2, 1].map(value => <option key={value} value={value}>{value} {value === 1 ? "Star" : "Stars"}</option>)}</select><button type="button" className="edc-mr-primary" disabled={!enrolled.length} onClick={() => openEditor()}><Plus size={17}/> Write a Review</button></div>
     </div>

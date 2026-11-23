@@ -60,6 +60,7 @@
 .dashboard-page .edc-student-shell > .edc-main { padding: 18px 23px 25px; }
 .dashboard-page .edc-student-shell .edc-main-header { display: block; min-height: 0; margin-bottom: 15px; padding: 0 5px; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
 .dashboard-page .edc-student-shell .edc-main-header h2 { margin: 0; color: var(--edc-ink); font-size: 27px; font-weight: 800; line-height: 1.25; letter-spacing: -.55px; }
+.dashboard-page .edc-student-shell .edc-main-header .edc-breadcrumb { display: none; }
 .dashboard-page .edc-main[data-active-tab="overview"] .edc-breadcrumb { display: none; }
 .edc-page-description { margin: 3px 0 0; color: var(--edc-label-text); font-size: 12px; line-height: 1.5; }
 .dashboard-page .edc-main[data-active-tab="analytics"] > .edc-main-header { display: none; }

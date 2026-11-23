@@ -6,10 +6,6 @@
 .edc-student-curriculum button:disabled { opacity: .45; cursor: default; }
 .edc-student-curriculum button:focus-visible, .edc-student-curriculum select:focus-visible { outline: 2px solid #b47ce6; outline-offset: 3px; }
 .edc-cc-heading { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 20px; padding: 0 5px; }
-.edc-cc-heading nav { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; color: #b49cc6; font-size: 10px; }
-.edc-cc-heading nav button { display: flex; align-items: center; padding: 0; border: 0; background: none; color: #62447a; font-size: 10px; font-weight: 650; }
-.edc-cc-heading nav button:first-child { color: #8d27e2; }
-.edc-cc-heading nav strong { color: #4b2c62; font-weight: 650; }
 .edc-cc-heading h2 { margin: 0 0 3px; color: #34164e; font-size: 28px; font-weight: 800; letter-spacing: -.7px; line-height: 1.2; }
 .edc-cc-heading p { margin: 0; color: #705188; font-size: 12px; line-height: 1.6; }
 .edc-cc-heading > label { display: grid; gap: 5px; width: min(100%, 250px); color: #9778ad; font-size: 10px; }
