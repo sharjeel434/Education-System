@@ -7,7 +7,7 @@ const questionSchema = new mongoose.Schema({
   correct: { type: Number, required: true, min: 0, max: 3 },
 }, { _id: false });
 const schema = new mongoose.Schema({
-  courseId: { type: mongoose.Schema.Types.ObjectId, ref: "OwnedCourse", required: true, index: true, immutable: true },
+  courseId: { type: mongoose.Schema.Types.ObjectId, ref: "OwnedCourse", required: true, immutable: true },
   teacherId: { type: mongoose.Schema.Types.ObjectId, ref: "Teacher", required: true, immutable: true },
   title: { type: String, required: true, trim: true, maxlength: 160 },
   passingScore: { type: Number, min: 0, max: 100, default: 60 },
@@ -18,5 +18,7 @@ const schema = new mongoose.Schema({
   legacyId: { type: String, maxlength: 100, immutable: true },
 }, { timestamps: true });
 schema.index({ teacherId: 1, courseId: 1, updatedAt: -1 });
+schema.index({ courseId: 1, published: 1, createdAt: 1 });
 schema.index({ teacherId: 1, courseId: 1, legacyId: 1 }, { unique: true, partialFilterExpression: { legacyId: { $type: "string" } } });
-export default mongoose.model("CourseQuiz", schema);
+const CourseQuiz = mongoose.model("CourseQuiz", schema);
+export default CourseQuiz;

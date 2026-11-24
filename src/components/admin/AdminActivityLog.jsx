@@ -23,6 +23,7 @@ import {
   getAdminActivityLog,
 } from "./adminData";
 import { createCsvContent, downloadCsv } from "./adminCsvUtils";
+import { apiFetch } from "../../utils/api";
 
 const PAGE_SIZE = 15;
 const ALL_FILTERS = {
@@ -175,9 +176,41 @@ function recordDetails(record) {
     .filter(([, value]) => value !== "");
 }
 
+function normalizeAuditLog(log) {
+  const record = {
+    id: log.id || `backend-${String(log.timestamp || new Date().toISOString())}-${Math.random().toString(36).slice(2, 8)}`,
+    actor: log.actor || "",
+    actorRole: log.actorRole || "Admin",
+    actorId: log.actorId || undefined,
+    action: log.action || "Unknown action",
+    category: log.category || "security",
+    module: log.module || ADMIN_ACTIVITY_CATEGORY_LABELS[log.category] || log.category || "General",
+    entityType: log.entityType || "",
+    entityId: log.entityId || "",
+    targetId: log.targetId || "",
+    targetName: log.targetName || "",
+    result: log.result || "Success",
+    description: log.description || "",
+    details: log.details || null,
+    timestamp: log.timestamp || log.createdAt || new Date().toISOString(),
+    status: log.result || "Success",
+  };
+  if (log.details && typeof log.details === "object") {
+    if (log.details.before !== undefined) record.previousValue = JSON.stringify(log.details.before);
+    if (log.details.after !== undefined) record.newValue = JSON.stringify(log.details.after);
+  }
+  return record;
+}
+
 function AdminActivityLog() {
   const [activityState, setActivityState] = useState(getAdminActivityLog);
-  const records = activityState.records;
+  const [backendRecords, setBackendRecords] = useState([]);
+  const records = useMemo(() => {
+    const known = new Set(backendRecords.map((record) => record.id));
+    const merged = [...backendRecords, ...activityState.records.filter((record) => !known.has(record.id))];
+    merged.sort((first, second) => new Date(second.timestamp || 0).getTime() - new Date(first.timestamp || 0).getTime());
+    return merged;
+  }, [activityState.records, backendRecords]);
   const error = activityState.error || "";
   const [search, setSearch] = useState("");
   const [filterDraft, setFilterDraft] = useState(ALL_FILTERS);
@@ -188,16 +221,29 @@ function AdminActivityLog() {
   const [selectedRecord, setSelectedRecord] = useState(null);
   const [feedback, setFeedback] = useState(null);
 
+  const loadBackendAuditLogs = async () => {
+    try {
+      const response = await apiFetch("/admin/audit-logs?limit=100", { method: "GET" });
+      if (!response.ok) throw Object.assign(new Error((await response.json().catch(() => ({}))).message || "Audit logs could not be loaded from the backend."), { status: response.status });
+      const data = await response.json();
+      setBackendRecords((data.logs || []).map(normalizeAuditLog));
+    } catch { /* Backend audit log is optional: browser records still display. */ }
+  };
+
   useEffect(() => {
     function refreshRecords() {
       setActivityState(getAdminActivityLog());
     }
-
+    refreshRecords();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadBackendAuditLogs();
     window.addEventListener("storage", refreshRecords);
     window.addEventListener(ADMIN_DATA_CHANGED_EVENT, refreshRecords);
+    window.addEventListener(ADMIN_DATA_CHANGED_EVENT, loadBackendAuditLogs);
     return () => {
       window.removeEventListener("storage", refreshRecords);
       window.removeEventListener(ADMIN_DATA_CHANGED_EVENT, refreshRecords);
+      window.removeEventListener(ADMIN_DATA_CHANGED_EVENT, loadBackendAuditLogs);
     };
   }, []);
 
@@ -565,7 +611,7 @@ function AdminActivityLog() {
               <button type="button" onClick={() => selectTab("login")}><LogIn size={14} />Login Logs</button>
               <button type="button" onClick={() => { selectTab("all"); setOverviewFilter("security"); }}><ShieldCheck size={14} />Security Events</button>
             </div>
-            <p className="edc-admin-audit-caption">This app does not collect IP addresses or data-access reads. Scheduled reports and alert rules are not configured.</p>
+            <p className="edc-admin-audit-caption">This app does not collect IP addresses or data-access reads. Scheduled reports and alert rules have not been set up.</p>
           </section>
         </aside>
       </div>

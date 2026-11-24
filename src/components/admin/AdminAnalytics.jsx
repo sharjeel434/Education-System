@@ -1,5 +1,5 @@
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
   Activity,
@@ -36,6 +36,13 @@ import {
 import { collectInstructorCourseAnalytics } from "../../utils/instructorAnalytics";
 import { REVIEW_EVENT } from "../../utils/courseReviews";
 import { ORDERS_EVENT } from "../../utils/studentCart";
+import { apiFetch } from "../../utils/api";
+import { fetchAdminAnalytics } from "../../utils/phase7Api";
+
+function money(value) {
+  const amount = Number(value);
+  return Number.isFinite(amount) ? `PKR ${Math.max(0, amount).toLocaleString()}` : "—";
+}
 
 function uniqueUsers(users) {
   const byEmail = new Map();
@@ -328,6 +335,78 @@ function TopCoursesPanel({ courses, unavailable = false, reviewUnavailable = fal
   );
 }
 
+function MongoDBOverviewPanel({ overview, error }) {
+  if (!overview) {
+    return (
+      <section className="edc-admin-report-card">
+        <header><h3><BarChart3 size={17} aria-hidden="true" />MongoDB Reports</h3><p>Live counts from the authorized backend report endpoints.</p></header>
+        <p className="edc-admin-security-note">{error ? `Backend reports are unavailable: ${error}` : "Loading MongoDB reports…"}</p>
+      </section>
+    );
+  }
+  const users = overview.users || {};
+  const courses = overview.courses || {};
+  const support = overview.support || {};
+  const books = overview.books || {};
+  const rows = [
+    ["Total Students", users.students],
+    ["Total Teachers", users.teachers],
+    ["Total Admins", users.admins],
+    ["Active Users (30-day window)", users.activeUsers],
+    ["Published Courses", courses.publishedCourses],
+    ["Pending Approvals", courses.pendingApprovals],
+    ["Books", books.total],
+    ["Lessons", courses.lessons],
+    ["Quizzes", courses.quizzes],
+    ["Support Tickets", support.total],
+    ["Support Tickets — Open", support.open],
+    ["Support Tickets — In Progress", support.inProgress],
+    ["Support Tickets — Resolved", support.resolved],
+    ["Support Tickets — Closed", support.closed],
+  ];
+  return (
+    <section className="edc-admin-report-card">
+      <header><h3><BarChart3 size={17} aria-hidden="true" />MongoDB Reports</h3><p>Live counts from the authorized backend report endpoints.</p></header>
+      <dl className="edc-admin-report-facts">
+        {rows.map(([label, value]) => (
+          <div key={label}><dt>{label}</dt><dd>{Number.isFinite(Number(value)) ? Number(value).toLocaleString() : value ?? "—"}</dd></div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
+function MongoDBFinancePanel({ overview, tickets, error }) {
+  if (!overview) {
+    return (
+      <section className="edc-admin-report-card edc-admin-report-financial">
+        <header><h3><DollarSign size={17} aria-hidden="true" />MongoDB Financial Reports</h3></header>
+        <p className="edc-admin-report-untracked">{error ? `Backend reports are unavailable: ${error}` : "Loading MongoDB financial reports…"}</p>
+      </section>
+    );
+  }
+  const finance = overview.finance || {};
+  const rows = [
+    ["Verified Paid Orders", finance.verifiedOrders],
+    ["Verified Order Value", finance.verifiedOrderValue],
+    ["Teacher Earnings", finance.teacherEarnings],
+    ["Platform Commission", finance.platformCommission],
+    ["Refunds", finance.refunds],
+    ["Demo Paid Orders", finance.demoPaidOrders],
+    ["Support Tickets (open)", tickets?.counts?.open ?? tickets?.total],
+  ];
+  return (
+    <section className="edc-admin-report-card edc-admin-report-financial">
+      <header><h3><DollarSign size={17} aria-hidden="true" />MongoDB Financial Reports</h3><p>Demo sandbox sales are excluded from real-money revenue and payout totals.</p></header>
+      <dl className="edc-admin-report-facts">
+        {rows.map(([label, value]) => (
+          <div key={label}><dt>{label}</dt><dd>{Number.isFinite(Number(value)) ? money(value) : value ?? "—"}</dd></div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
 const REPORT_TABS = [
   ["overview", "Overview", BarChart3],
   ["users", "User Reports", UsersRound],
@@ -337,9 +416,65 @@ const REPORT_TABS = [
   ["custom", "Custom Reports", FileText],
 ];
 
+function AdminLearningPanel({ analytics }) {
+  if (!analytics?.summary) {
+    return (
+      <section className="edc-admin-report-card">
+        <header><h3><Activity size={16} aria-hidden="true" />MongoDB Learning Analytics</h3><p>Phase 7 platform learning metrics.</p></header>
+        <p className="edc-admin-report-empty">Learning analytics are unavailable until the backend endpoint responds.</p>
+      </section>
+    );
+  }
+  const s = analytics.summary;
+  const facts = [
+    ["Active Students", s.activeStudents], ["Active Teachers", s.activeTeachers], ["Published Courses", s.publishedCourses],
+    ["Enrollments", s.enrollments], ["Lessons Completed", s.lessonsCompleted], ["Completion Rate", `${s.completionRate}%`],
+    ["Quiz Attempts", s.quizAttempts], ["Passed Quizzes", s.passedQuizzes], ["Quiz Pass Rate", s.quizPassRate == null ? "—" : `${s.quizPassRate}%`],
+    ["Certificates Issued", s.certificatesIssued], ["Recent Enrollments (30d)", s.recentEnrollments],
+  ];
+  return (
+    <section className="edc-admin-report-card">
+      <header><h3><Activity size={16} aria-hidden="true" />MongoDB Learning Analytics</h3><p>Live Phase 7 metrics from MongoDB collections.</p></header>
+      <dl className="edc-admin-report-facts">{facts.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{Number.isFinite(Number(value)) ? Number(value).toLocaleString() : value}</dd></div>)}</dl>
+      {Array.isArray(analytics.topCourses) && analytics.topCourses.length > 0 && (
+        <div className="edc-admin-report-table-wrap" style={{ marginTop: 12 }}>
+          <table className="edc-admin-report-table"><thead><tr><th scope="col">Top Course</th><th scope="col">Enrollments</th><th scope="col">Lessons</th></tr></thead>
+            <tbody>{analytics.topCourses.map((course) => <tr key={course.courseId}><td><strong>{course.title}</strong></td><td>{Number(course.enrollments || 0).toLocaleString()}</td><td>{Number(course.lessons || 0).toLocaleString()}</td></tr>)}</tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function AdminAnalytics() {
   const [reports, setReports] = useState(readReportsSnapshot);
   const [activeTab, setActiveTab] = useState("overview");
+  const [apiOverview, setApiOverview] = useState(null);
+  const [apiTickets, setApiTickets] = useState(null);
+  const [apiError, setApiError] = useState("");
+  const [apiLearning, setApiLearning] = useState(null);
+
+  const fetchApiReports = useCallback(async () => {
+    try {
+      const [overviewResponse, ticketsResponse, learningResult] = await Promise.allSettled([
+        apiFetch("/admin/reports/overview", { method: "GET" }),
+        apiFetch("/admin/reports/tickets", { method: "GET" }),
+        fetchAdminAnalytics(),
+      ]);
+      if (overviewResponse.status === "fulfilled" && ticketsResponse.status === "fulfilled" && overviewResponse.value.ok && ticketsResponse.value.ok) {
+        const [overview, tickets] = await Promise.all([overviewResponse.value.json(), ticketsResponse.value.json()]);
+        setApiOverview(overview);
+        setApiTickets(tickets);
+        setApiError("");
+      } else {
+        setApiError("Backend reports could not be loaded.");
+      }
+      if (learningResult.status === "fulfilled") setApiLearning(learningResult.value);
+    } catch (error) {
+      setApiError(error?.message || "Backend reports could not be loaded.");
+    }
+  }, []);
 
   useEffect(() => {
     function refresh() {
@@ -348,8 +483,14 @@ function AdminAnalytics() {
 
     const events = ["storage", "focus", ADMIN_DATA_CHANGED_EVENT, "educonnect:student-data-changed", ORDERS_EVENT, REVIEW_EVENT];
     events.forEach((event) => window.addEventListener(event, refresh));
-    return () => events.forEach((event) => window.removeEventListener(event, refresh));
-  }, []);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchApiReports();
+    window.addEventListener(ADMIN_DATA_CHANGED_EVENT, fetchApiReports);
+    return () => {
+      events.forEach((event) => window.removeEventListener(event, refresh));
+      window.removeEventListener(ADMIN_DATA_CHANGED_EVENT, fetchApiReports);
+    };
+  }, [fetchApiReports]);
 
   const {
     users,
@@ -447,9 +588,9 @@ function AdminAnalytics() {
     { label: "Total Users", value: userError ? "—" : totalUsers.toLocaleString(), icon: UsersRound, color: "purple", tab: "users" },
     { label: "Total Courses", value: courseError ? "—" : totalCourses.toLocaleString(), icon: BookOpen, color: "orange", tab: "courses" },
     { label: "Enrollments", value: hasEnrollmentError ? "—" : totalEnrollments.toLocaleString(), icon: GraduationCap, color: "green", tab: "performance" },
-    { label: "Revenue", value: "Not tracked", icon: DollarSign, color: "red", tab: "financial" },
+    { label: "Revenue", value: "No data", icon: DollarSign, color: "red", tab: "financial" },
     { label: "Registered Tutors", value: userError || operationsSettings.error ? "—" : tutorProfiles.length.toLocaleString(), icon: Store, color: "violet", tab: "users" },
-    { label: "Average Rating", value: hasRatingError ? "—" : averageRating === null ? "Not collected" : `${averageRating.toFixed(1)} / 5`, icon: Star, color: "purple", tab: "courses" },
+    { label: "Average Rating", value: hasRatingError ? "—" : averageRating === null ? "No ratings" : `${averageRating.toFixed(1)} / 5`, icon: Star, color: "purple", tab: "courses" },
   ];
 
   function refreshReports() {
@@ -480,13 +621,15 @@ function AdminAnalytics() {
             colors={platformColors}
             unavailable={Boolean(userError)}
           />
+          <MongoDBOverviewPanel overview={apiOverview} error={apiError} />
+          <AdminLearningPanel analytics={apiLearning} />
           <section className="edc-admin-report-card">
             <header><h3><DollarSign size={16} aria-hidden="true" />Revenue Overview</h3></header>
-            <div className="edc-admin-report-revenue"><strong>Not tracked</strong><span>Settled revenue is not available in this app.</span></div>
+            <div className="edc-admin-report-revenue"><strong>Unavailable</strong><span>Settled revenue is not available in this app.</span></div>
             <dl className="edc-admin-report-facts">
               <div><dt>Saved demo order items</dt><dd>{transactionState.errors.length ? "—" : transactions.length.toLocaleString()}</dd></div>
               <div><dt>Saved order value (demo)</dt><dd>{savedOrderValue}</dd></div>
-              <div><dt>Payouts / refunds</dt><dd>Not tracked</dd></div>
+              <div><dt>Payouts / refunds</dt><dd>Unavailable</dd></div>
             </dl>
             <p className="edc-admin-report-caption">{transactionSource}; checkout values are not confirmed payments.</p>
           </section>
@@ -504,7 +647,7 @@ function AdminAnalytics() {
               <li><span><BookOpen size={14} /></span>{hasEnrollmentError ? "Enrollment totals are unavailable." : `${totalEnrollments.toLocaleString()} course enrollments across ${uniqueEnrolledStudents.toLocaleString()} unique students.`}</li>
               <li><span><Star size={14} /></span>{hasRatingError ? "Course ratings are unavailable." : averageRating === null ? "No course ratings have been collected." : `${ratings.length.toLocaleString()} saved reviews; average ${averageRating.toFixed(1)} / 5.`}</li>
               <li><span><Activity size={14} /></span>{activityState.error ? "Admin activity totals are unavailable." : `${activityCount.toLocaleString()} Admin activity records are saved in this browser.`}</li>
-              <li><span><DollarSign size={14} /></span>Revenue, payouts, refunds, and settled payments are not tracked.</li>
+              <li><span><DollarSign size={14} /></span>Revenue, payout, refund, and settlement tracking is not enabled.</li>
             </ul>
           </section>
           <section className="edc-admin-report-card">
@@ -549,18 +692,19 @@ function AdminAnalytics() {
       <div className="edc-admin-report-panels">
         <section className="edc-admin-report-card edc-admin-report-financial">
           <header><h3><DollarSign size={17} aria-hidden="true" />Financial Data Availability</h3></header>
-          <p className="edc-admin-report-untracked">Revenue and payment settlement are not tracked.</p>
+          <p className="edc-admin-report-untracked">Revenue and payment settlement tracking is not enabled.</p>
           <p>This browser has saved checkout order items, but their values are demo checkout data and do not confirm completed or settled payments.</p>
           <dl className="edc-admin-report-facts">
             <div><dt>Saved demo order items</dt><dd>{transactionState.errors.length ? "—" : transactions.length.toLocaleString()}</dd></div>
             <div><dt>Saved order value (demo)</dt><dd>{savedOrderValue}</dd></div>
-            <div><dt>Settled revenue</dt><dd>Not tracked</dd></div>
-            <div><dt>Payout / refund / invoice records</dt><dd>Not tracked</dd></div>
-            <div><dt>Subscriptions / licenses</dt><dd>Not tracked</dd></div>
+            <div><dt>Settled revenue</dt><dd>Unavailable</dd></div>
+            <div><dt>Payout / refund / invoice records</dt><dd>Unavailable</dd></div>
+            <div><dt>Subscriptions / licenses</dt><dd>Unavailable</dd></div>
           </dl>
           <p className="edc-admin-report-caption">{transactionSource}. No revenue total is inferred from these order items.</p>
           <Link className="edc-admin-report-link" to="/admin/finance">Open Financial Management <ArrowRight size={14} /></Link>
         </section>
+        <MongoDBFinancePanel overview={apiOverview} tickets={apiTickets} error={apiError} />
         <DistributionPanel title="Saved Tutor Booking Status" description="Booking requests are shown separately from financial transactions." values={tutorBookingStatuses} total={tutorBookings.records.length} />
       </div>
     );
@@ -569,6 +713,7 @@ function AdminAnalytics() {
   function renderPerformance() {
     return (
       <div className="edc-admin-report-panels">
+        <AdminLearningPanel analytics={apiLearning} />
         <EnrollmentTrendPanel records={enrollmentRecords} unavailable={hasEnrollmentError} />
         <section className="edc-admin-report-card">
           <header><h3><CheckCircle2 size={16} aria-hidden="true" />Saved Learning Progress</h3></header>
@@ -588,7 +733,7 @@ function AdminAnalytics() {
     return (
       <section className="edc-admin-report-card edc-admin-report-custom">
         <span><FileText size={24} aria-hidden="true" /></span>
-        <h3>Custom report builder is not configured.</h3>
+        <h3>Custom report builder has not been set up.</h3>
         <p>This app does not save report definitions or generated report history. You can export the existing browser-local datasets without adding or simulating records.</p>
         <Link to="/admin/data-export"><Download size={15} />Export Available Data</Link>
       </section>

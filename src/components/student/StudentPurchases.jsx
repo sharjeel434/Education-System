@@ -44,11 +44,11 @@ export default function StudentPurchases({
     const seen = new Set();
     const findBook = (item) => bookPurchases.find((book) =>
       String(book.id) === String(item.id) &&
-      String(book.teacherEmail || "").trim().toLowerCase() === String(item.teacherEmail || "").trim().toLowerCase(),
+      (!item.teacherEmail || String(book.teacherEmail || "").trim().toLowerCase() === String(item.teacherEmail || "").trim().toLowerCase()),
     );
     const findCourse = (item) => enrolledCourses.find((course) =>
       String(course.id) === String(item.id) &&
-      String(course.teacherEmail || "").trim().toLowerCase() === String(item.teacherEmail || "").trim().toLowerCase(),
+      (!item.teacherEmail || String(course.teacherEmail || "").trim().toLowerCase() === String(item.teacherEmail || "").trim().toLowerCase()),
     );
     orders.forEach((order) => {
       (Array.isArray(order.items) ? order.items : []).forEach((item, index) => {
@@ -63,7 +63,7 @@ export default function StudentPurchases({
           purchasedAt: order.purchasedAt || item.purchasedAt || bookRecord?.purchasedAt || "",
           orderId: order.id || "",
           order,
-          orderStatus: order.status || "Demo completed",
+          orderStatus: order.status || "pending",
           courseRecord,
           bookRecord,
           key: `${itemKey({ ...item, itemType })}::${order.id || index}`,
@@ -166,7 +166,7 @@ export default function StudentPurchases({
         <span className="edc-purchases-eyebrow">YOUR ACCOUNT RECORDS</span>
         <h1><ShoppingBag size={27} /> My Purchases</h1>
         <p>View your checkout records, purchased eBooks, and course completion records.</p>
-        <small>Checkout records in this app are demo-only; no real payments are processed.</small>
+        <small>Orders are recorded in MongoDB. Paid orders are fulfilled only after server-verified payment.</small>
       </div>
       <div className="edc-purchases-hero-art" aria-hidden="true"><ShoppingBag size={60} /><BookOpen size={44} /></div>
     </header>
@@ -212,7 +212,7 @@ export default function StudentPurchases({
             ? "Try a different title, type, or instructor."
             : activeFilter === "certificates"
               ? "Completion records appear after you complete all lessons in an enrolled course."
-              : "Completed demo checkout orders and purchased eBooks will appear here. No sample purchase records are added."}</p>
+              : "Verified checkout orders and purchased eBooks will appear here. No sample purchase records are added."}</p>
           {!query && activeFilter !== "certificates" && <button type="button" onClick={onBrowseBooks}>Browse Books & Teachers</button>}
         </div>}
       </div>

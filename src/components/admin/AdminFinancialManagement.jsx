@@ -16,7 +16,8 @@ import {
   WalletCards,
 } from "lucide-react";
 import { ADMIN_DATA_CHANGED_EVENT } from "./adminData";
-import { getAdminSavedOrderItems } from "./adminOperationsData";
+import { fetchAdminFinanceOverview } from "../../utils/marketplaceApi";
+import { ORDERS_EVENT } from "../../utils/studentCart";
 import {
   ADMIN_PLATFORM_SETTINGS_CHANGED_EVENT,
   getAdminPlatformSettings,
@@ -62,7 +63,8 @@ function monthLabel(value) {
 }
 
 function AdminFinancialManagement() {
-  const [orderState, setOrderState] = useState(getAdminSavedOrderItems);
+  const [orderState, setOrderState] = useState({ records: [], errors: [] });
+  const [financeSummary, setFinanceSummary] = useState(null);
   const [platform, setPlatform] = useState(getAdminPlatformSettings);
   const [section, setSection] = useState("overview");
   const [search, setSearch] = useState("");
@@ -74,26 +76,39 @@ function AdminFinancialManagement() {
   const [dateReferenceTime, setDateReferenceTime] = useState(() => Date.now());
 
   function refresh() {
-    setOrderState(getAdminSavedOrderItems());
+    fetchAdminFinanceOverview()
+      .then((data) => {
+        setOrderState({ records: data.records || [], errors: [] });
+        setFinanceSummary({ ...(data.summary || {}), rate: data.commissionRate, currency: data.currency });
+      })
+      .catch((error) => {
+        setOrderState({ records: [], errors: [error.message || "Financial records could not be loaded."] });
+        setFinanceSummary(null);
+      });
     setPlatform(getAdminPlatformSettings());
     setDateReferenceTime(Date.now());
   }
 
   useEffect(() => {
+    refresh();
     window.addEventListener("storage", refresh);
     window.addEventListener(ADMIN_DATA_CHANGED_EVENT, refresh);
     window.addEventListener(ADMIN_PLATFORM_SETTINGS_CHANGED_EVENT, refresh);
-    window.addEventListener("educonnect:student-data-changed", refresh);
+    window.addEventListener(ORDERS_EVENT, refresh);
     return () => {
       window.removeEventListener("storage", refresh);
       window.removeEventListener(ADMIN_DATA_CHANGED_EVENT, refresh);
       window.removeEventListener(ADMIN_PLATFORM_SETTINGS_CHANGED_EVENT, refresh);
-      window.removeEventListener("educonnect:student-data-changed", refresh);
+      window.removeEventListener(ORDERS_EVENT, refresh);
     };
   }, []);
 
   const records = orderState.records;
-  const knownAmounts = records.filter((record) => Number.isFinite(record.amount));
+  // Demo sandbox transactions remain visible in the record list but are excluded
+  // from the real-money cash revenue totals displayed on this dashboard.
+  const realRecords = records.filter((record) => record.provider !== "demo");
+  const paidRecords = realRecords.filter((record) => ["paid", "refunded"].includes(String(record.status || "").toLowerCase()));
+  const knownAmounts = paidRecords.filter((record) => Number.isFinite(record.amount));
   const orderIds = new Set(records.map((record) => record.orderId || record.id));
   const totalOrderValue = knownAmounts.reduce((total, record) => total + record.amount, 0);
   const currentMonth = new Date(dateReferenceTime).toISOString().slice(0, 7);
@@ -107,6 +122,9 @@ function AdminFinancialManagement() {
       const searchable = [
         record.id,
         record.orderId,
+        record.provider,
+        record.providerTransactionId,
+        record.reconciliation,
         record.description,
         record.studentEmail,
         record.status,
@@ -172,13 +190,18 @@ function AdminFinancialManagement() {
       const columns = [
         { header: "Order ID", getValue: (record) => record.orderId },
         { header: "Order Item ID", getValue: (record) => record.id },
-        { header: "Course", getValue: (record) => record.description },
+        { header: "Item", getValue: (record) => record.description },
         { header: "Student", getValue: (record) => record.studentEmail },
-        { header: "Listed Price (Demo)", getValue: (record) => record.amount ?? "" },
+        { header: "Provider", getValue: (record) => record.provider || "" },
+        { header: "Provider Transaction", getValue: (record) => record.providerTransactionId || "" },
+        { header: "Item Price", getValue: (record) => record.amount ?? "" },
+        { header: "Platform Commission", getValue: (record) => record.commission ?? "" },
+        { header: "Teacher Earnings", getValue: (record) => record.teacherEarnings ?? "" },
+        { header: "Reconciliation", getValue: (record) => record.reconciliation || "" },
         { header: "Order Status", getValue: (record) => record.status },
         { header: "Date", getValue: (record) => record.date },
       ];
-      downloadCsv("educonnect-saved-demo-orders.csv", createCsvContent(rows, columns));
+      downloadCsv("educonnect-marketplace-orders.csv", createCsvContent(rows, columns));
     } catch (error) {
       setFeedback({
         type: "error",
@@ -202,7 +225,7 @@ function AdminFinancialManagement() {
         <div>
           <span className="edc-admin-page-eyebrow">FINANCE &amp; OPERATIONS</span>
           <h2><WalletCards aria-hidden="true" />Financial Management</h2>
-          <p>Review saved course checkout records and current platform finance settings.</p>
+          <p>Review marketplace order records stored in MongoDB and current platform finance settings.</p>
         </div>
         <div className="edc-admin-finance-heading-actions">
           <button type="button" className="edc-admin-action-button" onClick={() => exportReport()} disabled={hasRecordErrors || !filteredRecords.length}>
@@ -213,7 +236,8 @@ function AdminFinancialManagement() {
       </header>
 
       <p className="edc-admin-finance-note">
-        Orders are browser-local demo checkouts. Their listed prices are not payments, settled revenue, payouts, or profit. This page does not process payments.
+        Orders are stored in MongoDB from verified marketplace checkouts. Paid orders settle revenue; pending, failed, cancelled and refunded orders never grant access.
+        {financeSummary?.rate !== undefined ? ` Platform commission ${(Number(financeSummary.rate) * 100).toFixed(0)}%.` : ""}
       </p>
       {feedback && (
         <p className={`edc-admin-feedback edc-admin-feedback-${feedback.type}`} role={feedback.type === "error" ? "alert" : "status"}>{feedback.text}</p>
@@ -224,11 +248,11 @@ function AdminFinancialManagement() {
 
       <div className="edc-admin-finance-stats" aria-label="Saved order summaries">
         {[
-          { label: "Saved Orders", value: hasRecordErrors ? "—" : orderIds.size.toLocaleString(), section: "transactions", icon: Receipt, color: "purple" },
-          { label: "Order Value (Demo)", value: hasRecordErrors || !knownAmounts.length ? "—" : money(totalOrderValue), section: "transactions", icon: WalletCards, color: "orange" },
-          { label: "This Month (Demo)", value: hasRecordErrors || !currentMonthRecords.length ? "—" : money(thisMonthValue), section: "transactions", icon: CalendarDays, color: "green" },
-          { label: "Payouts", value: "Not tracked", section: "payouts", icon: ShieldAlert, color: "red" },
-          { label: "Refunds / Chargebacks", value: "Not tracked", section: "refunds", icon: ShieldAlert, color: "violet" },
+          { label: "Verified Orders", value: hasRecordErrors ? "—" : orderIds.size.toLocaleString(), section: "transactions", icon: Receipt, color: "purple" },
+          { label: "Paid Order Value", value: hasRecordErrors || !knownAmounts.length ? "—" : money(totalOrderValue), section: "transactions", icon: WalletCards, color: "orange" },
+          { label: "This Month", value: hasRecordErrors || !currentMonthRecords.length ? "—" : money(thisMonthValue), section: "transactions", icon: CalendarDays, color: "green" },
+          { label: "Payouts", value: "No data", section: "payouts", icon: ShieldAlert, color: "red" },
+          { label: "Refunds / Chargebacks", value: financeSummary ? (Number(financeSummary.refundedSales) ? `${financeSummary.refundedSales} order(s) · PKR ${Number(financeSummary.refundedGross||0).toLocaleString()}` : "None") : "No data", section: "refunds", icon: ShieldAlert, color: "violet" },
         ].map(({ label, value, icon: Icon, color, section: targetSection }) => (
           <button
             className={`edc-admin-finance-stat edc-admin-finance-stat-${color} edc-admin-metric-card edc-admin-metric-${color}${section === targetSection ? " is-active" : ""}`}
@@ -255,10 +279,10 @@ function AdminFinancialManagement() {
         <div className="edc-admin-finance-workspace">
           <main className="edc-admin-finance-main">
             <section className="edc-admin-finance-card edc-admin-finance-chart-card">
-              <header><h3><BarChart3 size={17} aria-hidden="true" />Monthly Saved Order Value</h3><span>PKR · Demo checkout data</span></header>
+              <header><h3><BarChart3 size={17} aria-hidden="true" />Monthly Saved Order Value</h3><span>PKR · Verified order data</span></header>
               {monthlyValues.length && !hasRecordErrors ? (
                 <div className="edc-admin-finance-chart-wrap">
-                  <svg className="edc-admin-finance-chart" viewBox="0 0 650 190" role="img" aria-label="Monthly totals calculated from saved browser-local demo course orders">
+                  <svg className="edc-admin-finance-chart" viewBox="0 0 650 190" role="img" aria-label="Monthly paid order totals from marketplace records">
                     {[0, 1, 2, 3].map((line) => {
                       const y = 28 + line * 38;
                       return <g key={line}><line x1="34" y1={y} x2="626" y2={y} /><text x="0" y={y + 3}>{money(chartMax * (3 - line) / 3).replace("PKR ", "")}</text></g>;
@@ -302,17 +326,19 @@ function AdminFinancialManagement() {
                   )) : <p>{hasRecordErrors ? "Order status counts unavailable." : "No saved order statuses."}</p>}
                 </div>
               </div>
-              <p className="edc-admin-finance-side-note">Status counts describe saved demo order items, not payment settlement.</p>
+              <p className="edc-admin-finance-side-note">Status counts describe marketplace order records. Only paid orders are settled revenue.</p>
             </section>
 
             <section className="edc-admin-finance-card">
               <header><h3><WalletCards size={17} aria-hidden="true" />Finance Records</h3></header>
               <dl className="edc-admin-finance-record-list">
-                <div><dt>Saved course order items</dt><dd>{hasRecordErrors ? "—" : records.length.toLocaleString()}</dd></div>
-                <div><dt>Payouts</dt><dd>Not tracked</dd></div>
-                <div><dt>Refunds / chargebacks</dt><dd>Not tracked</dd></div>
-                <div><dt>Subscriptions / licenses</dt><dd>Not tracked</dd></div>
-                <div><dt>Invoices</dt><dd>Not tracked</dd></div>
+                <div><dt>Order item records</dt><dd>{hasRecordErrors ? "Unavailable" : records.length.toLocaleString()}</dd></div>
+                <div><dt>Payouts</dt><dd>Unavailable</dd></div>
+                <div><dt>Platform commission (verified)</dt><dd>{financeSummary ? money(financeSummary.commission) : "Unavailable"}</dd></div>
+                <div><dt>Teacher earnings (verified)</dt><dd>{financeSummary ? money(financeSummary.teacherEarnings) : "Unavailable"}</dd></div>
+                <div><dt>Refunds / chargebacks</dt><dd>{financeSummary ? (Number(financeSummary.refundedSales) ? `${financeSummary.refundedSales} order(s) · ${money(financeSummary.refundedGross)}` : "None") : "Unavailable"}</dd></div>
+                <div><dt>Subscriptions / licenses</dt><dd>Unavailable</dd></div>
+                <div><dt>Invoices</dt><dd>Unavailable</dd></div>
               </dl>
               <p className="edc-admin-finance-side-note">No sample finance records are added when these data sources are empty.</p>
             </section>
@@ -320,7 +346,7 @@ function AdminFinancialManagement() {
             <section className="edc-admin-finance-card">
               <header><h3><Settings size={17} aria-hidden="true" />Quick Actions</h3></header>
               <div className="edc-admin-finance-quick-actions">
-                <button type="button" disabled={hasRecordErrors || !filteredRecords.length} onClick={() => exportReport()}><Download size={14} />Export Saved Orders</button>
+                <button type="button" disabled={hasRecordErrors || !filteredRecords.length} onClick={() => exportReport()}><Download size={14} />Export Orders</button>
                 <button type="button" onClick={() => setSection("commission")}><Settings size={14} />Commission Setting</button>
                 <Link to="/admin/courses"><FileText size={14} />Course Records</Link>
                 <Link to="/admin/settings"><Settings size={14} />Platform Settings</Link>
@@ -368,11 +394,11 @@ function AdminFinancialManagement() {
           ) : (
             <>
               <dl className="edc-admin-finance-commission-details">
-                <div><dt>Configured commission rate</dt><dd>{Number(platform.marketplace.commissionRate).toLocaleString()}%</dd></div>
+                <div><dt>Applied commission rate (server)</dt><dd>{financeSummary ? `${(Number(financeSummary.rate) * 100).toFixed(0)}%` : "Unavailable"}</dd></div>
                 <div><dt>Demo checkout mode</dt><dd>{platform.marketplace.demoCheckoutMode ? "Enabled" : "Disabled"}</dd></div>
                 <div><dt>Paid content allowed</dt><dd>{platform.marketplace.allowPaidContent ? "Enabled" : "Disabled"}</dd></div>
               </dl>
-              <p>This is saved platform configuration only. It is not applied to checkout, does not calculate payouts, and does not change order history.</p>
+              <p>Checkout, order fulfillment and teacher earnings use the server-configured commission rate. Saved display settings do not change order history.</p>
               <Link className="edc-admin-button-primary" to="/admin/settings"><Settings size={15} />Edit Platform Settings</Link>
             </>
           )}
@@ -383,7 +409,7 @@ function AdminFinancialManagement() {
             text={{
               payouts: "No payout records or payout-processing workflow are stored in this app.",
               subscriptions: "No subscription or license records are stored in this app.",
-              refunds: "No refund or chargeback records are stored in this app.",
+              refunds: "Refunds are processed only through the payment provider. None have been recorded yet.",
               invoices: "No invoice or statement records are stored in this app.",
             }[section] || "No saved finance records are available."}
           />
@@ -395,7 +421,7 @@ function AdminFinancialManagement() {
         <div className="edc-admin-modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setSelected(null)}>
           <section className="edc-admin-details-modal edc-admin-finance-detail" role="dialog" aria-modal="true" aria-labelledby="admin-finance-detail">
             <header className="edc-admin-details-header">
-              <div><span className="edc-admin-page-eyebrow">SAVED DEMO ORDER ITEM</span><h3 id="admin-finance-detail">{selected.description}</h3></div>
+              <div><span className="edc-admin-page-eyebrow">ORDER RECORD</span><h3 id="admin-finance-detail">{selected.description}</h3></div>
               <button type="button" className="edc-admin-modal-close" onClick={() => setSelected(null)} aria-label="Close details">×</button>
             </header>
             <dl className="edc-admin-details-list">
@@ -403,14 +429,22 @@ function AdminFinancialManagement() {
                 "Order ID": selected.orderId,
                 "Order item ID": selected.id,
                 Student: selected.studentEmail,
-                "Listed price (demo)": money(selected.amount),
+                Item: selected.description,
+                Instructor: selected.instructor,
+                Provider: selected.provider ? selected.provider : "Not recorded",
+                Environment: selected.provider === "demo" ? "demo" : (selected.environment || "sandbox"),
+                "Provider transaction": selected.providerTransactionId || "Not recorded",
+                Amount: money(selected.amount),
                 Status: selected.status,
+                "Platform commission": selected.status === "paid" || selected.status === "refunded" ? money(selected.commission) : "—",
+                "Teacher earnings": selected.status === "paid" || selected.status === "refunded" ? money(selected.teacherEarnings) : "—",
+                Reconciliation: selected.reconciliation || "unknown",
                 Date: formatDate(selected.date),
               }).map(([label, value]) => (
                 <div className="edc-admin-detail-field" key={label}><dt>{label}</dt><dd>{String(value ?? "Not provided")}</dd></div>
               ))}
             </dl>
-            <p className="edc-admin-finance-note">This saved checkout record does not confirm that money was transferred.</p>
+            <p className="edc-admin-finance-note">Paid orders settle revenue only after server-verified provider confirmation. Refunds are applied only through the provider and never double-counted.</p>
           </section>
         </div>
       )}
@@ -422,12 +456,13 @@ function OrderTable({ rows, onOpen, compact = false }) {
   return (
     <div className="edc-admin-finance-table-wrap">
       <table className="edc-admin-finance-table">
-        <thead><tr><th scope="col">Order ID</th><th scope="col">Course</th><th scope="col">Student</th><th scope="col">Listed Price</th><th scope="col">Date</th><th scope="col">Status</th><th scope="col">Details</th></tr></thead>
+        <thead><tr><th scope="col">Order ID</th><th scope="col">Course</th><th scope="col">Student</th><th scope="col">Provider</th><th scope="col">Listed Price</th><th scope="col">Date</th><th scope="col">Status</th><th scope="col">Details</th></tr></thead>
         <tbody>{rows.map((record) => (
           <tr key={record.id}>
             <td><span className="edc-admin-finance-order-id">{record.orderId || record.id}</span></td>
             <td><span className="edc-admin-finance-course"><span><FileText size={15} aria-hidden="true" /></span><strong>{record.description}</strong></span></td>
             <td>{record.studentEmail || "Not provided"}</td>
+            <td style={{ textTransform: "capitalize" }}>{record.provider ? `${record.provider}${record.environment === "live" ? " (live)" : ""}` : "—"}</td>
             <td>{money(record.amount)}</td>
             <td><span className="edc-admin-finance-date"><CalendarDays size={13} aria-hidden="true" />{formatDate(record.date)}</span></td>
             <td><span className={`edc-admin-status-badge ${statusClass(record.status)}`}>{record.status}</span></td>

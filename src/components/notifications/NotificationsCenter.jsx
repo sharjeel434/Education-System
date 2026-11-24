@@ -1,3 +1,4 @@
+import React from "react";
 import { Bell, CheckCheck, Trash2, ShoppingBag, BookOpen, Award, MessageCircle, ClipboardList, ListChecks, LifeBuoy } from "lucide-react";
 import "./NotificationsCenter.css";
 

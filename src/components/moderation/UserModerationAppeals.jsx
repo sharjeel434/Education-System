@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertCircle, ArrowRight, BookOpen, ChartNoAxesCombined, CheckCircle2, ChevronRight, Clock3, FileText, HelpCircle, House, LifeBuoy, ListTree, Paperclip, RotateCcw, Search, Send, ShieldAlert, X } from "lucide-react";
 import { ADMIN_DATA_CHANGED_EVENT, MODERATION_APPEAL_STATUSES, SUPPORT_FAQ_CATEGORIES, SUPPORT_REQUEST_CATEGORIES, SUPPORT_REQUEST_PRIORITIES, addAdminSupportResponse, createAdminSupportRequest, getAdminHelpFaqs, readAdminSupportRequestsState, updateAdminSupportRequestStatus } from "../admin/adminData";
 import { getModerationReportsState, MODERATION_REPORTS_EVENT } from "../../utils/moderationReports";
+import { apiFetch } from "../../utils/api";
 import "./UserModerationAppeals.css";
 import "./UserSupportDashboard.css";
 
@@ -295,23 +296,63 @@ function readAttachment(file) {
   });
 }
 
+const normalizeBackendTicket = (ticket) => ({
+  id: String(ticket.id),
+  ticketId: ticket.ticketId,
+  subject: ticket.subject,
+  description: ticket.description,
+  category: ticket.category,
+  priority: ticket.priority,
+  status: ticket.status,
+  requesterName: ticket.requesterName || "User",
+  requesterEmail: ticket.requesterEmail,
+  requesterRole: ticket.requesterRole,
+  relatedRecordId: ticket.relatedRecordId || "",
+  relatedRecordTitle: ticket.relatedRecordTitle || "",
+  assignedStaff: ticket.assignedStaff || "",
+  assignedBy: ticket.assignedBy || "",
+  responses: (ticket.responses || []).map((response) => ({ id: response.id, message: response.message, type: response.type, author: response.author, authorRole: response.authorRole, createdAt: response.createdAt })),
+  resolvedAt: ticket.resolvedAt || null,
+  closedAt: ticket.closedAt || null,
+  createdAt: ticket.createdAt,
+  updatedAt: ticket.updatedAt,
+});
+
 export function UserSupportCenter({ email, name, role, onNavigate }) {
   const normalizedEmail = String(email || "").trim().toLowerCase();
   const [requests, setRequests] = useState(() => readAdminSupportRequestsState().records);
+  const [apiTickets, setApiTickets] = useState([]);
+  const [apiAvailable, setApiAvailable] = useState(false);
+  const [apiError, setApiError] = useState("");
+  const [apiLoading, setApiLoading] = useState(true);
   const [ticketFaqs, setTicketFaqs] = useState(() => getAdminHelpFaqs({ publishedOnly: true }));
   const [subject, setSubject] = useState("");
   const [category, setCategory] = useState("Technical Issue");
   const [priority, setPriority] = useState("Medium");
   const [description, setDescription] = useState("");
   const [relatedRecord, setRelatedRecord] = useState("");
-  const [attachment, setAttachment] = useState(null);
-  const [fileInputKey, setFileInputKey] = useState(0);
   const [replyDrafts, setReplyDrafts] = useState({});
   const [faqSearch, setFaqSearch] = useState("");
   const [faqCategory, setFaqCategory] = useState("all");
   const [activeSupportSection, setActiveSupportSection] = useState("help-center");
   const [error, setError] = useState("");
   const [feedback, setFeedback] = useState("");
+
+  const fetchMyTickets = useCallback(async () => {
+    try {
+      const response = await apiFetch("/support/tickets/mine", { method: "GET" });
+      if (!response.ok) throw Object.assign(new Error((await response.json().catch(() => ({}))).message || "Your support tickets could not be loaded."), { status: response.status });
+      const data = await response.json();
+      setApiTickets((data.tickets || []).map(normalizeBackendTicket));
+      setApiError("");
+      setApiAvailable(true);
+    } catch (fetchError) {
+      setApiError(fetchError?.message || "Your support tickets could not be loaded. Browser-saved tickets are shown.");
+      setApiAvailable(false);
+    } finally {
+      setApiLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     const refresh = () => {
@@ -320,15 +361,24 @@ export function UserSupportCenter({ email, name, role, onNavigate }) {
     };
     window.addEventListener("storage", refresh);
     window.addEventListener(ADMIN_DATA_CHANGED_EVENT, refresh);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchMyTickets();
+    window.addEventListener("focus", fetchMyTickets);
     return () => {
       window.removeEventListener("storage", refresh);
       window.removeEventListener(ADMIN_DATA_CHANGED_EVENT, refresh);
+      window.removeEventListener("focus", fetchMyTickets);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const ownTickets = useMemo(() => requests
-    .filter((item) => Boolean(normalizedEmail) && item.category !== "Moderation & Appeal" && String(item.requesterEmail || "").trim().toLowerCase() === normalizedEmail && (!item.requesterRole || item.requesterRole === role))
-    .sort((first, second) => new Date(second.updatedAt || second.createdAt) - new Date(first.updatedAt || first.createdAt)), [normalizedEmail, requests, role]);
+  // MongoDB-backed tickets are the primary source; browser-local records are the fallback.
+  const ownTickets = useMemo(() => {
+    const source = apiAvailable ? apiTickets : requests;
+    return source
+      .filter((item) => Boolean(normalizedEmail) && item.category !== "Moderation & Appeal" && String(item.requesterEmail || "").trim().toLowerCase() === normalizedEmail && (!item.requesterRole || item.requesterRole === role))
+      .sort((first, second) => new Date(second.updatedAt || second.createdAt) - new Date(first.updatedAt || first.createdAt));
+  }, [apiAvailable, apiTickets, normalizedEmail, requests, role]);
   const visibleFaqs = ticketFaqs.filter((faq) => (faqCategory === "all" || faq.category === faqCategory) && `${faq.category} ${faq.question} ${faq.answer}`.toLowerCase().includes(faqSearch.trim().toLowerCase()));
   const resolvedTicketCount = ownTickets.filter((ticket) => ["Resolved", "Closed"].includes(ticket.status)).length;
   const inProgressTicketCount = ownTickets.filter((ticket) => ["In Progress", "Under Review"].includes(ticket.status)).length;
@@ -350,53 +400,68 @@ export function UserSupportCenter({ email, name, role, onNavigate }) {
     setError("");
     setFeedback("");
     try {
-      const savedAttachment = await readAttachment(attachment);
-      createAdminSupportRequest({
-        subject,
-        description,
+      const response = await apiFetch("/support/tickets", { method: "POST", body: JSON.stringify({
+        subject: subject.trim(),
+        description: description.trim(),
         category,
         priority,
         requesterName: name || role || "User",
-        requesterEmail: normalizedEmail,
-        requesterRole: role || "User",
-        requesterId: normalizedEmail,
         relatedRecordId: relatedRecord.trim(),
         relatedRecordTitle: relatedRecord.trim(),
-        attachment: savedAttachment,
-        actor: normalizedEmail || role || "User",
-      });
+      }) });
+      if (!response.ok) throw Object.assign(new Error((await response.json().catch(() => ({}))).message || "Your support request could not be submitted."), { status: response.status });
       setSubject("");
       setDescription("");
       setRelatedRecord("");
-      setAttachment(null);
-      setFileInputKey((current) => current + 1);
-      setFeedback("Your support ticket was submitted. You can follow replies and status below.");
-      setRequests(readAdminSupportRequestsState().records);
+      setFeedback("Your support ticket was submitted. Admin replies will appear in My Tickets.");
+      await fetchMyTickets();
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Your support request could not be submitted.");
     }
   }
 
-  function replyToTicket(ticket) {
+  async function replyToTicket(ticket) {
     const message = String(replyDrafts[ticket.id] || "").trim();
     if (!message) return;
     setError("");
+    setFeedback("");
     try {
-      addAdminSupportResponse(ticket.id, { message, author: name || role || "User", actor: normalizedEmail, authorRole: role, requesterEmail: normalizedEmail });
+      const response = await apiFetch(`/support/tickets/${encodeURIComponent(ticket.id)}/replies`, { method: "POST", body: JSON.stringify({ message }) });
+      if (!response.ok) throw Object.assign(new Error((await response.json().catch(() => ({}))).message || "Your reply could not be sent."), { status: response.status });
       setReplyDrafts((current) => ({ ...current, [ticket.id]: "" }));
-      setRequests(readAdminSupportRequestsState().records);
       setFeedback("Your reply was sent.");
-    } catch (replyError) { setError(replyError instanceof Error ? replyError.message : "Your reply could not be sent."); }
+      await fetchMyTickets();
+    } catch (replyError) {
+      // Browser-local fallback when the backend is unavailable.
+      try {
+        addAdminSupportResponse(ticket.id, { message, author: name || role || "User", actor: normalizedEmail, authorRole: role, requesterEmail: normalizedEmail });
+        setReplyDrafts((current) => ({ ...current, [ticket.id]: "" }));
+        setFeedback("Your reply was sent.");
+      } catch (localError) {
+        setError(replyError instanceof Error ? replyError.message : localError instanceof Error ? localError.message : "Your reply could not be sent.");
+      }
+    }
   }
 
-  function updateTicket(ticket, status) {
+  async function updateTicket(ticket, status) {
     if (!window.confirm(`${status === "Closed" ? "Close" : "Reopen"} ticket ${ticket.id}?`)) return;
     setError("");
+    setFeedback("");
     try {
-      updateAdminSupportRequestStatus(ticket.id, status, normalizedEmail, "", { actorRole: role, requesterEmail: normalizedEmail });
-      setRequests(readAdminSupportRequestsState().records);
+      const response = await apiFetch(`/support/tickets/${encodeURIComponent(ticket.id)}`, { method: "PATCH", body: JSON.stringify({ status }) });
+      if (!response.ok) throw Object.assign(new Error((await response.json().catch(() => ({}))).message || "Ticket status could not be changed."), { status: response.status });
       setFeedback(status === "Closed" ? "Ticket closed. You can reopen it if the issue returns." : "Ticket reopened.");
-    } catch (statusError) { setError(statusError instanceof Error ? statusError.message : "Ticket status could not be changed."); }
+      await fetchMyTickets();
+    } catch (statusError) {
+      // Browser-local fallback when the backend is unavailable.
+      try {
+        updateAdminSupportRequestStatus(ticket.id, status, normalizedEmail, "", { actorRole: role, requesterEmail: normalizedEmail });
+      } catch (localError) {
+        setError(statusError instanceof Error ? statusError.message : localError instanceof Error ? localError.message : "Ticket status could not be changed.");
+        return;
+      }
+      setFeedback(status === "Closed" ? "Ticket closed. You can reopen it if the issue returns." : "Ticket reopened.");
+    }
   }
 
   return <section className="edc-user-support-center edc-user-support-dashboard">
@@ -434,6 +499,8 @@ export function UserSupportCenter({ email, name, role, onNavigate }) {
     </nav>
     {error && <p className="edc-user-support-feedback error" role="alert"><AlertCircle size={15} /> {error}</p>}
     {feedback && <p className="edc-user-support-feedback success" role="status">{feedback}</p>}
+    {apiError && <p className="edc-user-support-feedback error" role="status">{apiError}</p>}
+    {apiLoading && !apiError && <p className="edc-user-support-feedback" role="status">Loading your tickets…</p>}
     <div className="edc-user-support-content-grid" id="edc-user-support-help-center">
       <section className="edc-user-support-card edc-user-support-faq-card" id="edc-user-support-faqs">
         <header className="edc-user-support-card-heading"><div><h2><HelpCircle size={18} />Frequently Asked Questions</h2><p>Answers from the published help center.</p></div>
@@ -447,9 +514,9 @@ export function UserSupportCenter({ email, name, role, onNavigate }) {
         <div className="edc-user-support-fields"><label>Category<select value={category} onChange={(event) => setCategory(event.target.value)}>{ticketCategories.map((item) => <option key={item}>{item}</option>)}</select></label><label>Priority<select value={priority} onChange={(event) => setPriority(event.target.value)}>{SUPPORT_REQUEST_PRIORITIES.map((item) => <option key={item}>{item}</option>)}</select></label></div>
         <label>Related course / PDF / order (optional)<input maxLength={180} value={relatedRecord} onChange={(event) => setRelatedRecord(event.target.value)} placeholder="Name or record ID" /></label>
         <label>Description<textarea required minLength={5} maxLength={5000} rows={5} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Explain what happened and what you need help with." /></label>
-        <label className="edc-user-support-attachment"><Paperclip size={15} /> Optional attachment (max 2 MB)<input key={fileInputKey} type="file" accept="image/*,.pdf,.txt,.doc,.docx" onChange={(event) => setAttachment(event.target.files?.[0] || null)} />{attachment && <small>{attachment.name}</small>}</label>
+        <label className="edc-user-support-attachment edc-user-support-attachment-disabled"><Paperclip size={15} /> Attachments are stored in MongoDB in this app. Share links or details in the description, or ask an Admin to attach files.</label>
         <button type="submit"><Send size={15} /> Submit Request</button>
-        <small className="edc-user-support-storage-note">This browser demo stores the ticket locally. Do not attach sensitive personal or payment information.</small>
+        <small className="edc-user-support-storage-note">Your ticket is saved to MongoDB and shared with Admin staff. Do not attach sensitive personal or payment information.</small>
       </form>
       <aside className="edc-user-support-resource-column">
         <section className="edc-user-support-card" id="edc-user-support-resources">
@@ -484,6 +551,6 @@ export function UserSupportCenter({ email, name, role, onNavigate }) {
         {ticket.status !== "Closed" && <form className="edc-user-support-reply" onSubmit={(event) => { event.preventDefault(); replyToTicket(ticket); }}><textarea aria-label={`Reply to ticket ${ticket.id}`} rows={2} maxLength={5000} value={replyDrafts[ticket.id] || ""} onChange={(event) => setReplyDrafts((current) => ({ ...current, [ticket.id]: event.target.value }))} placeholder="Write a reply to Admin" /><button type="submit" disabled={!String(replyDrafts[ticket.id] || "").trim()}><Send size={14} /> Send Reply</button></form>}
       </article>) : <p className="edc-user-support-empty">You have not submitted a support ticket yet.</p>}
     </section>
-    <p className="edc-user-support-privacy">You can only see tickets linked to your signed-in email. Private messages and attachments are stored in this browser demo; production access control requires an authenticated backend.</p>
+    <p className="edc-user-support-privacy">Support tickets are stored in MongoDB and shared with Admin staff. Do not attach sensitive personal or payment information.</p>
   </section>;
 }

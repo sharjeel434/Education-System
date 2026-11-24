@@ -273,7 +273,7 @@ function AdminSettings({ preferences, platformSettings }) {
               <div className="edc-admin-settings-fields">
                 <Field label="Platform Name"><input value={general.websiteName} onChange={(event) => update("general", "websiteName", event.target.value)} required /></Field>
                 <Field label="Platform Tagline"><input value={general.tagline} onChange={(event) => update("general", "tagline", event.target.value)} /></Field>
-                <Field label="Support Email"><input type="email" value={general.supportEmail} onChange={(event) => update("general", "supportEmail", event.target.value)} required /><small>Contact information only; outbound email delivery is not configured here.</small></Field>
+                <Field label="Support Email"><input type="email" value={general.supportEmail} onChange={(event) => update("general", "supportEmail", event.target.value)} required /><small>Contact information only; outbound email delivery has not been set up here.</small></Field>
                 <Field label="Default Language"><select value={general.language} onChange={(event) => update("general", "language", event.target.value)}><option>English</option><option>Urdu</option></select></Field>
                 <Field label="Time Zone"><select value={general.timezone} onChange={(event) => update("general", "timezone", event.target.value)}><option value="Asia/Karachi">Asia/Karachi (PKT)</option><option value="UTC">UTC</option><option value="Asia/Dubai">Asia/Dubai</option><option value="Europe/London">Europe/London</option><option value="America/New_York">America/New_York</option></select></Field>
               </div>
@@ -344,7 +344,7 @@ function AdminSettings({ preferences, platformSettings }) {
                 <Toggle title="Course Approval Alerts" checked={notifications.courseApprovalAlerts} onChange={(value) => update("notifications", "courseApprovalAlerts", value)} />
                 <Toggle title="Support & Appeal Alerts" checked={notifications.studentHelpRequestAlerts} onChange={(value) => update("notifications", "studentHelpRequestAlerts", value)} />
               </div>
-              <p className="edc-admin-settings-note">These preferences filter the existing in-app notification list. Email delivery, PDF approval alert sources, and system announcements are not configured in this application.</p>
+              <p className="edc-admin-settings-note">These preferences filter the existing in-app notification list. Email delivery, PDF approval alert sources, and system announcements have not been set up in this application.</p>
             </section>
             <section className="edc-admin-panel edc-admin-settings-panel">
               <SettingsHeading title="Email Delivery" description="Email provider configuration is not available in the current frontend." />
@@ -368,7 +368,7 @@ function AdminSettings({ preferences, platformSettings }) {
               </div>
             </section>
             <section className="edc-admin-panel edc-admin-settings-panel">
-              <SettingsHeading title="Payment Processing" description="Payment gateway and settlement services are not configured here." />
+              <SettingsHeading title="Payment Processing" description="Payment gateway and settlement services have not been set up here." />
               <UnavailableFeature text="No real payment provider, API credentials, settled revenue, payouts, or subscription service is connected. The configured commission and checkout values are not proof of processed payments." />
             </section>
           </div>

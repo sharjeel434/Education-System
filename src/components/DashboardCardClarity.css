@@ -47,7 +47,7 @@
   transform: none;
 }
 
-#root :is(.edc-student-shell, .edc-admin-layout) [class*="-stat"]:not([class*="-stats"]):not([class*="-stat-grid"]):not([class*="-stat-icon"]):not([class*="-stat-detail"]):not([class*="-status"]):not([class*="-empty"]),
+#root .edc-student-shell [class*="-stat"]:not([class*="-stats"]):not([class*="-stat-grid"]):not([class*="-stat-icon"]):not([class*="-stat-detail"]):not([class*="-status"]):not([class*="-empty"]),
 #root .teacher-fullscreen-page .edc-teacher-shell [class*="-stat"]:not([class*="-stats"]):not([class*="-stat-grid"]):not([class*="-stat-icon"]):not([class*="-stat-detail"]):not([class*="-status"]):not([class*="-empty"]) {
   color: #000;
 }
@@ -57,7 +57,7 @@
   color: #000;
 }
 
-#root :is(.edc-student-shell, .edc-admin-layout) [class*="-stat"]:not([class*="-stats"]):not([class*="-stat-grid"]):not([class*="-stat-icon"]):not([class*="-stat-detail"]):not([class*="-status"]):not([class*="-empty"]) :is(h1, h2, h3, h4, h5, h6, p, a, button, span, strong, small, em, b, label, li, dt, dd):not([class*="-icon"]),
+#root .edc-student-shell [class*="-stat"]:not([class*="-stats"]):not([class*="-stat-grid"]):not([class*="-stat-icon"]):not([class*="-stat-detail"]):not([class*="-status"]):not([class*="-empty"]) :is(h1, h2, h3, h4, h5, h6, p, a, button, span, strong, small, em, b, label, li, dt, dd):not([class*="-icon"]),
 #root .teacher-fullscreen-page .edc-teacher-shell [class*="-stat"]:not([class*="-stats"]):not([class*="-stat-grid"]):not([class*="-stat-icon"]):not([class*="-stat-detail"]):not([class*="-status"]):not([class*="-empty"]) :is(h1, h2, h3, h4, h5, h6, p, a, button, span, strong, small, em, b, label, li, dt, dd):not([class*="-icon"]) {
   color: #000;
 }
@@ -65,6 +65,29 @@
 #root .teacher-fullscreen-page .edc-teacher-shell :is(.edc-ia-stats > button, .edc-tq-stats > article, .edca-t-stats > button, .edc-tb-stats > button) :is(h1, h2, h3, h4, h5, h6, p, a, strong, small, em, b, label, li, dt, dd),
 #root .edc-student-shell :is(.edc-books-stats > article, .edc-sp-stats > button, .edc-research-count-button) :is(h1, h2, h3, h4, h5, h6, p, a, strong, small, em, b, label, li, dt, dd) {
   color: #000;
+}
+
+/* Keep every Admin summary card aligned with the platform's Inter typography. */
+#root .edc-admin-layout .edc-admin-metric-card > div > p {
+  color: #635271;
+  font-family: 'Inter', sans-serif;
+  font-size: clamp(.7rem, .72vw, .78rem);
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: 0;
+}
+
+#root .edc-admin-layout .edc-admin-metric-card > div > strong {
+  overflow: visible;
+  color: #2c0750;
+  font-family: 'Inter', sans-serif;
+  font-size: clamp(1rem, 1.08vw, 1.2rem) !important;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -.02em;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
 }
 
 #root .teacher-fullscreen-page .edc-teacher-shell :is(.edc-ia-stats > button, .edca-t-stats > button) > span:first-child,

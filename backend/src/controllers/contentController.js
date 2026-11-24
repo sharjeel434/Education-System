@@ -3,6 +3,7 @@ import { z } from "zod";
 import mongoose from "mongoose";
 import ContentAccess from "../models/ContentAccess.js";
 import CourseCurriculum from "../models/CourseCurriculum.js";
+import { recordAdminAction } from "../services/auditService.js";
 import { models, contentSchema, lessonSchema, contentError, workingVersion, validateFiles,
   validateSubmission, writeRevision, present, hasAccess, cleanCurriculum } from "../services/contentService.js";
 
@@ -134,6 +135,21 @@ export const reviewContent = (type) => handle(async (req, res) => {
     await syncCourseCurriculum(item, working.metadata?.curriculum,
       input.decision === "approve" ? item.approvedVersion?.metadata?.curriculum || null : undefined);
   }
+  const label = type === "course" ? "Course" : "Book";
+  const decisionLabel = input.decision === "approve" ? "approved"
+    : input.decision === "reject" ? "rejected"
+    : input.decision === "publish" ? "published"
+    : input.decision === "unpublish" ? "unpublished" : "returned for changes";
+  await recordAdminAction({
+    actorEmail: req.user.email, actorRole: req.user.role, actorId: req.user._id,
+    action: `${label} ${decisionLabel}`,
+    category: type === "course" ? "course-review" : "book-approvals",
+    module: type === "course" ? "Course Review" : "Course & Books",
+    entityType: label, entityId: String(resource._id), targetId: String(resource._id),
+    targetName: resource.title, result: input.decision === "approve" ? "Published" : input.decision === "reject" ? "Rejected" : "Reviewed",
+    description: `${req.user.fullName || req.user.email} ${decisionLabel} ${label.toLowerCase()} ${resource.title}.`,
+    details: { decision: input.decision, reason: input.reason || "" },
+  });
   res.json({ success: true, item: await present(item, type, { working: true }) });
 });
 export const listLessons = handle(async (req, res) => {
