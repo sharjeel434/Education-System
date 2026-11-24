@@ -69,9 +69,6 @@ import StudentProfileBadge from "../../components/verification/StudentProfileBad
 import WorkspaceSidebar from "../../components/workspace/WorkspaceSidebar";
 import TeacherStudents from "../../components/teacher/TeacherStudents";
 import TeacherEarnings from "../../components/teacher/TeacherEarnings";
-import TeacherCnicUpload from "../../components/teacher/TeacherCnicUpload";
-import VerifiedBadge from "../../components/verification/VerifiedBadge";
-import StudentProfileBadge from "../../components/verification/StudentProfileBadge";
 import { collectInstructorCourseAnalytics } from "../../utils/instructorAnalytics";
 import { getCourseCatalogForDisplay } from "../../utils/teacherCourses";
 import { REVIEW_EVENT } from "../../utils/courseReviews";

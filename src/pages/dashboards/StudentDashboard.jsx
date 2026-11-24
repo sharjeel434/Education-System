@@ -570,13 +570,16 @@ export default function StudentDashboard({ email = "student", account, onVerific
         .catch(() => {});
 
       setProfileNotice("Profile and learning interests saved.");
-    } catch {
+        } catch {
       setInterestProfile({ interests, learningGoals });
 
       setProfileNotice(
         "Profile saved in this browser. Learning interests could not be synced to the server right now."
       );
-      
+    }
+    setEditingProfile(false);
+  }
+
   function uploadStudentAvatar(event) {
     const file = event.target.files?.[0];
     event.target.value = "";
