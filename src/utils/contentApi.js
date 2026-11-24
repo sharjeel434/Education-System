@@ -1,4 +1,5 @@
 import { apiBase, apiFetch } from "./api";
+import { isDevelopmentAdminSession } from "./devAdminSession";
 
 export const CONTENT_CHANGED_EVENT = "educonnect:content-changed";
 const empty = { courses: [], books: [], managedCourses: [], managedBooks: [], accesses: [], role: "", email: "" };
@@ -44,6 +45,22 @@ export function getManagedCourses(email) {
 }
 
 export async function refreshContent(force = false) {
+  if (isDevelopmentAdminSession({
+    isDevelopment: import.meta.env.DEV,
+    adminEmail: import.meta.env.VITE_ADMIN_EMAIL,
+    adminPassword: import.meta.env.VITE_ADMIN_PASSWORD,
+    role: window.sessionStorage.getItem("educonnect.demoRole"),
+    email: window.sessionStorage.getItem("educonnect.demoEmail"),
+    marker: window.sessionStorage.getItem("educonnect.devAdminSession"),
+  })) {
+    const email = window.sessionStorage.getItem("educonnect.demoEmail") || "";
+    if (state.role !== "admin" || state.email !== email) {
+      generation += 1;
+      state = { ...empty, role: "admin", email };
+      notify();
+    }
+    return state;
+  }
   if (force && pendingRefresh) {
     await pendingRefresh.catch(() => {});
     return refreshContent();

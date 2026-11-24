@@ -1,12 +1,9 @@
 .dashboard-page .edc-main[data-active-tab="profile"]>.edc-main-header{display:none}
 .edc-profile-dashboard{display:grid;gap:12px;color:#2b1048}
-.edc-profile-breadcrumb{display:flex;align-items:center;gap:8px;min-height:18px;color:#8b829d;font-size:10px}
-.edc-profile-breadcrumb svg,.edc-profile-breadcrumb strong{color:#6f32ca}
 .edc-profile-hero{position:relative;display:flex;min-height:97px;align-items:center;justify-content:space-between;gap:18px;overflow:hidden;padding:15px 20px;border:1px solid #e6ddfa;border-radius:15px;background:linear-gradient(110deg,#fff 0%,#fbf9ff 52%,#eee7ff 100%);box-shadow:0 5px 16px #3a226f0d}
 .edc-profile-hero::after{position:absolute;top:-68px;right:60px;width:180px;height:180px;border-radius:50%;background:#d7c6ff4a;content:""}
 .edc-profile-hero>div:first-child{position:relative;z-index:1}
-.edc-profile-eyebrow{color:#7956c4;font-size:8px;font-weight:800;letter-spacing:1.2px}
-.edc-profile-hero h1{display:flex;align-items:center;gap:8px;margin:4px 0;color:#25154b;font-size:25px;letter-spacing:-.6px}
+.edc-profile-hero h1{display:flex;align-items:center;gap:8px;margin:0 0 4px;color:#25154b;font-size:25px;letter-spacing:-.6px}
 .edc-profile-hero h1 svg{color:#7132d0}
 .edc-profile-hero p{margin:0;color:#615774;font-size:11px}
 .edc-profile-hero small{display:block;margin-top:5px;color:#867b99;font-size:9px}

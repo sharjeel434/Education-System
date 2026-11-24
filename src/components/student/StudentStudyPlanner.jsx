@@ -351,7 +351,6 @@ export default function StudentStudyPlanner({
   return (
     <section className="edc-study-planner">
       <header className="edc-sp-heading">
-        <nav aria-label="Breadcrumb"><button type="button" onClick={() => onNavigate?.("overview")}>Home</button><span>/</span><button type="button" onClick={() => onNavigate?.("learning")}>My Learning</button><span>/</span><strong>Study Planner</strong></nav>
         <div className="edc-sp-heading-title"><span><CalendarDays size={25} /></span><div><h2>Study Planner</h2><p>Plan your study, manage tasks, and stay on track with your learning goals.</p></div></div>
       </header>
 

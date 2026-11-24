@@ -16,19 +16,6 @@
   scroll-margin-top: 20px;
 }
 
-.edc-la-breadcrumb {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 12px;
-  color: #71658c;
-  font-size: 11px;
-}
-
-.edc-la-breadcrumb > span:first-child { color: var(--la-purple); font-size: 17px; }
-.edc-la-breadcrumb b { color: #b5a9ca; font-weight: 500; }
-.edc-la-breadcrumb strong { color: var(--la-deep); font-weight: 700; }
-
 .edc-la-heading-row {
   display: flex;
   align-items: center;

@@ -2,9 +2,6 @@
 .dashboard-page .edc-main[data-active-tab="learning"] > .edc-main-header { display: none; }
 .edc-my-learning button { font-family: inherit; }
 .edc-ml-heading { padding: 0 4px; }
-.edc-ml-breadcrumb { display: flex; align-items: center; gap: 11px; margin-bottom: 10px; color: #7435b2; font-size: 10px; }
-.edc-ml-breadcrumb > span { color: #a991bf; }
-.edc-ml-breadcrumb strong { color: #43235f; font-size: 10px; font-weight: 650; }
 .edc-ml-heading h2 { margin: 0 0 4px; color: #32104f; font-size: 27px; font-weight: 800; line-height: 1.2; letter-spacing: -.5px; }
 .edc-ml-heading p { margin: 0; color: #5a3b73; font-size: 12px; line-height: 1.5; }
 .edc-ml-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; padding: 6px; border-radius: 15px; background: #ffffffb3; box-shadow: 0 3px 10px #5e2c8b06; }

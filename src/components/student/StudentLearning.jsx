@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, Award, BookOpen, Bookmark, BookmarkCheck, ChartNoAxesCombined, Check, CheckCircle2, Clock3, Code2, Database, GraduationCap, House, LayoutGrid, List, MoreVertical, NotebookPen, Play, RotateCcw, Search, Trash2, UserRound, X } from "lucide-react";
+import { ArrowRight, Award, BookOpen, Bookmark, BookmarkCheck, ChartNoAxesCombined, Check, CheckCircle2, Clock3, Code2, Database, GraduationCap, LayoutGrid, List, MoreVertical, NotebookPen, Play, RotateCcw, Search, Trash2, UserRound, X } from "lucide-react";
 import reactLogo from "../../assets/partners/react.svg";
 import pythonLogo from "../../assets/partners/python.svg";
 import figmaLogo from "../../assets/partners/figma.svg";
@@ -90,7 +90,7 @@ export default function StudentLearning({ email, courses = [], publishedCourses 
   const emptyDescription = searchQuery.trim() ? "Try another course, subject, or instructor, or clear your search." : filter === "completed" ? "Finish your course lessons to unlock your completion certificate." : filter === "progress" ? "Start a lesson in one of your enrolled courses to keep learning." : filter === "bookmarks" ? "Use the course menu to bookmark a course you want to revisit." : "Enroll in a course and find all your learning in one place.";
 
   return <div className="edc-my-learning">
-    <header className="edc-ml-heading"><div className="edc-ml-breadcrumb"><House size={13}/><span>/</span><strong>My Learning</strong></div><h2>My Learning</h2><p>All your enrolled courses in one place. Continue learning, track progress, and complete your goals.</p></header>
+    <header className="edc-ml-heading"><h2>My Learning</h2><p>All your enrolled courses in one place. Continue learning, track progress, and complete your goals.</p></header>
     <section className="edc-ml-stats" aria-label="My learning summary">
       {[{ label: "Enrolled Courses", value: courseList.length, color: "purple", icon: BookOpen, action: () => changeFilter("all") }, { label: "In Progress", value: inProgress.length, color: "amber", icon: Play, action: () => changeFilter("progress") }, { label: "Completed", value: completed.length, color: "blue", icon: CheckCircle2, action: () => changeFilter("completed") }, { label: "Total Learning Hours", value: `${hours} hrs`, color: "green", icon: Clock3, action: () => onNavigate("analytics") }].map(stat => <button type="button" key={stat.label} className={`edc-ml-stat edc-ml-stat-${stat.color}`} onClick={stat.action}><span className="edc-ml-stat-icon"><stat.icon size={27} strokeWidth={1.8}/></span><span><small>{stat.label}</small><strong>{stat.value}</strong></span></button>)}
     </section>

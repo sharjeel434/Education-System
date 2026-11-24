@@ -41,9 +41,9 @@ async function registerAccount({ name, email, role, password }) {
         : data.message || "Registration failed. Please try again."
     );
   }
+  
   return data;
 }
-
 function SignupPage() {
   const navigate = useNavigate();
   const location = useLocation();

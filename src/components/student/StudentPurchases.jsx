@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Award, BookOpen, BookText, CalendarDays, CheckCircle2, ChevronDown, Download, FileText, House, Printer, Search, ShoppingBag } from "lucide-react";
+import { Award, BookOpen, BookText, CalendarDays, CheckCircle2, ChevronDown, Download, FileText, Printer, Search, ShoppingBag } from "lucide-react";
 import "./StudentPurchases.css";
 
 const itemKey = (item) => `${item.itemType === "book" ? "book" : "course"}::${String(item.teacherEmail || "").trim().toLowerCase()}::${String(item.id)}`;
@@ -158,9 +158,6 @@ export default function StudentPurchases({
   }
 
   return <div className="edc-tab-content edc-purchases-page">
-    <nav className="edc-purchases-breadcrumb" aria-label="Breadcrumb">
-      <House size={14} /><span>/</span><strong>My Purchases</strong>
-    </nav>
     <header className="edc-purchases-hero">
       <div>
         <span className="edc-purchases-eyebrow">YOUR ACCOUNT RECORDS</span>

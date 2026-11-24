@@ -156,11 +156,11 @@ export default function UserModerationAppeals({ email, name, role }) {
     } catch (replyError) { setError(replyError instanceof Error ? replyError.message : "Your reply could not be sent."); }
   }
 
-  return <section className="edc-user-appeals-page edc-user-appeals-dashboard">
-    <nav className="edc-user-page-breadcrumb" aria-label="Breadcrumb"><House size={13} /><span>/</span><strong>Moderation &amp; Appeals</strong></nav>
+  return <section className={`edc-user-appeals-page edc-user-appeals-dashboard${role === "Student" ? " edc-user-student-page" : ""}`}>
+    {role !== "Student" && <nav className="edc-user-page-breadcrumb" aria-label="Breadcrumb"><House size={13} /><span>/</span><strong>Moderation &amp; Appeals</strong></nav>}
     <header className="edc-user-appeals-heading edc-user-page-hero">
       <span><ShieldAlert size={24} /></span>
-      <div><span className="edc-user-appeals-eyebrow">YOUR ACCOUNT CASES</span><h1>Moderation &amp; Appeals</h1>
+      <div>{role !== "Student" && <span className="edc-user-appeals-eyebrow">YOUR ACCOUNT CASES</span>}<h1>Moderation &amp; Appeals</h1>
         <p>Submit an appeal or review the reports and decisions associated with your account.</p></div>
       <div className="edc-user-page-hero-art" aria-hidden="true"><ShieldAlert /><FileText /></div>
       <div className="edc-user-appeals-heading-actions">
@@ -464,12 +464,12 @@ export function UserSupportCenter({ email, name, role, onNavigate }) {
     }
   }
 
-  return <section className="edc-user-support-center edc-user-support-dashboard">
-    <nav className="edc-user-page-breadcrumb" aria-label="Breadcrumb"><House size={13} /><span>/</span><strong>Help &amp; Support</strong></nav>
+  return <section className={`edc-user-support-center edc-user-support-dashboard${role === "Student" ? " edc-user-student-page" : ""}`}>
+    {role !== "Student" && <nav className="edc-user-page-breadcrumb" aria-label="Breadcrumb"><House size={13} /><span>/</span><strong>Help &amp; Support</strong></nav>}
     <header className="edc-user-support-heading edc-user-page-hero">
       <span><LifeBuoy size={24} /></span>
       <div className="edc-user-support-hero-content">
-        <small>TEACHER SUPPORT</small>
+        {role !== "Student" && <small>TEACHER SUPPORT</small>}
         <h1>Help &amp; Support</h1>
         <p>Find answers in published help articles or contact Admin through a support ticket.</p>
         <form className="edc-user-support-search" role="search" aria-label="Search help articles" onSubmit={(event) => { event.preventDefault(); navigateSupportSection("faqs"); }}>

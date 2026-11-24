@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { BookOpen, BookText, Bookmark, CheckCircle2, Download, FileText, Grid2X2, Heart, House, List, Search, ShoppingBag } from "lucide-react";
+import { BookOpen, BookText, Bookmark, CheckCircle2, Download, FileText, Grid2X2, Heart, List, Search, ShoppingBag } from "lucide-react";
 import { isModerationVisible } from "../../utils/moderationVisibility";
 import { loadBookFile } from "../../utils/books";
 import ReportAction from "../moderation/ReportAction";
@@ -173,7 +173,6 @@ export default function StudentEbooks({
         : "Purchased eBooks, saved books, and course PDFs you can access will appear here.";
 
   return <div className="edc-tab-content edc-ebooks-page" id="my-ebooks">
-    <div className="edc-ebooks-breadcrumb"><House size={13} /><span>/</span><strong>My eBooks</strong></div>
     <section className="edc-ebooks-hero">
       <div>
         <span className="edc-ebooks-eyebrow">YOUR DIGITAL LIBRARY</span>
