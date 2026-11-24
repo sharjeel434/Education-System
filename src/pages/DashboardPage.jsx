@@ -1,5 +1,5 @@
 
-import { useEffect, useState, useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Link,
   Navigate,
@@ -184,7 +184,14 @@ function DashboardPage() {
 
   const dashboardContent = (
     <>
-      {role === "Student" ? <StudentDashboardHeader email={email} onLogout={signOut} identityVerified={account?.cnicVerification?.status === "verified"} /> : <header className="auth-topbar">
+      {role === "Student" ? (
+        <StudentDashboardHeader
+          email={email}
+          fullName={account?.fullName}
+          identityVerified={account?.cnicVerification?.status === "verified"}
+          onLogout={signOut}
+        />
+      ) : <header className="auth-topbar">
         <Link
           className="auth-brand"
           to="/"

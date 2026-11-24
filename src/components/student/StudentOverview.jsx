@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { ArrowRight, Award, BookOpen, CalendarDays, CheckCircle2, ChevronRight, ClipboardCheck, Clock3, Code2, Heart, ListChecks, PencilLine, Play, Star, Target, Trophy, UserRound } from "lucide-react";
 import { assignmentKey, submissionKey, read } from "../assignments/assignmentStorage";
 import { getCourseReviewSummaries, getRelatedPublishedCourses, isAcademicProfileComplete } from "../../utils/studentRecommendations";
@@ -21,7 +21,7 @@ function CourseArtwork({ course, large = false }) {
   </div>;
 }
 
-export default function StudentOverview({ email, profile, courses, publishedCourses, demoCourses, activity, dailyGoals, goalProgress, wishlist, legacyTasks, legacyQuizPasses, legacySubmissions, onNavigate, onResume, onExplore, onCourseAction, onToggleWishlist, onMetric }) {
+export default function StudentOverview({ email, profile, courses, publishedCourses, demoCourses, activity, dailyGoals, goalProgress, wishlist, legacyTasks, legacyQuizPasses, legacySubmissions, serverRecommendations, interestProfile, onNavigate, onResume, onExplore, onCourseAction, onToggleWishlist, onMetric }) {
   const [revision, setRevision] = useState(0);
   useEffect(() => {
     const refresh = () => setRevision(value => value + 1);
@@ -56,12 +56,38 @@ export default function StudentOverview({ email, profile, courses, publishedCour
   const nextCourse = courses.find(course => course.progress > 0 && course.progress < 100) || courses.find(course => course.progress < 100) || courses[0];
   const featuredCourse = nextCourse && { ...publishedCourses.find(course => courseKey(course) === courseKey(nextCourse)), ...nextCourse };
   const recommendations = useMemo(() => {
-    if (!publishedCourses.length) return demoCourses.slice(0, 4);
+    const serverItems = Array.isArray(serverRecommendations?.recommendations) ? serverRecommendations.recommendations : [];
+    if (serverItems.length) {
+      return serverItems.slice(0, 4).map((item) => {
+        const local = publishedCourses.find((course) => String(course.id) === String(item.id));
+        return {
+          ...(local || {}),
+          id: item.id,
+          title: item.title || local?.title || "Course",
+          teacherEmail: item.teacherEmail || local?.teacherEmail || "",
+          teacherName: item.teacherName || local?.instructorName || local?.instructor || "",
+          instructorName: item.teacherName || local?.instructorName || local?.instructor || "",
+          category: item.category || local?.category || "",
+          price: Number(item.price ?? local?.price ?? 0),
+          image: local?.image,
+          icon: local?.icon,
+          color: local?.color || "purple",
+          reason: item.reason || "",
+          averageRating: item.averageRating ?? null,
+        };
+      });
+    }
+    if (!publishedCourses.length) return demoCourses.slice(0, 2);
     const available = isAcademicProfileComplete(profile) ? getRelatedPublishedCourses(publishedCourses, profile) : publishedCourses;
     const unenrolled = available.filter(course => !courses.some(enrolled => courseKey(enrolled) === courseKey(course)));
-    return (unenrolled.length ? unenrolled : available).slice(0, 4);
-  }, [publishedCourses, profile, courses, demoCourses]);
+    return (unenrolled.length ? unenrolled : available).slice(0, 2);
+  }, [publishedCourses, profile, courses, demoCourses, serverRecommendations]);
   const reviewSummaries = getCourseReviewSummaries(recommendations, getReviews());
+  const continueLearningItems = Array.isArray(serverRecommendations?.continueLearning) ? serverRecommendations.continueLearning : [];
+  const similarCourseItems = Array.isArray(serverRecommendations?.similarCourses) ? serverRecommendations.similarCourses.filter((item) => !recommendations.some((rec) => String(rec.id) === String(item.id))) : [];
+  const learningPathItems = Array.isArray(serverRecommendations?.learningPaths) ? serverRecommendations.learningPaths : [];
+  const recommendedBookItems = Array.isArray(serverRecommendations?.recommendedBooks) ? serverRecommendations.recommendedBooks : [];
+  const relatedInstructorItems = Array.isArray(serverRecommendations?.relatedInstructors) ? serverRecommendations.relatedInstructors : [];
   const hours = (Math.max(0, Number(activity.totalSeconds) || 0) / 3600).toLocaleString(undefined, { maximumFractionDigits: 1 });
   const learningGoal = dailyGoals.find(goal => !goal.done)?.title || dailyGoals[0]?.title || "Build a new skill";
   const tasks = records.tasks.length ? records.tasks : dailyGoals.filter(goal => !goal.done).map(goal => ({ id: `goal:${goal.id}`, title: goal.title, type: "goal", tab: "planner" }));
@@ -86,9 +112,16 @@ export default function StudentOverview({ email, profile, courses, publishedCour
       <section className="edc-ov-panel edc-ov-tasks"><div className="edc-ov-panel-heading"><h3><CalendarDays size={18}/> Upcoming Tasks</h3><button type="button" onClick={() => onNavigate("planner")}>View All <ArrowRight size={13}/></button></div><div className="edc-ov-task-list">{tasks.slice(0, 3).map(task => <button type="button" key={task.id} onClick={() => onNavigate(task.tab)}><span className="edc-ov-task-icon">{task.type === "quiz" ? <ListChecks size={18}/> : task.type === "goal" ? <Target size={18}/> : <CalendarDays size={18}/>}</span><span><strong>{task.title}</strong><small className={task.dueAt ? "has-due-date" : ""}>{task.dueAt ? `Due: ${new Date(task.dueAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}` : task.type === "goal" ? "Daily learning goal" : "Ready when you are"}</small></span><ChevronRight size={14}/></button>)}{!tasks.length && <div className="edc-ov-empty"><CheckCircle2 size={26}/><strong>You're all caught up!</strong><p>Your upcoming course tasks will appear here.</p></div>}</div></section>
     </div>
     <div className="edc-ov-bottom-grid">
-      <section className="edc-ov-panel edc-ov-recommendations"><div className="edc-ov-panel-heading"><h3><Star size={18}/> Recommended for You</h3><button type="button" onClick={onExplore}>View All Courses <ArrowRight size={13}/></button></div><div className="edc-ov-recommendation-grid">{recommendations.map(course => { const review = reviewSummaries.get(`${String(course.teacherEmail || "").toLowerCase()}::${course.id}`); const enrolled = courses.some(item => courseKey(item) === courseKey(course)); const saved = wishlist.includes(course.id); return <article className="edc-ov-recommendation" key={courseKey(course)}><div className="edc-ov-recommendation-art"><CourseArtwork course={course}/><span className={`edc-ov-course-label ${course.teacherEmail ? Number(course.price) > 0 ? "premium" : "free" : "demo"}`}>{course.teacherEmail ? Number(course.price) > 0 ? "Course" : "Free" : "Demo"}</span><button type="button" className={`edc-ov-wishlist ${saved ? "is-saved" : ""}`} aria-label={`${saved ? "Remove" : "Add"} ${course.title} ${saved ? "from" : "to"} wishlist`} onClick={() => onToggleWishlist(course.id)}><Heart size={15} fill={saved ? "currentColor" : "none"}/></button></div><h4>{course.title}</h4><p className="edc-ov-instructor"><UserRound size={11}/>{course.instructorName || course.instructor || "EduConnect Instructor"}</p><p className="edc-ov-course-rating">{review?.rating ? <><Star size={11} fill="currentColor"/>{review.rating.toFixed(1)} <span>({review.reviewCount})</span></> : <span>No reviews yet</span>}</p><strong className="edc-ov-price">{Number(course.price) > 0 ? `PKR ${Number(course.price).toLocaleString()}` : "Free"}</strong><button type="button" className="edc-ov-primary edc-ov-enroll" onClick={() => onCourseAction(course)}>{enrolled ? "Go to Learning" : Number(course.price) > 0 ? "Add to Cart" : "Enroll Now"}</button></article>; })}{!recommendations.length && <div className="edc-ov-empty"><BookOpen size={28}/><strong>No matching courses yet</strong><p>Explore the course catalog or update your education profile.</p><button type="button" className="edc-ov-primary" onClick={onExplore}>Explore Courses</button></div>}</div></section>
+      <section className="edc-ov-panel edc-ov-recommendations"><div className="edc-ov-panel-heading"><h3><Star size={18}/> Recommended for You</h3><button type="button" onClick={onExplore}>View All Courses <ArrowRight size={13}/></button></div><div className="edc-ov-recommendation-grid">{recommendations.map(course => { const review = reviewSummaries.get(`${String(course.teacherEmail || "").toLowerCase()}::${course.id}`); const enrolled = courses.some(item => courseKey(item) === courseKey(course)); const saved = wishlist.includes(course.id); const courseLabel = course.category || (course.teacherEmail ? Number(course.price) > 0 ? "Course" : "Free" : "Demo"); const ratingValue = review?.rating ?? (Number.isFinite(Number(course.averageRating)) ? Number(course.averageRating) : null); const ratingCount = review?.reviewCount; return <article className="edc-ov-recommendation" key={courseKey(course)}><div className="edc-ov-recommendation-art"><CourseArtwork course={course}/><span className={`edc-ov-course-label ${course.teacherEmail ? Number(course.price) > 0 ? "premium" : "free" : "demo"}`}>{courseLabel}</span><button type="button" className={`edc-ov-wishlist ${saved ? "is-saved" : ""}`} aria-label={`${saved ? "Remove" : "Add"} ${course.title} ${saved ? "from" : "to"} wishlist`} onClick={() => onToggleWishlist(course.id)}><Heart size={15} fill={saved ? "currentColor" : "none"}/></button></div><h4>{course.title}</h4><p className="edc-ov-instructor"><UserRound size={11}/>{course.instructorName || course.instructor || course.teacherName || "EduConnect Instructor"}</p><p className="edc-ov-course-rating">{ratingValue ? <><Star size={11} fill="currentColor"/>{ratingValue.toFixed(1)} {ratingCount ? <span>({ratingCount})</span> : <span>rating</span>}</> : <span>No reviews yet</span>}</p>{course.reason && <p className="edc-ov-course-reason">{course.reason}</p>}<strong className="edc-ov-price">{Number(course.price) > 0 ? `PKR ${Number(course.price).toLocaleString()}` : "Free"}</strong><button type="button" className="edc-ov-primary edc-ov-enroll" onClick={() => onCourseAction(course)}>{enrolled ? "Go to Learning" : Number(course.price) > 0 ? "Add to Cart" : "Enroll Now"}</button></article>; })}{!recommendations.length && <div className="edc-ov-empty"><BookOpen size={28}/><strong>No recommendations yet</strong><p>Explore courses to get personalized suggestions.</p></div>}</div></section>
       <section className="edc-ov-panel edc-ov-achievements"><div className="edc-ov-panel-heading"><h3><Trophy size={19}/> My Achievements</h3><button type="button" onClick={() => onNavigate("portfolio")}>View All <ArrowRight size={13}/></button></div><div className="edc-ov-achievement-grid">{achievements.map(item => <button type="button" key={item.title} className={`edc-ov-achievement edc-ov-achievement-${item.color}${item.earned ? " earned" : ""}`} onClick={() => onNavigate("portfolio")}><span className="edc-ov-medal"><span><item.icon size={29} strokeWidth={1.7}/></span></span><strong>{item.title}</strong><small>{item.earned ? "Earned" : "Not earned yet"}</small></button>)}</div></section>
     </div>
+    {(continueLearningItems.length > 0 || similarCourseItems.length > 0 || learningPathItems.length > 0 || recommendedBookItems.length > 0 || relatedInstructorItems.length > 0) && <div className="edc-ov-extra-sections">
+      {continueLearningItems.length > 0 && <section className="edc-ov-panel"><div className="edc-ov-panel-heading"><h3><Play size={18}/> Continue Learning</h3><button type="button" onClick={() => onNavigate("learning")}>Open Learning <ArrowRight size={13}/></button></div><div className="edc-ov-simple-list">{continueLearningItems.slice(0,4).map(item => <button type="button" key={item.id} className="edc-ov-simple-item" onClick={() => onResume(item.id)}><span><strong>{item.title}</strong><small>{item.category || "Course"} · {Math.round(Number(item.progress)||0)}% complete</small></span><ChevronRight size={14}/></button>)}</div></section>}
+      {similarCourseItems.length > 0 && <section className="edc-ov-panel"><div className="edc-ov-panel-heading"><h3><BookOpen size={18}/> Similar Courses</h3><button type="button" onClick={onExplore}>Explore <ArrowRight size={13}/></button></div><div className="edc-ov-simple-list">{similarCourseItems.slice(0,4).map(item => <div key={item.id} className="edc-ov-simple-item is-static"><span><strong>{item.title}</strong><small>{item.reason || item.category || "Similar to your learning"}</small></span></div>)}</div></section>}
+      {learningPathItems.length > 0 && <section className="edc-ov-panel"><div className="edc-ov-panel-heading"><h3><Target size={18}/> Recommended Learning Paths</h3></div><div className="edc-ov-simple-list">{learningPathItems.slice(0,3).map(path => <div key={path.id} className="edc-ov-simple-item is-static"><span><strong>{String(path.category || "Learning path").replace(/w/g, c => c.toUpper())}</strong><small>{path.reason || ""} {Array.isArray(path.courses) ? `· ${path.courses.length} course(s)` : ""}</small></span></div>)}</div></section>}
+      {recommendedBookItems.length > 0 && <section className="edc-ov-panel"><div className="edc-ov-panel-heading"><h3><BookOpen size={18}/> Recommended Books</h3><button type="button" onClick={() => onNavigate("books")}>Browse Books <ArrowRight size={13}/></button></div><div className="edc-ov-simple-list">{recommendedBookItems.slice(0,4).map(book => <button type="button" key={book.id} className="edc-ov-simple-item" onClick={() => onNavigate("books")}><span><strong>{book.title}</strong><small>{book.category || "Book"}{book.price ? ` · PKR ${Number(book.price).toLocaleString()}` : " · Free"}</small></span><ChevronRight size={14}/></button>)}</div></section>}
+      {relatedInstructorItems.length > 0 && <section className="edc-ov-panel"><div className="edc-ov-panel-heading"><h3><UserRound size={18}/> Related Instructors</h3><button type="button" onClick={() => onNavigate("tutors")}>Find Teachers <ArrowRight size={13}/></button></div><div className="edc-ov-simple-list">{relatedInstructorItems.slice(0,4).map(inst => <button type="button" key={inst.email || inst.name} className="edc-ov-simple-item" onClick={() => onNavigate("tutors")}><span><strong>{inst.name || inst.email}</strong><small>{inst.rating ? `Rating ${Number(inst.rating).toFixed(1)}` : "Instructor"}{inst.reasons?.[0] ? ` · ${inst.reasons[0]}` : ""}</small></span><ChevronRight size={14}/></button>)}</div></section>}
+    </div>}
   </div>;
 }
 

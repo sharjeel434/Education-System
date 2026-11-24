@@ -42,7 +42,7 @@ const UNAVAILABLE_SECTIONS = {
     icon: Layers,
   },
   usage: {
-    title: "AI usage and cost are not tracked",
+    title: "AI usage and cost are unavailable",
     description: "No provider telemetry is connected, so request totals, token usage, latency, and cost are unavailable.",
     icon: Gauge,
   },
@@ -131,12 +131,12 @@ function AdminAIOperations() {
   }, [proposals, search]);
 
   const metrics = [
-    { label: "Total AI Requests", value: "Not tracked", icon: Activity, color: "purple", section: "logs" },
-    { label: "Active Models", value: "Not configured", icon: BrainCircuit, color: "orange", section: "models" },
-    { label: "Processing Jobs", value: "Not tracked", icon: Cpu, color: "green", section: "jobs" },
-    { label: "Failed Jobs", value: "Not tracked", icon: AlertTriangle, color: "red", section: "jobs" },
-    { label: "AI Usage (Tokens)", value: "Not tracked", icon: Database, color: "violet", section: "usage" },
-    { label: "Total AI Cost", value: "Not tracked", icon: Gauge, color: "purple", section: "usage" },
+    { label: "Total AI Requests", value: "No data", icon: Activity, color: "purple", section: "logs" },
+    { label: "Active Models", value: "Not set", icon: BrainCircuit, color: "orange", section: "models" },
+    { label: "Processing Jobs", value: "No data", icon: Cpu, color: "green", section: "jobs" },
+    { label: "Failed Jobs", value: "No data", icon: AlertTriangle, color: "red", section: "jobs" },
+    { label: "AI Usage (Tokens)", value: "No data", icon: Database, color: "violet", section: "usage" },
+    { label: "Total AI Cost", value: "No data", icon: Gauge, color: "purple", section: "usage" },
   ];
 
   return (

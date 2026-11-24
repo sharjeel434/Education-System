@@ -25,6 +25,7 @@ import {
   Users,
   X,
 } from "lucide-react";
+import { apiFetch } from "../../utils/api";
 import {
   ADMIN_DATA_CHANGED_EVENT,
   MODERATION_APPEAL_STATUSES,
@@ -137,10 +138,36 @@ function SupportOverviewTable({ rows, type, error, onOpen }) {
   );
 }
 
+function normalizeBackendTicket(ticket) {
+  return {
+    id: String(ticket.id),
+    ticketId: ticket.ticketId,
+    subject: ticket.subject,
+    description: ticket.description,
+    category: ticket.category,
+    priority: ticket.priority,
+    status: ticket.status,
+    requesterName: ticket.requesterName || "User",
+    requesterEmail: ticket.requesterEmail,
+    requesterRole: ticket.requesterRole,
+    assignedStaff: ticket.assignedStaff || "",
+    assignedBy: ticket.assignedBy || "",
+    responses: (ticket.responses || []).map((response) => ({ id: response.id, message: response.message, type: response.type, author: response.author, authorRole: response.authorRole, createdAt: response.createdAt })),
+    resolvedAt: ticket.resolvedAt || null,
+    closedAt: ticket.closedAt || null,
+    createdAt: ticket.createdAt,
+    updatedAt: ticket.updatedAt,
+  };
+}
+
 function AdminSupportModeration({ email, moderationOnly = false, initialView = "overview", detailPage = false }) {
   const adminActor = email || window.sessionStorage.getItem("educonnect.demoEmail") || "Admin";
-  const [requests, setRequests] = useState(() => readAdminSupportRequestsState().records);
+  const [localRequests, setRequests] = useState(() => readAdminSupportRequestsState().records);
+  const [apiTickets, setApiTickets] = useState([]);
+  const [apiError, setApiError] = useState("");
   const [storeError, setStoreError] = useState(() => readAdminSupportRequestsState().error || "");
+  // MongoDB-backed tickets are the primary support records when the backend lists them.
+  const requests = useMemo(() => (apiTickets.length ? apiTickets : localRequests), [apiTickets, localRequests]);
   const [faqs, setFaqs] = useState(getAdminHelpFaqs);
   const [faqError, setFaqError] = useState(() => readAdminHelpFaqsState().error || "");
   const [activeView, setActiveView] = useState(moderationOnly ? "appeals" : initialView);
@@ -179,6 +206,28 @@ function AdminSupportModeration({ email, moderationOnly = false, initialView = "
     const state = readAdminHelpFaqsState();
     setFaqs(state.records);
     setFaqError(state.error || "");
+  }, []);
+
+  const fetchBackendTickets = useCallback(async () => {
+    try {
+      const response = await apiFetch("/admin/support/tickets?limit=100", { method: "GET" });
+      if (!response.ok) throw Object.assign(new Error((await response.json().catch(() => ({}))).message || "Support tickets could not be loaded from the backend."), { status: response.status });
+      const data = await response.json();
+      setApiTickets((data.tickets || []).map(normalizeBackendTicket));
+      setApiError("");
+    } catch {
+      setApiError(""); // MongoDB tickets are optional: browser records still display.
+    }
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener(ADMIN_DATA_CHANGED_EVENT, fetchBackendTickets);
+    return () => window.removeEventListener(ADMIN_DATA_CHANGED_EVENT, fetchBackendTickets);
+  }, [fetchBackendTickets]);
+
+  useEffect(() => {
+    fetchBackendTickets();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -329,46 +378,96 @@ function AdminSupportModeration({ email, moderationOnly = false, initialView = "
     }
   }
 
+  // MongoDB-backed admin actions run first; browser-local updates remain as fallback.
+  async function callTicketApi(path, options) {
+    const response = await apiFetch(path, options);
+    if (!response.ok) throw Object.assign(new Error((await response.json().catch(() => ({}))).message || "The support ticket update could not be completed."), { status: response.status });
+    return response.json();
+  }
+
+  async function refreshAfterTicketChange() {
+    refreshRequests();
+    await fetchBackendTickets();
+  }
+
   function handleStatusChange(request, nextStatus) {
     if (["Accepted", "Rejected", "Closed"].includes(nextStatus)
       && !window.confirm(`Confirm changing ${request.id} to “${nextStatus}”?`)) return;
-    try {
-      updateAdminSupportRequestStatus(request.id, nextStatus, adminActor, decisionReason);
-      setFeedback({ type: "success", message: `${isAppeal(request) ? "Appeal" : "Ticket"} ${request.id} updated to ${nextStatus}.` });
-      refreshRequests();
-    } catch (error) {
-      setFeedback({ type: "error", message: error instanceof Error ? error.message : "Status could not be updated." });
-    }
+    const message = `${isAppeal(request) ? "Appeal" : "Ticket"} ${request.id} updated to ${nextStatus}.`;
+    setFeedback(null);
+    (async () => {
+      try {
+        await callTicketApi(`/admin/support/tickets/${encodeURIComponent(request.id)}/status`, { method: "PATCH", body: JSON.stringify({ status: nextStatus, reason: decisionReason }) });
+        setFeedback({ type: "success", message });
+        await refreshAfterTicketChange();
+      } catch (error) {
+        try {
+          updateAdminSupportRequestStatus(request.id, nextStatus, adminActor, decisionReason);
+          setFeedback({ type: "success", message });
+          refreshRequests();
+        } catch (localError) {
+          setFeedback({ type: "error", message: error instanceof Error ? error.message : localError instanceof Error ? localError.message : "Status could not be updated." });
+        }
+      }
+    })();
   }
 
   function saveAssignment() {
     if (!selectedRequest) return;
-    try {
-      updateAdminSupportRequestAssignment(selectedRequest.id, assignment, adminActor);
-      setFeedback({ type: "success", message: assignment.trim() ? "Ticket assignment saved." : "Ticket is now unassigned." });
-      refreshRequests();
-    } catch (error) { setFeedback({ type: "error", message: error.message || "Assignment could not be saved." }); }
+    const message = assignment.trim() ? "Ticket assignment saved." : "Ticket is now unassigned.";
+    (async () => {
+      try {
+        await callTicketApi(`/admin/support/tickets/${encodeURIComponent(selectedRequest.id)}/assign`, { method: "PATCH", body: JSON.stringify({ assignedStaff: assignment }) });
+        setFeedback({ type: "success", message });
+        await refreshAfterTicketChange();
+      } catch (error) {
+        try {
+          updateAdminSupportRequestAssignment(selectedRequest.id, assignment, adminActor);
+          setFeedback({ type: "success", message });
+          refreshRequests();
+        } catch (localError) { setFeedback({ type: "error", message: error?.message || localError?.message || "Assignment could not be saved." }); }
+      }
+    })();
   }
 
   function savePriority() {
     if (!selectedRequest) return;
-    try {
-      updateAdminSupportRequestPriority(selectedRequest.id, priorityDraft, adminActor);
-      setFeedback({ type: "success", message: `Priority changed to ${priorityDraft}.` });
-      refreshRequests();
-    } catch (error) { setFeedback({ type: "error", message: error.message || "Priority could not be changed." }); }
+    const message = `Priority changed to ${priorityDraft}.`;
+    (async () => {
+      try {
+        await callTicketApi(`/admin/support/tickets/${encodeURIComponent(selectedRequest.id)}/priority`, { method: "PATCH", body: JSON.stringify({ priority: priorityDraft }) });
+        setFeedback({ type: "success", message });
+        await refreshAfterTicketChange();
+      } catch (error) {
+        try {
+          updateAdminSupportRequestPriority(selectedRequest.id, priorityDraft, adminActor);
+          setFeedback({ type: "success", message });
+          refreshRequests();
+        } catch (localError) { setFeedback({ type: "error", message: error?.message || localError?.message || "Priority could not be changed." }); }
+      }
+    })();
   }
 
   function sendResponse(event) {
     event.preventDefault();
     if (!selectedRequest) return;
     setResponseError("");
-    try {
-      addAdminSupportResponse(selectedRequest.id, { message: responseMessage, type: responseType, author: adminActor, actor: adminActor, authorRole: "Admin" });
-      setResponseMessage("");
-      refreshRequests();
-      setFeedback({ type: "success", message: responseType === "internal_note" ? "Internal note saved for Admin." : "Reply sent to the requester." });
-    } catch (error) { setResponseError(error instanceof Error ? error.message : "Reply could not be sent."); }
+    (async () => {
+      const message = responseType === "internal_note" ? "Internal note saved for Admin." : "Reply sent to the requester.";
+      try {
+        await callTicketApi(`/admin/support/tickets/${encodeURIComponent(selectedRequest.id)}/replies`, { method: "POST", body: JSON.stringify({ message: responseMessage, type: responseType }) });
+        setResponseMessage("");
+        setFeedback({ type: "success", message });
+        await refreshAfterTicketChange();
+      } catch (error) {
+        try {
+          addAdminSupportResponse(selectedRequest.id, { message: responseMessage, type: responseType, author: adminActor, actor: adminActor, authorRole: "Admin" });
+          setResponseMessage("");
+          setFeedback({ type: "success", message });
+          refreshRequests();
+        } catch (localError) { setResponseError(error instanceof Error ? error.message : localError instanceof Error ? localError.message : "Reply could not be sent."); }
+      }
+    })();
   }
 
   function saveFaq(event) {
@@ -455,6 +554,7 @@ function AdminSupportModeration({ email, moderationOnly = false, initialView = "
       )}
 
       {feedback && <p className={`edc-admin-feedback edc-admin-feedback-${feedback.type}`} role={feedback.type === "error" ? "alert" : "status"}>{feedback.message}</p>}
+      {apiError && <p className="edc-admin-feedback edc-admin-feedback-error" role="status"><AlertTriangle size={15} /> MongoDB support tickets are unavailable: {apiError} Browser records are shown.</p>}
       {storeError && <p className="edc-admin-feedback edc-admin-feedback-error" role="alert"><AlertTriangle size={15} /> {storeError} Existing data was preserved.</p>}
 
       {detailPage && <Link className="edc-admin-support-back" to="/admin/support"><ArrowLeft size={15} /> Back to Support Overview</Link>}
@@ -466,7 +566,7 @@ function AdminSupportModeration({ email, moderationOnly = false, initialView = "
           { label: "Resolved Tickets", value: storeError ? "—" : resolvedTickets.toLocaleString(), icon: CheckCircle2, color: "green", view: "resolved", status: "all" },
           { label: "Appeals", value: storeError ? "—" : totalAppeals.toLocaleString(), icon: ShieldAlert, color: "red", view: "appeals", status: "all" },
           { label: "In Progress", value: storeError ? "—" : inProgressTickets.toLocaleString(), icon: Users, color: "violet", view: "tickets", status: "In Progress" },
-          { label: "Satisfaction", value: "Not collected", icon: AlertTriangle, color: "purple", view: "reports", status: "all" },
+          { label: "Satisfaction", value: "No ratings", icon: AlertTriangle, color: "purple", view: "reports", status: "all" },
         ].map(({ label, value, icon: Icon, color, view, status }) => (
           <button
             className={`edc-admin-support-reference-stat ${color} edc-admin-metric-card edc-admin-metric-${color}${activeView === view && statusFilter === status ? " is-active" : ""}`}
@@ -527,7 +627,7 @@ function AdminSupportModeration({ email, moderationOnly = false, initialView = "
                 <div><dt>Unassigned open tickets</dt><dd>{storeError ? "—" : unassigned.length.toLocaleString()}</dd></div>
                 <div><dt>Open urgent requests</dt><dd>{storeError ? "—" : urgent.length.toLocaleString()}</dd></div>
                 <div><dt>Average recorded resolution</dt><dd>{storeError ? "—" : averageHours === null ? "Not available" : `${averageHours.toFixed(1)} h`}</dd></div>
-                <div><dt>SLA compliance</dt><dd>Not tracked</dd></div>
+                <div><dt>SLA compliance</dt><dd>Unavailable</dd></div>
               </dl>
               <p className="edc-admin-support-reference-caption">No saved SLA targets or satisfaction ratings exist in this app.</p>
             </section>

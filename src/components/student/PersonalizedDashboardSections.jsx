@@ -10,7 +10,7 @@ const sameCourse = (item, course) => String(item.id) === String(course.id) && St
 
 function hasPurchasedCourse(course, orders) {
   const ownerEmail = String(course.teacherEmail || course.instructorEmail || "").trim().toLowerCase();
-  return orders.some((order) => ["completed", "demo completed"].includes(String(order.status || "").toLowerCase()) &&
+  return orders.some((order) => ["completed", "demo completed", "paid"].includes(String(order.status || "").toLowerCase()) &&
     (order.items || []).some((item) => item.itemType !== "book" && String(item.id) === String(course.id) &&
       String(item.teacherEmail || "").trim().toLowerCase() === ownerEmail));
 }

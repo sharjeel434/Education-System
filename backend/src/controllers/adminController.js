@@ -1,6 +1,15 @@
 
 import mongoose from "mongoose";
 import Teacher from "../models/Teacher.js";
+import { recordAdminAction } from "../services/auditService.js";
+
+const auditTeacherDecision = (req, teacher, status) => recordAdminAction({
+  actorEmail: req.user.email, actorRole: req.user.role, actorId: req.user._id,
+  action: `Teacher ${status}`, category: "teacher-applications", module: "Teacher Applications",
+  entityType: "Teacher", entityId: String(teacher._id), targetId: String(teacher._id),
+  targetName: teacher.email, result: status === "approved" ? "Approved" : "Rejected",
+  description: `${req.user.fullName || req.user.email} ${status === "approved" ? "approved" : "rejected"} teacher application for ${teacher.email}.`,
+});
 
 // Get pending teachers
 export const getPendingTeachers = async (req, res, next) => {
@@ -49,8 +58,16 @@ export const approveTeacher = async (req, res, next) => {
       });
     }
 
+    if (String(teacher._id) === String(req.user._id)) {
+      return res.status(403).json({
+        success: false,
+        message: "A user cannot approve or reject their own teacher application."
+      });
+    }
+
     teacher.teacherStatus = "approved";
     await teacher.save();
+    await auditTeacherDecision(req, teacher, "approved");
 
     res.status(200).json({
       success: true,
@@ -95,8 +112,16 @@ export const rejectTeacher = async (req, res, next) => {
       });
     }
 
+    if (String(teacher._id) === String(req.user._id)) {
+      return res.status(403).json({
+        success: false,
+        message: "A user cannot approve or reject their own teacher application."
+      });
+    }
+
     teacher.teacherStatus = "rejected";
     await teacher.save();
+    await auditTeacherDecision(req, teacher, "rejected");
 
     res.status(200).json({
       success: true,

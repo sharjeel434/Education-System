@@ -10,12 +10,19 @@ export default defineConfig({
     },
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:5000',
+        target: process.env.VITE_API_PROXY || 'http://127.0.0.1:5000',
         changeOrigin: true,
       },
     },
     watch: {
       ignored: ['**/.verification-preview/**', '**/backend/uploads/**'],
     },
+  },
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: './src/test/setup.js',
+    css: true,
+    exclude: ['**/node_modules/**', '**/dist/**', 'backend/**', 'tests/e2e/**', 'playwright-report/**', 'test-results/**'],
   },
 })
